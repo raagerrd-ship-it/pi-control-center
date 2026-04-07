@@ -208,12 +208,11 @@ export function ServiceCard({
             {/* Version bar at bottom */}
             <div className={`flex items-center justify-between rounded px-2.5 py-1.5 ${hasUpdate ? 'bg-[hsl(var(--status-warning)/0.1)] border border-[hsl(var(--status-warning)/0.3)]' : 'bg-secondary/40'}`}>
               <div className="font-mono text-[11px] flex items-center gap-1.5">
-                <span className="text-muted-foreground">v:</span>
                 <span className="text-foreground">{version || '—'}</span>
-                {hasUpdate && versionInfo?.remote && (
+                {hasUpdate && (
                   <>
-                    <ArrowUp className="h-3 w-3 text-[hsl(var(--status-warning))]" />
-                    <span className="text-[hsl(var(--status-warning))]">{versionInfo.remote}</span>
+                    <span className="text-border">·</span>
+                    <span className="text-[hsl(var(--status-warning))]">ny version</span>
                   </>
                 )}
               </div>
