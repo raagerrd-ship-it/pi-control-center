@@ -9,6 +9,8 @@ const DEMO_STATUS: SystemStatus = {
   diskUsed: 4,
   diskTotal: 16,
   uptime: '3d 7h 42m',
+  dashboardCpu: 0.3,
+  dashboardRamMb: 7,
   services: {
     'lotus-lantern': { online: true, installed: true, version: '3 apr', cpu: 4.2, ramMb: 38, cpuCore: 1 },
     'cast-away': { online: true, installed: true, version: '1 apr', cpu: 1.8, ramMb: 27, cpuCore: 2 },
