@@ -48,6 +48,13 @@ declare -A APP_SERVICES=(
   ["sonos-gateway"]="sonos-proxy"
 )
 
+# CPU core assignments: core 0 = system/dashboard, 1-3 = apps
+declare -A APP_CORES=(
+  ["lotus-lantern"]="1"
+  ["cast-away"]="2"
+  ["sonos-gateway"]="3"
+)
+
 # ---------- Lightweight system stats via /proc (no subprocesses) ----------
 
 # CPU: read /proc/stat twice with 0.2s gap — fast and accurate
