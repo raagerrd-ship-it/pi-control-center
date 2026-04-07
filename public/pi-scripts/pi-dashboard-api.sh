@@ -186,6 +186,22 @@ handle_request() {
       fi
       ;;
 
+    POST\ /api/service/*/start|POST\ /api/service/*/stop|POST\ /api/service/*/restart)
+      local app=$(echo "$path" | awk -F/ '{print $4}')
+      local action=$(echo "$path" | awk -F/ '{print $5}')
+      local svc_name=${APP_SERVICES[$app]}
+      if [ -z "$svc_name" ]; then
+        status_line="HTTP/1.1 404 Not Found"
+        response="{\"error\":\"Unknown app: ${app}\"}"
+      else
+        if sudo systemctl "$action" "${svc_name}.service" 2>/dev/null; then
+          response="{\"app\":\"${app}\",\"action\":\"${action}\",\"status\":\"success\"}"
+        else
+          response="{\"app\":\"${app}\",\"action\":\"${action}\",\"status\":\"error\",\"message\":\"systemctl ${action} failed\"}"
+        fi
+      fi
+      ;;
+
     "OPTIONS "*)
       response=""
       ;;
