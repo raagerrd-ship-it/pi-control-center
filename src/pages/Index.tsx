@@ -55,7 +55,8 @@ const Index = () => {
   const updatesAvailable = versions ? Object.values(versions).some(v => v.hasUpdate) : false;
 
   return (
-    <div className="min-h-screen bg-background p-4 sm:p-6 max-w-2xl mx-auto">
+    <PullToRefresh onRefresh={refresh}>
+      <div className="bg-background p-4 sm:p-6 max-w-2xl mx-auto">
       <header className="flex items-center justify-between mb-6">
         <div>
           <h1 className="font-mono text-lg font-bold tracking-tight">Pi Dashboard</h1>
