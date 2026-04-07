@@ -1,6 +1,6 @@
 #!/bin/bash
-# Pi Dashboard — Installation script
-# Run on your Pi Zero 2 W: curl -sL <url>/pi-scripts/install.sh | bash
+# Pi Dashboard — Installation script optimized for Pi Zero 2 W (512MB RAM)
+# Run: curl -sL <url>/pi-scripts/install.sh | bash -s -- <repo-url>
 set -e
 
 REPO_URL="${1:-https://github.com/YOUR_USER/pi-dashboard.git}"
@@ -8,38 +8,62 @@ DASHBOARD_DIR="$HOME/pi-dashboard"
 NGINX_DIR="/var/www/pi-dashboard"
 API_PORT=8585
 
-echo "=== Pi Dashboard Installer ==="
+# Limit Node.js memory for 512MB Pi
+export NODE_OPTIONS="--max-old-space-size=256"
 
-# 1. Install dependencies
-echo "[1/6] Installing packages..."
+echo "=== Pi Dashboard Installer (Pi Zero 2 W optimized) ==="
+
+# 1. Ensure swap exists (critical for npm on 512MB)
+echo "[1/7] Checking swap..."
+if [ "$(swapon --show | wc -l)" -lt 2 ]; then
+  echo "  Setting up 512MB swap file..."
+  sudo dphys-swapfile swapoff 2>/dev/null || true
+  sudo sed -i 's/^CONF_SWAPSIZE=.*/CONF_SWAPSIZE=512/' /etc/dphys-swapfile 2>/dev/null || {
+    # Fallback: manual swap
+    sudo fallocate -l 512M /swapfile 2>/dev/null || sudo dd if=/dev/zero of=/swapfile bs=1M count=512
+    sudo chmod 600 /swapfile
+    sudo mkswap /swapfile
+    sudo swapon /swapfile
+    grep -q '/swapfile' /etc/fstab || echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
+  }
+  sudo dphys-swapfile setup 2>/dev/null && sudo dphys-swapfile swapon 2>/dev/null || true
+  echo "  Swap: $(free -m | awk '/^Swap:/{print $2}')MB"
+fi
+
+# 2. Install dependencies
+echo "[2/7] Installing packages..."
 sudo apt-get update -qq
-sudo apt-get install -y -qq nginx socat git
+sudo apt-get install -y -qq nginx socat git bc
 
-# Install Node.js if missing
+# Install Node.js 20 if missing (use LTS for stability)
 if ! command -v node &>/dev/null; then
-  echo "  Installing Node.js..."
+  echo "  Installing Node.js 20 LTS..."
   curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
   sudo apt-get install -y -qq nodejs
 fi
+echo "  Node: $(node -v), npm: $(npm -v)"
 
-# 2. Clone/update dashboard repo
-echo "[2/6] Setting up dashboard..."
+# 3. Clone dashboard (shallow to save disk + RAM)
+echo "[3/7] Cloning dashboard..."
 if [ -d "$DASHBOARD_DIR" ]; then
   cd "$DASHBOARD_DIR" && git pull --quiet
 else
-  git clone "$REPO_URL" "$DASHBOARD_DIR"
+  git clone --depth 1 "$REPO_URL" "$DASHBOARD_DIR"
   cd "$DASHBOARD_DIR"
 fi
 
-# 3. Build
-echo "[3/6] Building..."
-npm install --production
-npm run build
+# 4. Build with resource limits
+echo "[4/7] Building (this may take a few minutes on Pi Zero 2)..."
+nice -n 15 ionice -c 3 npm install --production --no-audit --no-fund
+nice -n 15 ionice -c 3 npm run build
 sudo mkdir -p "$NGINX_DIR"
 sudo cp -r dist/* "$NGINX_DIR/"
 
-# 4. Configure Nginx
-echo "[4/6] Configuring Nginx..."
+# Clean npm cache to free disk
+npm cache clean --force 2>/dev/null || true
+
+# 5. Configure Nginx (with gzip for faster loads)
+echo "[5/7] Configuring Nginx..."
 sudo tee /etc/nginx/sites-available/pi-dashboard > /dev/null << 'NGINX'
 server {
     listen 80 default_server;
@@ -48,13 +72,19 @@ server {
     index index.html;
     server_name _;
 
+    # Gzip compression — saves bandwidth on Pi's slow WiFi
+    gzip on;
+    gzip_types text/plain text/css application/json application/javascript text/xml;
+    gzip_min_length 256;
+    gzip_vary on;
+
     location / {
         try_files $uri $uri/ /index.html;
     }
 
-    # Cache static assets
+    # Cache static assets aggressively
     location ~* \.(js|css|png|jpg|jpeg|gif|ico|svg|woff2?)$ {
-        expires 7d;
+        expires 30d;
         add_header Cache-Control "public, immutable";
     }
 }
@@ -64,8 +94,19 @@ sudo rm -f /etc/nginx/sites-enabled/default
 sudo ln -sf /etc/nginx/sites-available/pi-dashboard /etc/nginx/sites-enabled/
 sudo nginx -t && sudo systemctl restart nginx
 
-# 5. Set up API service
-echo "[5/6] Setting up API service..."
+# Optimize Nginx for low-memory system
+sudo tee /etc/nginx/conf.d/pi-optimize.conf > /dev/null << 'CONF'
+# Pi Zero 2 W optimizations
+worker_processes 2;
+worker_connections 64;
+keepalive_timeout 30;
+client_body_buffer_size 8k;
+client_max_body_size 1m;
+CONF
+sudo nginx -t && sudo systemctl reload nginx
+
+# 6. Set up API service with resource limits
+echo "[6/7] Setting up API service..."
 chmod +x "$DASHBOARD_DIR/public/pi-scripts/pi-dashboard-api.sh"
 chmod +x "$DASHBOARD_DIR/public/pi-scripts/pi-auto-update.sh"
 
@@ -79,7 +120,11 @@ Type=simple
 User=$USER
 ExecStart=$DASHBOARD_DIR/public/pi-scripts/pi-dashboard-api.sh $API_PORT
 Restart=always
-RestartSec=5
+RestartSec=10
+# Memory limit: kill if API somehow leaks beyond 30MB
+MemoryMax=30M
+# Low CPU priority
+Nice=10
 
 [Install]
 WantedBy=multi-user.target
@@ -88,8 +133,8 @@ EOF
 sudo systemctl daemon-reload
 sudo systemctl enable --now pi-dashboard-api.service
 
-# 6. Set up auto-update timer (hourly, dashboard only)
-echo "[6/6] Setting up auto-update timer..."
+# 7. Set up auto-update timer (hourly, dashboard only)
+echo "[7/7] Setting up auto-update timer..."
 sudo tee /etc/systemd/system/pi-dashboard-update.service > /dev/null << EOF
 [Unit]
 Description=Pi Dashboard Auto Update
@@ -97,7 +142,13 @@ Description=Pi Dashboard Auto Update
 [Service]
 Type=oneshot
 User=$USER
+Environment=NODE_OPTIONS=--max-old-space-size=256
 ExecStart=$DASHBOARD_DIR/public/pi-scripts/pi-auto-update.sh
+# Kill if update hangs over 10 min
+TimeoutStartSec=600
+# Low priority
+Nice=15
+IOSchedulingClass=idle
 EOF
 
 sudo tee /etc/systemd/system/pi-dashboard-update.timer > /dev/null << 'EOF'
@@ -116,7 +167,7 @@ EOF
 sudo systemctl daemon-reload
 sudo systemctl enable --now pi-dashboard-update.timer
 
-# Disable other apps' auto-update timers (they'll be updated manually via the dashboard)
+# Disable other apps' auto-update timers
 for timer in lotus-light-update cast-away-update sonos-proxy-update; do
   if systemctl is-enabled "${timer}.timer" &>/dev/null; then
     echo "  Disabling ${timer}.timer (use dashboard for manual updates)"
@@ -124,9 +175,30 @@ for timer in lotus-light-update cast-away-update sonos-proxy-update; do
   fi
 done
 
+# Allow passwordless systemctl for the API to start/stop services
+echo "  Setting up sudoers for service control..."
+sudo tee /etc/sudoers.d/pi-dashboard > /dev/null << EOF
+$USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl start lotus-light.service
+$USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl stop lotus-light.service
+$USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl restart lotus-light.service
+$USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl start cast-away.service
+$USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl stop cast-away.service
+$USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl restart cast-away.service
+$USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl start sonos-proxy.service
+$USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl stop sonos-proxy.service
+$USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl restart sonos-proxy.service
+EOF
+sudo chmod 440 /etc/sudoers.d/pi-dashboard
+
 echo ""
 echo "=== Done! ==="
-echo "Dashboard: http://$(hostname -I | awk '{print $1}')"
-echo "API: port $API_PORT"
+echo "Dashboard:   http://$(hostname -I | awk '{print $1}')"
+echo "API:         port $API_PORT"
 echo "Auto-update: every hour (dashboard only)"
-echo "Other apps: update manually via dashboard buttons"
+echo "Swap:        $(free -m | awk '/^Swap:/{print $2}')MB"
+echo "RAM free:    $(free -m | awk '/^Mem:/{print $7}')MB available"
+echo ""
+echo "Resource footprint:"
+echo "  Nginx:  ~5MB RAM"
+echo "  API:    ~2MB RAM (shell + socat)"
+echo "  Total:  ~7MB idle"
