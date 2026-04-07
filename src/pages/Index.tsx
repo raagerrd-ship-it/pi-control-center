@@ -14,11 +14,19 @@ const Index = () => {
   const { updates, startUpdate, installs, startInstall, actions, runServiceAction } = useServiceUpdate();
   const [dashboardUpdate, setDashboardUpdate] = useState<UpdateResult | null>(null);
 
-  const handleDashboardUpdate = async () => {
+  const handleDashboardUpdate = useCallback(async () => {
     setDashboardUpdate({ app: 'dashboard', status: 'updating' });
     try {
-      const result = await triggerUpdate('dashboard');
-      setDashboardUpdate(result);
+      await triggerUpdate('dashboard');
+      // Poll for completion since update runs async on the Pi
+      const poll = async () => {
+        const result = await fetchUpdateStatus('dashboard');
+        setDashboardUpdate(result);
+        if (result.status === 'updating') {
+          setTimeout(poll, 3000);
+        }
+      };
+      setTimeout(poll, 3000);
     } catch (e) {
       setDashboardUpdate({
         app: 'dashboard',
@@ -26,7 +34,7 @@ const Index = () => {
         message: e instanceof Error ? e.message : 'Update failed',
       });
     }
-  };
+  }, []);
 
   const isUpdatingDashboard = dashboardUpdate?.status === 'updating';
 
