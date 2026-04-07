@@ -88,18 +88,22 @@ export function ServiceCard({
         <span>{installed ? (version || statusLabel) : statusLabel}</span>
       </div>
 
-      {/* Resource usage — prominent core badge */}
-      {installed && online && (
+      {/* Resource usage — prominent core badge, always shown when installed */}
+      {installed && cpuCore >= 0 && (
         <div className="flex items-center gap-2 font-mono text-[11px]">
           <span className="inline-flex items-center gap-1 rounded bg-secondary px-1.5 py-0.5 text-foreground">
-            <Cpu className="h-3 w-3 text-[hsl(var(--status-online))]" />
+            <Cpu className={`h-3 w-3 ${online ? 'text-[hsl(var(--status-online))]' : 'text-muted-foreground'}`} />
             Core {cpuCore}
           </span>
-          <span className={cpu > 50 ? 'text-[hsl(var(--status-warning))]' : 'text-muted-foreground'}>
-            {cpu.toFixed(1)}%
-          </span>
-          <span className="text-border">·</span>
-          <span className="text-muted-foreground">{ramMb}MB</span>
+          {online && (
+            <>
+              <span className={cpu > 50 ? 'text-[hsl(var(--status-warning))]' : 'text-muted-foreground'}>
+                {cpu.toFixed(1)}%
+              </span>
+              <span className="text-border">·</span>
+              <span className="text-muted-foreground">{ramMb}MB</span>
+            </>
+          )}
         </div>
       )}
 
