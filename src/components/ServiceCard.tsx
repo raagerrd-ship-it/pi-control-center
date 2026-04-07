@@ -81,11 +81,11 @@ export function ServiceCard({
         )}
       </div>
 
-      {/* Meta */}
+      {/* Meta: port + status */}
       <div className="flex items-center gap-3 font-mono text-xs text-muted-foreground">
         <span>:{port}</span>
         <span className="text-border">|</span>
-        <span>{installed ? (version || statusLabel) : statusLabel}</span>
+        <span>{statusLabel}</span>
       </div>
 
       {/* Resource usage — prominent core badge, always shown when installed */}
@@ -167,7 +167,7 @@ export function ServiceCard({
           </Button>
         ) : (
           <>
-            {/* Service controls */}
+            {/* Service controls + Logs */}
             <div className="flex items-center gap-1.5">
               {!online ? (
                 <Button
@@ -199,21 +199,25 @@ export function ServiceCard({
               >
                 <RotateCcw className="h-3 w-3" /> Omstart
               </Button>
+              <LogViewer appKey={appKey} appName={name} asButton />
             </div>
 
-            {/* Update + Logs as proper buttons */}
-            <div className="flex items-center gap-1.5">
+            {/* Version + Update at bottom */}
+            <div className="flex items-center justify-between rounded bg-secondary/40 px-2.5 py-1.5">
+              <div className="font-mono text-[11px]">
+                <span className="text-muted-foreground">v:</span>{' '}
+                <span className="text-foreground">{version || '—'}</span>
+              </div>
               <Button
-                variant="secondary"
+                variant="ghost"
                 size="sm"
-                className="font-mono text-xs gap-1 flex-1"
+                className="font-mono text-[11px] gap-1 h-6 px-2 text-muted-foreground hover:text-foreground"
                 disabled={isUpdating || !online}
                 onClick={() => onUpdate(appKey)}
               >
                 <RefreshCw className={`h-3 w-3 ${isUpdating ? 'animate-spin' : ''}`} />
                 {isUpdating ? 'Uppdaterar...' : 'Uppdatera'}
               </Button>
-              <LogViewer appKey={appKey} appName={name} asButton />
             </div>
 
             {/* Update status feedback */}
