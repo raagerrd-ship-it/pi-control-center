@@ -18,7 +18,7 @@ export interface SystemStatus {
   diskTotal: number;
   uptime: string;
   services: {
-    [key: string]: { online: boolean; version: string };
+    [key: string]: { online: boolean; version: string; installed: boolean };
   };
 }
 
@@ -26,6 +26,14 @@ export interface UpdateResult {
   app: string;
   status: 'idle' | 'updating' | 'success' | 'error';
   message?: string;
+  timestamp?: string;
+}
+
+export interface InstallResult {
+  app: string;
+  status: 'idle' | 'installing' | 'success' | 'error';
+  message?: string;
+  progress?: string;
   timestamp?: string;
 }
 
@@ -47,5 +55,20 @@ export async function triggerUpdate(app: string): Promise<UpdateResult> {
 export async function fetchUpdateStatus(app: string): Promise<UpdateResult> {
   const res = await fetch(`${getBaseUrl()}/api/update-status/${app}`, { signal: AbortSignal.timeout(4000) });
   if (!res.ok) throw new Error('Failed to fetch update status');
+  return res.json();
+}
+
+export async function triggerInstall(app: string): Promise<InstallResult> {
+  const res = await fetch(`${getBaseUrl()}/api/install/${app}`, {
+    method: 'POST',
+    signal: AbortSignal.timeout(300000), // 5 min timeout for installs
+  });
+  if (!res.ok) throw new Error('Failed to trigger install');
+  return res.json();
+}
+
+export async function fetchInstallStatus(app: string): Promise<InstallResult> {
+  const res = await fetch(`${getBaseUrl()}/api/install-status/${app}`, { signal: AbortSignal.timeout(4000) });
+  if (!res.ok) throw new Error('Failed to fetch install status');
   return res.json();
 }
