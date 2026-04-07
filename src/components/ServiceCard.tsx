@@ -1,7 +1,7 @@
 import { ExternalLink, RefreshCw, CheckCircle2, AlertCircle, Download, Loader2, Play, Square, RotateCcw, FileText } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
-import { LogViewer } from '@/components/LogViewer';
+import { LogViewer, LogProvider } from '@/components/LogViewer';
 import type { UpdateResult, InstallResult, ServiceActionResult, VersionInfo } from '@/lib/api';
 
 interface ServiceCardProps {
