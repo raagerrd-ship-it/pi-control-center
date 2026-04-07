@@ -112,8 +112,14 @@ done
 
 if ! ping -c1 -W2 8.8.8.8 &>/dev/null; then
   echo "ERROR: No network after 120s. Aborting."
+  led_error &
   exit 1
 fi
+
+# Switch to fast blink = installing
+kill "$BLINK_PID" 2>/dev/null || true
+led_blink 0.15 &
+BLINK_PID=$!
 
 # 1. Swap (critical for 512MB Pi Zero 2)
 echo "[1/8] Setting up swap..."
