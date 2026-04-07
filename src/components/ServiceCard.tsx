@@ -86,6 +86,12 @@ export function ServiceCard({
         <span>:{port}</span>
         <span className="text-border">|</span>
         <span>{installed ? (version || statusLabel) : statusLabel}</span>
+        {deviceLabel && (
+          <>
+            <span className="text-border">|</span>
+            <span className="text-muted-foreground/60">{deviceLabel}</span>
+          </>
+        )}
       </div>
 
       {/* Resource usage */}
