@@ -84,6 +84,19 @@ export function ServiceCard({
         <span>{installed ? (version || statusLabel) : statusLabel}</span>
       </div>
 
+      {/* Resource usage */}
+      {installed && online && (
+        <div className="flex items-center gap-3 font-mono text-[11px]">
+          <span className={cpu > 50 ? 'text-[hsl(var(--status-warning))]' : 'text-muted-foreground'}>
+            CPU {cpu.toFixed(1)}%
+          </span>
+          <span className="text-border">·</span>
+          <span className="text-muted-foreground">
+            RAM {ramMb}MB
+          </span>
+        </div>
+      )}
+
       {/* Install progress */}
       {isInstalling && (
         <div className="flex flex-col gap-1.5">
