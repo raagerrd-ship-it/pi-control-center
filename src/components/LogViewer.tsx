@@ -25,10 +25,11 @@ interface LogViewerProps {
   appName: string;
   asButton?: boolean;
   asIconButton?: boolean;
+  showLabel?: boolean;
   panelOnly?: boolean;
 }
 
-export function LogViewer({ appKey, appName, asButton, asIconButton, panelOnly }: LogViewerProps) {
+export function LogViewer({ appKey, appName, asButton, asIconButton, showLabel, panelOnly }: LogViewerProps) {
   const ctx = useContext(LogContext);
   const [localOpen, setLocalOpen] = useState(false);
   const [logType, setLogType] = useState<'update' | 'install'>('update');
@@ -71,11 +72,12 @@ export function LogViewer({ appKey, appName, asButton, asIconButton, panelOnly }
       <Button
         variant="secondary"
         size="sm"
-        className={`font-mono text-[11px] h-7 w-7 p-0 ${isOpen ? 'bg-accent text-foreground' : ''}`}
+        className={`font-mono text-[11px] h-7 ${showLabel ? 'gap-1 px-2' : 'w-7 p-0'} ${isOpen ? 'bg-accent text-foreground' : ''}`}
         onClick={toggleOpen}
         title="Loggar"
       >
         <FileText className="h-3 w-3" />
+        {showLabel && 'Logg'}
       </Button>
     );
   }
