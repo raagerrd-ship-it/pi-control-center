@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import { RefreshCw, CheckCircle2, AlertCircle } from 'lucide-react';
 import { SystemMonitor } from '@/components/SystemMonitor';
 import { ServiceCard } from '@/components/ServiceCard';
@@ -6,7 +6,7 @@ import { Settings, loadSettings, type DashboardSettings } from '@/components/Set
 import { useSystemStatus } from '@/hooks/useSystemStatus';
 import { useServiceUpdate } from '@/hooks/useServiceUpdate';
 import { Button } from '@/components/ui/button';
-import { triggerUpdate, type UpdateResult } from '@/lib/api';
+import { triggerUpdate, fetchUpdateStatus, type UpdateResult } from '@/lib/api';
 
 const Index = () => {
   const [settings, setSettings] = useState<DashboardSettings>(loadSettings);
