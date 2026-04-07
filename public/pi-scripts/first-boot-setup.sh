@@ -78,7 +78,7 @@ led_error() {
 
 led_restore() {
   # Restore default kernel trigger
-  kill "$BLINK_PID" 2>/dev/null || true
+  [ -n "${BLINK_PID:-}" ] && kill "$BLINK_PID" 2>/dev/null || true
   echo mmc0 | sudo tee "$LED_TRIGGER" > /dev/null 2>&1 || true
 }
 
@@ -168,8 +168,8 @@ fi
 cd "$DASHBOARD_DIR"
 
 echo "[5/8] Building dashboard (this takes ~5-10 min on Pi Zero 2)..."
-sudo -u "$PI_USER" nice -n 15 ionice -c 3 npm install --production --no-audit --no-fund
-sudo -u "$PI_USER" nice -n 15 ionice -c 3 npm run build
+sudo -u "$PI_USER" NODE_OPTIONS="--max-old-space-size=256" nice -n 15 ionice -c 3 npm install --production --no-audit --no-fund
+sudo -u "$PI_USER" NODE_OPTIONS="--max-old-space-size=256" nice -n 15 ionice -c 3 npm run build
 sudo mkdir -p "$NGINX_DIR"
 sudo cp -r dist/* "$NGINX_DIR/"
 sudo -u "$PI_USER" npm cache clean --force 2>/dev/null || true
@@ -298,9 +298,9 @@ done
 
 sudo systemctl daemon-reload
 
-# Mark as installed & disable this service
+# Mark as installed & disable first-boot service (if it exists)
 touch "$MARKER"
-sudo systemctl disable first-boot-setup.service
+sudo systemctl disable first-boot-setup.service 2>/dev/null || true
 
 # Done! LED solid green for 30s, then restore to kernel default
 led_solid
