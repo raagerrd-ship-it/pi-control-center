@@ -35,7 +35,10 @@ const Index = () => {
       <header className="flex items-center justify-between mb-6">
         <div>
           <h1 className="font-mono text-lg font-bold tracking-tight">Pi Dashboard</h1>
-          <p className="font-mono text-xs text-muted-foreground">{settings.piIp}</p>
+          <p className="font-mono text-xs text-muted-foreground">
+            {settings.piIp}
+            {demo && <span className="ml-2 text-[hsl(var(--status-warning))]">DEMO</span>}
+          </p>
         </div>
         <div className="flex items-center gap-1">
           <Button
