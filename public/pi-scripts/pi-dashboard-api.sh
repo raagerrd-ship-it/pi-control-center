@@ -1,11 +1,43 @@
 #!/bin/bash
 # Pi Dashboard API — lightweight HTTP server using socat
-# Serves system status and handles update triggers
+# Serves system status, handles update and install triggers
 # Usage: ./pi-dashboard-api.sh [port]
 
 PORT="${1:-8585}"
 STATUS_DIR="/tmp/pi-dashboard"
-mkdir -p "$STATUS_DIR"
+INSTALL_DIR="/tmp/pi-dashboard/install"
+mkdir -p "$STATUS_DIR" "$INSTALL_DIR"
+
+# App install configs: repo URL and install directory
+declare -A APP_REPOS=(
+  ["lotus-lantern"]="https://github.com/YOUR_USER/lotus-light.git"
+  ["cast-away"]="https://github.com/YOUR_USER/cast-away.git"
+  ["sonos-gateway"]="https://github.com/YOUR_USER/sonos-proxy.git"
+)
+
+declare -A APP_DIRS=(
+  ["lotus-lantern"]="/opt/lotus-light"
+  ["cast-away"]="$HOME/.local/share/cast-away"
+  ["sonos-gateway"]="$HOME/sonos-proxy"
+)
+
+declare -A APP_INSTALL_SCRIPTS=(
+  ["lotus-lantern"]="pi/install.sh"
+  ["cast-away"]="install.sh"
+  ["sonos-gateway"]="install.sh"
+)
+
+declare -A APP_UPDATE_SCRIPTS=(
+  ["lotus-lantern"]="/opt/lotus-light/pi/update-services.sh"
+  ["cast-away"]="$HOME/.local/share/cast-away/update.sh"
+  ["sonos-gateway"]="$HOME/sonos-proxy/update.sh"
+)
+
+declare -A APP_PORTS=(
+  ["lotus-lantern"]="3001"
+  ["cast-away"]="3000"
+  ["sonos-gateway"]="3002"
+)
 
 get_cpu() { top -bn1 | grep "Cpu(s)" | awk '{print 100 - $8}'; }
 get_temp() { cat /sys/class/thermal/thermal_zone0/temp 2>/dev/null | awk '{printf "%.1f", $1/1000}' || echo "0"; }
@@ -18,6 +50,11 @@ check_service() {
   if ss -tlnp | grep -q ":${port} " 2>/dev/null; then echo "true"; else echo "false"; fi
 }
 
+check_installed() {
+  local dir=$1
+  if [ -d "$dir" ] && [ -d "$dir/.git" ]; then echo "true"; else echo "false"; fi
+}
+
 get_version() {
   local dir=$1
   if [ -d "$dir/.git" ]; then
@@ -25,6 +62,41 @@ get_version() {
   else
     echo ""
   fi
+}
+
+do_install() {
+  local app=$1
+  local repo=${APP_REPOS[$app]}
+  local dir=${APP_DIRS[$app]}
+  local script=${APP_INSTALL_SCRIPTS[$app]}
+  local status_file="$INSTALL_DIR/${app}.json"
+
+  echo "{\"app\":\"${app}\",\"status\":\"installing\",\"progress\":\"Klonar repo...\"}" > "$status_file"
+
+  # Clone repo
+  if [ -d "$dir" ]; then
+    rm -rf "$dir"
+  fi
+
+  mkdir -p "$(dirname "$dir")"
+  if ! git clone "$repo" "$dir" > "$INSTALL_DIR/${app}.log" 2>&1; then
+    echo "{\"app\":\"${app}\",\"status\":\"error\",\"message\":\"Git clone misslyckades\",\"timestamp\":\"$(date -Iseconds)\"}" > "$status_file"
+    return 1
+  fi
+
+  echo "{\"app\":\"${app}\",\"status\":\"installing\",\"progress\":\"Kör installationsskript...\"}" > "$status_file"
+
+  # Run install script if it exists
+  if [ -f "$dir/$script" ]; then
+    chmod +x "$dir/$script"
+    if ! bash "$dir/$script" >> "$INSTALL_DIR/${app}.log" 2>&1; then
+      echo "{\"app\":\"${app}\",\"status\":\"error\",\"message\":\"Installationsskript misslyckades\",\"timestamp\":\"$(date -Iseconds)\"}" > "$status_file"
+      return 1
+    fi
+  fi
+
+  echo "{\"app\":\"${app}\",\"status\":\"success\",\"message\":\"Installation klar\",\"timestamp\":\"$(date -Iseconds)\"}" > "$status_file"
+  return 0
 }
 
 handle_request() {
@@ -49,44 +121,53 @@ handle_request() {
       local disk_used=$(echo "$disk" | cut -d, -f1)
       local disk_total=$(echo "$disk" | cut -d, -f2)
 
-      local ll_online=$(check_service 3001)
-      local ll_ver=$(get_version /opt/lotus-light)
-      local ca_online=$(check_service 3000)
-      local ca_ver=$(get_version "$HOME/.local/share/cast-away")
-      local sg_online=$(check_service 3002)
-      local sg_ver=$(get_version "$HOME/sonos-proxy")
+      # Build services JSON dynamically
+      local services_json=""
+      for app in lotus-lantern cast-away sonos-gateway; do
+        local port=${APP_PORTS[$app]}
+        local dir=${APP_DIRS[$app]}
+        local is_online=$(check_service "$port")
+        local is_installed=$(check_installed "$dir")
+        local ver=$(get_version "$dir")
+        
+        [ -n "$services_json" ] && services_json="${services_json},"
+        services_json="${services_json}\"${app}\":{\"online\":${is_online},\"installed\":${is_installed},\"version\":\"${ver}\"}"
+      done
 
-      response="{\"cpu\":${cpu:-0},\"temp\":${temp:-0},\"ramUsed\":${ram_used:-0},\"ramTotal\":${ram_total:-0},\"diskUsed\":${disk_used:-0},\"diskTotal\":${disk_total:-0},\"uptime\":\"${uptime_str}\",\"services\":{\"lotus-lantern\":{\"online\":${ll_online},\"version\":\"${ll_ver}\"},\"cast-away\":{\"online\":${ca_online},\"version\":\"${ca_ver}\"},\"sonos-gateway\":{\"online\":${sg_online},\"version\":\"${sg_ver}\"}}}"
+      response="{\"cpu\":${cpu:-0},\"temp\":${temp:-0},\"ramUsed\":${ram_used:-0},\"ramTotal\":${ram_total:-0},\"diskUsed\":${disk_used:-0},\"diskTotal\":${disk_total:-0},\"uptime\":\"${uptime_str}\",\"services\":{${services_json}}}"
       ;;
 
-    "POST /api/update/lotus-lantern")
-      echo '{"status":"updating"}' > "$STATUS_DIR/lotus-lantern.json"
-      if /opt/lotus-light/pi/update-services.sh > "$STATUS_DIR/lotus-lantern.log" 2>&1; then
-        echo "{\"app\":\"lotus-lantern\",\"status\":\"success\",\"timestamp\":\"$(date -Iseconds)\"}" > "$STATUS_DIR/lotus-lantern.json"
+    POST\ /api/install/*)
+      local app=$(echo "$path" | sed 's|/api/install/||')
+      if [ -z "${APP_REPOS[$app]}" ]; then
+        status_line="HTTP/1.1 404 Not Found"
+        response="{\"error\":\"Unknown app: ${app}\"}"
       else
-        echo "{\"app\":\"lotus-lantern\",\"status\":\"error\",\"message\":\"Update failed\",\"timestamp\":\"$(date -Iseconds)\"}" > "$STATUS_DIR/lotus-lantern.json"
+        # Run install in background
+        do_install "$app" &
+        response="{\"app\":\"${app}\",\"status\":\"installing\",\"progress\":\"Startar installation...\"}"
       fi
-      response=$(cat "$STATUS_DIR/lotus-lantern.json")
       ;;
 
-    "POST /api/update/cast-away")
-      echo '{"status":"updating"}' > "$STATUS_DIR/cast-away.json"
-      if "$HOME/.local/share/cast-away/update.sh" > "$STATUS_DIR/cast-away.log" 2>&1; then
-        echo "{\"app\":\"cast-away\",\"status\":\"success\",\"timestamp\":\"$(date -Iseconds)\"}" > "$STATUS_DIR/cast-away.json"
+    GET\ /api/install-status/*)
+      local app=$(echo "$path" | sed 's|/api/install-status/||')
+      if [ -f "$INSTALL_DIR/${app}.json" ]; then
+        response=$(cat "$INSTALL_DIR/${app}.json")
       else
-        echo "{\"app\":\"cast-away\",\"status\":\"error\",\"message\":\"Update failed\",\"timestamp\":\"$(date -Iseconds)\"}" > "$STATUS_DIR/cast-away.json"
+        response="{\"app\":\"${app}\",\"status\":\"idle\"}"
       fi
-      response=$(cat "$STATUS_DIR/cast-away.json")
       ;;
 
-    "POST /api/update/sonos-gateway")
-      echo '{"status":"updating"}' > "$STATUS_DIR/sonos-gateway.json"
-      if "$HOME/sonos-proxy/update.sh" > "$STATUS_DIR/sonos-gateway.log" 2>&1; then
-        echo "{\"app\":\"sonos-gateway\",\"status\":\"success\",\"timestamp\":\"$(date -Iseconds)\"}" > "$STATUS_DIR/sonos-gateway.json"
+    "POST /api/update/lotus-lantern"|"POST /api/update/cast-away"|"POST /api/update/sonos-gateway")
+      local app=$(echo "$path" | sed 's|/api/update/||')
+      local update_script=${APP_UPDATE_SCRIPTS[$app]}
+      echo '{"status":"updating"}' > "$STATUS_DIR/${app}.json"
+      if bash "$update_script" > "$STATUS_DIR/${app}.log" 2>&1; then
+        echo "{\"app\":\"${app}\",\"status\":\"success\",\"timestamp\":\"$(date -Iseconds)\"}" > "$STATUS_DIR/${app}.json"
       else
-        echo "{\"app\":\"sonos-gateway\",\"status\":\"error\",\"message\":\"Update failed\",\"timestamp\":\"$(date -Iseconds)\"}" > "$STATUS_DIR/sonos-gateway.json"
+        echo "{\"app\":\"${app}\",\"status\":\"error\",\"message\":\"Update failed\",\"timestamp\":\"$(date -Iseconds)\"}" > "$STATUS_DIR/${app}.json"
       fi
-      response=$(cat "$STATUS_DIR/sonos-gateway.json")
+      response=$(cat "$STATUS_DIR/${app}.json")
       ;;
 
     GET\ /api/update-status/*)
@@ -96,6 +177,10 @@ handle_request() {
       else
         response="{\"app\":\"${app}\",\"status\":\"idle\"}"
       fi
+      ;;
+
+    "OPTIONS "*)
+      response=""
       ;;
 
     *)

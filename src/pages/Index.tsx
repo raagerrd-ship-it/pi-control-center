@@ -8,7 +8,7 @@ import { useServiceUpdate } from '@/hooks/useServiceUpdate';
 const Index = () => {
   const [settings, setSettings] = useState<DashboardSettings>(loadSettings);
   const { status, error, loading } = useSystemStatus();
-  const { updates, startUpdate } = useServiceUpdate();
+  const { updates, startUpdate, installs, startInstall } = useServiceUpdate();
 
   return (
     <div className="min-h-screen bg-background p-4 sm:p-6 max-w-2xl mx-auto">
@@ -39,9 +39,12 @@ const Index = () => {
                 port={svc.port}
                 piIp={settings.piIp}
                 online={svcStatus?.online ?? false}
+                installed={svcStatus?.installed ?? false}
                 version={svcStatus?.version ?? '—'}
                 updateStatus={updates[svc.key]}
+                installStatus={installs[svc.key]}
                 onUpdate={startUpdate}
+                onInstall={startInstall}
               />
             );
           })}
