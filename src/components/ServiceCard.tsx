@@ -12,6 +12,8 @@ interface ServiceCardProps {
   online: boolean;
   installed: boolean;
   version: string;
+  cpu: number;
+  ramMb: number;
   updateStatus?: UpdateResult;
   installStatus?: InstallResult;
   actionStatus?: ServiceActionResult | { status: 'pending'; action: string };
@@ -28,6 +30,8 @@ export function ServiceCard({
   online,
   installed,
   version,
+  cpu,
+  ramMb,
   updateStatus,
   installStatus,
   actionStatus,
@@ -79,6 +83,19 @@ export function ServiceCard({
         <span className="text-border">|</span>
         <span>{installed ? (version || statusLabel) : statusLabel}</span>
       </div>
+
+      {/* Resource usage */}
+      {installed && online && (
+        <div className="flex items-center gap-3 font-mono text-[11px]">
+          <span className={cpu > 50 ? 'text-[hsl(var(--status-warning))]' : 'text-muted-foreground'}>
+            CPU {cpu.toFixed(1)}%
+          </span>
+          <span className="text-border">·</span>
+          <span className="text-muted-foreground">
+            RAM {ramMb}MB
+          </span>
+        </div>
+      )}
 
       {/* Install progress */}
       {isInstalling && (

@@ -134,6 +134,17 @@ get_version() {
   [ -d "$dir/.git" ] && git -C "$dir" rev-parse --short HEAD 2>/dev/null || echo ""
 }
 
+# Get CPU% and RAM (MB) for a systemd service via cgroup
+get_service_cpu() {
+  local svc=$1
+  systemctl show "${svc}.service" --property=CPUUsageNSec 2>/dev/null | awk -F= '{printf "%.1f", $2/1000000000}' || echo "0"
+}
+
+get_service_ram() {
+  local svc=$1
+  systemctl show "${svc}.service" --property=MemoryCurrent 2>/dev/null | awk -F= '{if($2 ~ /^\[/) print 0; else printf "%d", $2/1048576}' || echo "0"
+}
+
 # ---------- Cached status builder ----------
 
 build_status_json() {
@@ -152,12 +163,25 @@ build_status_json() {
   for app in lotus-lantern cast-away sonos-gateway; do
     local port=${APP_PORTS[$app]}
     local dir=${APP_DIRS[$app]}
+    local svc=${APP_SERVICES[$app]}
     local is_online=$(check_service "$port")
     local is_installed=$(check_installed "$dir")
     local ver=$(get_version "$dir")
+    local svc_cpu=0
+    local svc_ram=0
+
+    # Only fetch resource usage if the service is running
+    if [ "$is_online" = "true" ]; then
+      svc_ram=$(get_service_ram "$svc")
+      # CPU: sample via ps for the service's main PID
+      local mainpid=$(systemctl show "${svc}.service" --property=MainPID 2>/dev/null | cut -d= -f2)
+      if [ -n "$mainpid" ] && [ "$mainpid" != "0" ]; then
+        svc_cpu=$(ps -p "$mainpid" -o %cpu= 2>/dev/null | tr -d ' ' || echo "0")
+      fi
+    fi
     
     [ -n "$services_json" ] && services_json="${services_json},"
-    services_json="${services_json}\"${app}\":{\"online\":${is_online},\"installed\":${is_installed},\"version\":\"${ver}\"}"
+    services_json="${services_json}\"${app}\":{\"online\":${is_online},\"installed\":${is_installed},\"version\":\"${ver}\",\"cpu\":${svc_cpu:-0},\"ramMb\":${svc_ram:-0}}"
   done
 
   echo "{\"cpu\":${cpu:-0},\"temp\":${temp:-0},\"ramUsed\":${ram_used:-0},\"ramTotal\":${ram_total:-0},\"diskUsed\":${disk_used:-0},\"diskTotal\":${disk_total:-0},\"uptime\":\"${uptime_str}\",\"services\":{${services_json}}}"
