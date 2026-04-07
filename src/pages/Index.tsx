@@ -64,17 +64,15 @@ const Index = () => {
           </p>
         </div>
         <div className="flex items-center gap-1">
-          {/* Check for updates button */}
           <Button
             variant="ghost"
-            size="sm"
-            className={`font-mono text-xs gap-1.5 ${updatesAvailable ? 'text-[hsl(var(--status-warning))]' : 'text-muted-foreground hover:text-foreground'}`}
+            size="icon"
+            className={`h-8 w-8 ${updatesAvailable ? 'text-[hsl(var(--status-warning))]' : 'text-muted-foreground hover:text-foreground'}`}
             disabled={checkingVersions}
             onClick={handleCheckVersions}
             title="Sök efter uppdateringar"
           >
-            <RefreshCw className={`h-3.5 w-3.5 ${checkingVersions ? 'animate-spin' : ''}`} />
-            {checkingVersions ? 'Söker...' : updatesAvailable ? 'Uppdateringar!' : 'Sök uppdateringar'}
+            <RefreshCw className={`h-4 w-4 ${checkingVersions ? 'animate-spin' : ''}`} />
           </Button>
           <Settings onSave={setSettings} />
         </div>
