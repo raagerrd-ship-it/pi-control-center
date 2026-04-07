@@ -122,6 +122,8 @@ Restart=always
 RestartSec=10
 MemoryMax=30M
 Nice=10
+# Pin dashboard + API to core 0 (cores 1-3 reserved for apps)
+CPUAffinity=0
 
 [Install]
 WantedBy=multi-user.target
