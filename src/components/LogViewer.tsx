@@ -6,9 +6,10 @@ import { fetchLogs } from '@/lib/api';
 interface LogViewerProps {
   appKey: string;
   appName: string;
+  asButton?: boolean;
 }
 
-export function LogViewer({ appKey, appName }: LogViewerProps) {
+export function LogViewer({ appKey, appName, asButton }: LogViewerProps) {
   const [open, setOpen] = useState(false);
   const [logType, setLogType] = useState<'update' | 'install'>('update');
   const [log, setLog] = useState<string>('');
@@ -45,9 +46,9 @@ export function LogViewer({ appKey, appName }: LogViewerProps) {
   if (!open) {
     return (
       <Button
-        variant="ghost"
+        variant="secondary"
         size="sm"
-        className="font-mono text-xs gap-1 text-muted-foreground hover:text-foreground h-7 px-2"
+        className={`font-mono text-xs gap-1 ${asButton ? 'flex-1' : ''}`}
         onClick={() => setOpen(true)}
       >
         <FileText className="h-3 w-3" />
@@ -57,7 +58,7 @@ export function LogViewer({ appKey, appName }: LogViewerProps) {
   }
 
   return (
-    <div className="rounded border bg-background p-2 mt-1">
+    <div className="rounded border bg-background p-2 mt-1 col-span-full">
       <div className="flex items-center justify-between mb-2">
         <div className="flex gap-1">
           <Button
