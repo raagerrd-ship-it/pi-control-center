@@ -1,27 +1,11 @@
 import { loadSettings } from '@/components/Settings';
 
-/** Build base URL for the dashboard-level API (global settings) */
-const getDashboardBaseUrl = (): string => {
-  const saved = localStorage.getItem('pi-dashboard-settings');
-  if (saved) {
-    try {
-      const settings = JSON.parse(saved);
-      return `http://${settings.piIp}:${settings.apiPort}`;
-    } catch {}
-  }
-  return `http://${window.location.hostname}:8585`;
-};
-
-/** Build base URL for a specific service (per-service host/apiPort) */
-const getServiceBaseUrl = (appKey: string): string => {
+const getBaseUrl = (): string => {
   try {
     const settings = loadSettings();
-    const svc = settings.services.find(s => s.key === appKey);
-    if (svc) {
-      return `http://${svc.host}:${svc.apiPort}`;
-    }
+    return `http://${settings.piIp}:${settings.apiPort}`;
   } catch {}
-  return getDashboardBaseUrl();
+  return `http://${window.location.hostname}:8585`;
 };
 
 export interface SystemStatus {
@@ -60,14 +44,13 @@ export interface ServiceActionResult {
 }
 
 export async function fetchSystemStatus(): Promise<SystemStatus> {
-  const res = await fetch(`${getDashboardBaseUrl()}/api/status`, { signal: AbortSignal.timeout(4000) });
+  const res = await fetch(`${getBaseUrl()}/api/status`, { signal: AbortSignal.timeout(4000) });
   if (!res.ok) throw new Error('Failed to fetch status');
   return res.json();
 }
 
 export async function triggerUpdate(app: string): Promise<UpdateResult> {
-  const base = app === 'dashboard' ? getDashboardBaseUrl() : getServiceBaseUrl(app);
-  const res = await fetch(`${base}/api/update/${app}`, {
+  const res = await fetch(`${getBaseUrl()}/api/update/${app}`, {
     method: 'POST',
     signal: AbortSignal.timeout(120000),
   });
@@ -76,15 +59,13 @@ export async function triggerUpdate(app: string): Promise<UpdateResult> {
 }
 
 export async function fetchUpdateStatus(app: string): Promise<UpdateResult> {
-  const base = app === 'dashboard' ? getDashboardBaseUrl() : getServiceBaseUrl(app);
-  const res = await fetch(`${base}/api/update-status/${app}`, { signal: AbortSignal.timeout(4000) });
+  const res = await fetch(`${getBaseUrl()}/api/update-status/${app}`, { signal: AbortSignal.timeout(4000) });
   if (!res.ok) throw new Error('Failed to fetch update status');
   return res.json();
 }
 
 export async function triggerInstall(app: string): Promise<InstallResult> {
-  const base = getServiceBaseUrl(app);
-  const res = await fetch(`${base}/api/install/${app}`, {
+  const res = await fetch(`${getBaseUrl()}/api/install/${app}`, {
     method: 'POST',
     signal: AbortSignal.timeout(300000),
   });
@@ -93,15 +74,13 @@ export async function triggerInstall(app: string): Promise<InstallResult> {
 }
 
 export async function fetchInstallStatus(app: string): Promise<InstallResult> {
-  const base = getServiceBaseUrl(app);
-  const res = await fetch(`${base}/api/install-status/${app}`, { signal: AbortSignal.timeout(4000) });
+  const res = await fetch(`${getBaseUrl()}/api/install-status/${app}`, { signal: AbortSignal.timeout(4000) });
   if (!res.ok) throw new Error('Failed to fetch install status');
   return res.json();
 }
 
 export async function serviceAction(app: string, action: 'start' | 'stop' | 'restart'): Promise<ServiceActionResult> {
-  const base = getServiceBaseUrl(app);
-  const res = await fetch(`${base}/api/service/${app}/${action}`, {
+  const res = await fetch(`${getBaseUrl()}/api/service/${app}/${action}`, {
     method: 'POST',
     signal: AbortSignal.timeout(15000),
   });
@@ -111,8 +90,7 @@ export async function serviceAction(app: string, action: 'start' | 'stop' | 'res
 
 export async function fetchLogs(app: string, type: 'update' | 'install' = 'update'): Promise<string> {
   const endpoint = type === 'install' ? 'install-log' : 'update-log';
-  const base = app === 'dashboard' ? getDashboardBaseUrl() : getServiceBaseUrl(app);
-  const res = await fetch(`${base}/api/${endpoint}/${app}`, { signal: AbortSignal.timeout(4000) });
+  const res = await fetch(`${getBaseUrl()}/api/${endpoint}/${app}`, { signal: AbortSignal.timeout(4000) });
   if (!res.ok) return 'Inga loggar tillgängliga';
   const data = await res.json();
   return data.log || 'Tom logg';
