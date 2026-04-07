@@ -53,7 +53,7 @@ const Index = () => {
             <CheckCircle2 className="h-3.5 w-3.5 text-[hsl(var(--status-online))]" />
           )}
           {dashboardUpdate?.status === 'error' && (
-            <AlertCircle className="h-3.5 w-3.5 text-destructive" title={dashboardUpdate.message} />
+            <span title={dashboardUpdate.message}><AlertCircle className="h-3.5 w-3.5 text-destructive" /></span>
           )}
           <Settings onSave={setSettings} />
         </div>
