@@ -58,6 +58,7 @@ export function ServiceCard({
       : 'bg-[hsl(var(--status-offline))]';
 
   return (
+    <LogProvider>
     <div className={`rounded-lg border bg-card p-3.5 flex flex-col gap-2.5 transition-colors ${online ? 'border-border' : 'border-border/50'}`}>
       {/* Header: status dot + name + port */}
       <div className="flex items-center gap-2">
