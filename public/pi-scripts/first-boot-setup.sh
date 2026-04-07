@@ -95,6 +95,11 @@ if [ -f "$MARKER" ]; then
   exit 0
 fi
 
+# Start LED: slow blink = waiting for network
+led_setup
+led_blink 0.8 &
+BLINK_PID=$!
+
 # Wait for network (WiFi may take a moment)
 echo "[0/8] Waiting for network..."
 for i in $(seq 1 60); do
