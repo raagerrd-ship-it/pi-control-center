@@ -1,0 +1,96 @@
+import { useState, useRef, useEffect } from 'react';
+import { FileText, X } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { fetchLogs } from '@/lib/api';
+
+interface LogViewerProps {
+  appKey: string;
+  appName: string;
+}
+
+export function LogViewer({ appKey, appName }: LogViewerProps) {
+  const [open, setOpen] = useState(false);
+  const [logType, setLogType] = useState<'update' | 'install'>('update');
+  const [log, setLog] = useState<string>('');
+  const [loading, setLoading] = useState(false);
+  const scrollRef = useRef<HTMLPreElement>(null);
+
+  const loadLog = async (type: 'update' | 'install') => {
+    setLogType(type);
+    setLoading(true);
+    try {
+      const text = await fetchLogs(appKey, type);
+      setLog(text);
+    } catch {
+      setLog('Kunde inte hämta loggar');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (open) {
+      loadLog(logType);
+    }
+  }, [open]);
+
+  // Auto-scroll to bottom
+  useEffect(() => {
+    if (scrollRef.current) {
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    }
+  }, [log]);
+
+  if (!open) {
+    return (
+      <Button
+        variant="ghost"
+        size="sm"
+        className="font-mono text-xs gap-1 text-muted-foreground hover:text-foreground h-7 px-2"
+        onClick={() => setOpen(true)}
+      >
+        <FileText className="h-3 w-3" />
+        Loggar
+      </Button>
+    );
+  }
+
+  return (
+    <div className="rounded border bg-background p-2 mt-1">
+      <div className="flex items-center justify-between mb-2">
+        <div className="flex gap-1">
+          <Button
+            variant={logType === 'update' ? 'secondary' : 'ghost'}
+            size="sm"
+            className="font-mono text-[10px] h-6 px-2"
+            onClick={() => loadLog('update')}
+          >
+            Uppdatering
+          </Button>
+          <Button
+            variant={logType === 'install' ? 'secondary' : 'ghost'}
+            size="sm"
+            className="font-mono text-[10px] h-6 px-2"
+            onClick={() => loadLog('install')}
+          >
+            Installation
+          </Button>
+        </div>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-6 w-6 p-0 text-muted-foreground hover:text-foreground"
+          onClick={() => setOpen(false)}
+        >
+          <X className="h-3 w-3" />
+        </Button>
+      </div>
+      <pre
+        ref={scrollRef}
+        className="font-mono text-[10px] leading-relaxed text-muted-foreground bg-secondary/50 rounded p-2 max-h-32 overflow-auto whitespace-pre-wrap break-all"
+      >
+        {loading ? 'Laddar...' : log}
+      </pre>
+    </div>
+  );
+}
