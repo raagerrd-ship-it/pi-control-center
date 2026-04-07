@@ -202,10 +202,9 @@ export function ServiceCard({
               >
                 <RotateCcw className="h-3 w-3" /> Omstart
               </Button>
-              <LogViewer appKey={appKey} appName={name} asButton />
             </div>
 
-            {/* Version bar at bottom */}
+            {/* Version bar */}
             <div className={`flex items-center justify-between rounded px-2.5 py-1.5 ${hasUpdate ? 'bg-[hsl(var(--status-warning)/0.1)] border border-[hsl(var(--status-warning)/0.3)]' : 'bg-secondary/40'}`}>
               <div className="font-mono text-[11px] flex items-center gap-1.5">
                 <span className="text-foreground">{version || '—'}</span>
@@ -246,6 +245,9 @@ export function ServiceCard({
                 <AlertCircle className="h-3 w-3" /> Uppdatering misslyckades
               </span>
             )}
+
+            {/* Logs — below version bar */}
+            <LogViewer appKey={appKey} appName={name} />
           </>
         )}
       </div>
