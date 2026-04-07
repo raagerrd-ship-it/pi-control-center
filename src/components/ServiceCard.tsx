@@ -81,6 +81,13 @@ export function ServiceCard({
         )}
       </div>
 
+      {/* Meta: port + status */}
+      <div className="flex items-center gap-3 font-mono text-xs text-muted-foreground">
+        <span>:{port}</span>
+        <span className="text-border">|</span>
+        <span>{statusLabel}</span>
+      </div>
+
       {/* Resource usage — prominent core badge, always shown when installed */}
       {installed && cpuCore >= 0 && (
         <div className="flex items-center gap-2 font-mono text-[11px]">
