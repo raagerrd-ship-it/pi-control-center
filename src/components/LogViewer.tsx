@@ -30,6 +30,7 @@ interface LogViewerProps {
 }
 
 export function LogViewer({ appKey, appName, asButton, asIconButton, panelOnly }: LogViewerProps) {
+export function LogViewer({ appKey, appName, asButton, asIconButton, showLabel, panelOnly }: LogViewerProps) {
   const ctx = useContext(LogContext);
   const [localOpen, setLocalOpen] = useState(false);
   const [logType, setLogType] = useState<'update' | 'install'>('update');
