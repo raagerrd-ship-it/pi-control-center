@@ -298,9 +298,9 @@ done
 
 sudo systemctl daemon-reload
 
-# Mark as installed & disable this service
+# Mark as installed & disable first-boot service (if it exists)
 touch "$MARKER"
-sudo systemctl disable first-boot-setup.service
+sudo systemctl disable first-boot-setup.service 2>/dev/null || true
 
 # Done! LED solid green for 30s, then restore to kernel default
 led_solid
