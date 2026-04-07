@@ -87,14 +87,14 @@ const Index = () => {
                 name={svc.name}
                 appKey={svc.key}
                 port={svc.port}
-                piIp={svc.host || settings.piIp}
+                piIp={settings.piIp}
                 online={svcStatus?.online ?? false}
                 installed={svcStatus?.installed ?? false}
                 version={svcStatus?.version ?? '—'}
                 cpu={svcStatus?.cpu ?? 0}
                 ramMb={svcStatus?.ramMb ?? 0}
                 cpuCore={svcStatus?.cpuCore ?? -1}
-                deviceLabel={svc.deviceLabel}
+                deviceLabel={settings.deviceLabel}
                 updateStatus={updates[svc.key]}
                 installStatus={installs[svc.key]}
                 actionStatus={actions[svc.key]}
