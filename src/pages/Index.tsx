@@ -91,7 +91,7 @@ const Index = () => {
         <h2 className="font-mono text-xs uppercase tracking-wider text-muted-foreground mb-3">
           Tjänster
         </h2>
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="grid gap-3 grid-cols-1 sm:grid-cols-2">
           {settings.services.map(svc => {
             const svcStatus = status?.services?.[svc.key];
             return (
@@ -121,8 +121,11 @@ const Index = () => {
         </div>
       </section>
 
-      {/* Dashboard update section — below services */}
+      {/* Dashboard section */}
       <section className="mt-6">
+        <h2 className="font-mono text-xs uppercase tracking-wider text-muted-foreground mb-3">
+          System
+        </h2>
         <div className={`rounded-lg border p-3 ${dashboardVersion?.hasUpdate ? 'border-[hsl(var(--status-warning)/0.3)] bg-[hsl(var(--status-warning)/0.05)]' : 'bg-card'}`}>
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2.5">
