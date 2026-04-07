@@ -122,7 +122,14 @@ check_installed() {
 }
 
 get_version() {
-  [ -d "$1/.git" ] && git -C "$1" rev-parse --short HEAD 2>/dev/null || echo ""
+  if [ -d "$1/.git" ]; then
+    # Return short date like "7 apr"
+    local raw=$(git -C "$1" log -1 --format='%cd' --date=format:'%-d %b' 2>/dev/null)
+    # Lowercase month for Swedish style
+    echo "${raw,,}"
+  else
+    echo ""
+  fi
 }
 
 # Per-service RAM via systemd cgroup
