@@ -1,9 +1,10 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
-import { triggerUpdate, triggerInstall, fetchInstallStatus, type UpdateResult, type InstallResult } from '@/lib/api';
+import { triggerUpdate, triggerInstall, fetchInstallStatus, serviceAction, type UpdateResult, type InstallResult, type ServiceActionResult } from '@/lib/api';
 
 export function useServiceUpdate() {
   const [updates, setUpdates] = useState<Record<string, UpdateResult>>({});
   const [installs, setInstalls] = useState<Record<string, InstallResult>>({});
+  const [actions, setActions] = useState<Record<string, ServiceActionResult | { status: 'pending'; action: string }>>({});
   const pollTimers = useRef<Record<string, number>>({});
 
   const startUpdate = useCallback(async (app: string) => {
@@ -28,7 +29,6 @@ export function useServiceUpdate() {
           pollTimers.current[app] = window.setTimeout(poll, 3000);
         }
       } catch {
-        // Keep polling on network errors during install
         pollTimers.current[app] = window.setTimeout(poll, 5000);
       }
     };
@@ -38,7 +38,6 @@ export function useServiceUpdate() {
   const startInstall = useCallback(async (app: string) => {
     setInstalls(prev => ({ ...prev, [app]: { app, status: 'installing', progress: 'Startar installation...' } }));
     try {
-      // Fire and forget — the API starts the install in background
       triggerInstall(app).then(result => {
         setInstalls(prev => ({ ...prev, [app]: result }));
       }).catch(e => {
@@ -47,7 +46,6 @@ export function useServiceUpdate() {
           [app]: { app, status: 'error', message: e instanceof Error ? e.message : 'Install failed' },
         }));
       });
-      // Start polling for progress
       pollInstallStatus(app);
     } catch (e) {
       setInstalls(prev => ({
@@ -57,11 +55,32 @@ export function useServiceUpdate() {
     }
   }, [pollInstallStatus]);
 
+  const runServiceAction = useCallback(async (app: string, action: 'start' | 'stop' | 'restart') => {
+    setActions(prev => ({ ...prev, [app]: { status: 'pending', action } }));
+    try {
+      const result = await serviceAction(app, action);
+      setActions(prev => ({ ...prev, [app]: result }));
+      // Auto-clear after 3s
+      setTimeout(() => {
+        setActions(prev => {
+          const next = { ...prev };
+          delete next[app];
+          return next;
+        });
+      }, 3000);
+    } catch (e) {
+      setActions(prev => ({
+        ...prev,
+        [app]: { app, action, status: 'error', message: e instanceof Error ? e.message : `${action} failed` },
+      }));
+    }
+  }, []);
+
   useEffect(() => {
     return () => {
       Object.values(pollTimers.current).forEach(clearTimeout);
     };
   }, []);
 
-  return { updates, startUpdate, installs, startInstall };
+  return { updates, startUpdate, installs, startInstall, actions, runServiceAction };
 }

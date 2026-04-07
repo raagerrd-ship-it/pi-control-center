@@ -8,7 +8,7 @@ import { useServiceUpdate } from '@/hooks/useServiceUpdate';
 const Index = () => {
   const [settings, setSettings] = useState<DashboardSettings>(loadSettings);
   const { status, error, loading } = useSystemStatus();
-  const { updates, startUpdate, installs, startInstall } = useServiceUpdate();
+  const { updates, startUpdate, installs, startInstall, actions, runServiceAction } = useServiceUpdate();
 
   return (
     <div className="min-h-screen bg-background p-4 sm:p-6 max-w-2xl mx-auto">
@@ -43,8 +43,10 @@ const Index = () => {
                 version={svcStatus?.version ?? '—'}
                 updateStatus={updates[svc.key]}
                 installStatus={installs[svc.key]}
+                actionStatus={actions[svc.key]}
                 onUpdate={startUpdate}
                 onInstall={startInstall}
+                onServiceAction={runServiceAction}
               />
             );
           })}

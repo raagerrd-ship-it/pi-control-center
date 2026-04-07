@@ -39,6 +39,13 @@ declare -A APP_PORTS=(
   ["sonos-gateway"]="3002"
 )
 
+# systemd service names for start/stop/restart
+declare -A APP_SERVICES=(
+  ["lotus-lantern"]="lotus-light"
+  ["cast-away"]="cast-away"
+  ["sonos-gateway"]="sonos-proxy"
+)
+
 get_cpu() { top -bn1 | grep "Cpu(s)" | awk '{print 100 - $8}'; }
 get_temp() { cat /sys/class/thermal/thermal_zone0/temp 2>/dev/null | awk '{printf "%.1f", $1/1000}' || echo "0"; }
 get_ram() { free -m | awk '/^Mem:/{print $3","$2}'; }
@@ -176,6 +183,22 @@ handle_request() {
         response=$(cat "$STATUS_DIR/${app}.json")
       else
         response="{\"app\":\"${app}\",\"status\":\"idle\"}"
+      fi
+      ;;
+
+    POST\ /api/service/*/start|POST\ /api/service/*/stop|POST\ /api/service/*/restart)
+      local app=$(echo "$path" | awk -F/ '{print $4}')
+      local action=$(echo "$path" | awk -F/ '{print $5}')
+      local svc_name=${APP_SERVICES[$app]}
+      if [ -z "$svc_name" ]; then
+        status_line="HTTP/1.1 404 Not Found"
+        response="{\"error\":\"Unknown app: ${app}\"}"
+      else
+        if sudo systemctl "$action" "${svc_name}.service" 2>/dev/null; then
+          response="{\"app\":\"${app}\",\"action\":\"${action}\",\"status\":\"success\"}"
+        else
+          response="{\"app\":\"${app}\",\"action\":\"${action}\",\"status\":\"error\",\"message\":\"systemctl ${action} failed\"}"
+        fi
       fi
       ;;
 

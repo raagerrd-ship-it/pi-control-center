@@ -37,6 +37,13 @@ export interface InstallResult {
   timestamp?: string;
 }
 
+export interface ServiceActionResult {
+  app: string;
+  action: 'start' | 'stop' | 'restart';
+  status: 'success' | 'error';
+  message?: string;
+}
+
 export async function fetchSystemStatus(): Promise<SystemStatus> {
   const res = await fetch(`${getBaseUrl()}/api/status`, { signal: AbortSignal.timeout(4000) });
   if (!res.ok) throw new Error('Failed to fetch status');
@@ -61,7 +68,7 @@ export async function fetchUpdateStatus(app: string): Promise<UpdateResult> {
 export async function triggerInstall(app: string): Promise<InstallResult> {
   const res = await fetch(`${getBaseUrl()}/api/install/${app}`, {
     method: 'POST',
-    signal: AbortSignal.timeout(300000), // 5 min timeout for installs
+    signal: AbortSignal.timeout(300000),
   });
   if (!res.ok) throw new Error('Failed to trigger install');
   return res.json();
@@ -70,5 +77,14 @@ export async function triggerInstall(app: string): Promise<InstallResult> {
 export async function fetchInstallStatus(app: string): Promise<InstallResult> {
   const res = await fetch(`${getBaseUrl()}/api/install-status/${app}`, { signal: AbortSignal.timeout(4000) });
   if (!res.ok) throw new Error('Failed to fetch install status');
+  return res.json();
+}
+
+export async function serviceAction(app: string, action: 'start' | 'stop' | 'restart'): Promise<ServiceActionResult> {
+  const res = await fetch(`${getBaseUrl()}/api/service/${app}/${action}`, {
+    method: 'POST',
+    signal: AbortSignal.timeout(15000),
+  });
+  if (!res.ok) throw new Error(`Failed to ${action} service`);
   return res.json();
 }

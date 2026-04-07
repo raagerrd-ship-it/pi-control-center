@@ -1,7 +1,7 @@
-import { ExternalLink, RefreshCw, CheckCircle2, XCircle, AlertCircle, Download, Loader2 } from 'lucide-react';
+import { ExternalLink, RefreshCw, CheckCircle2, XCircle, AlertCircle, Download, Loader2, Play, Square, RotateCcw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
-import type { UpdateResult, InstallResult } from '@/lib/api';
+import type { UpdateResult, InstallResult, ServiceActionResult } from '@/lib/api';
 
 interface ServiceCardProps {
   name: string;
@@ -13,8 +13,10 @@ interface ServiceCardProps {
   version: string;
   updateStatus?: UpdateResult;
   installStatus?: InstallResult;
+  actionStatus?: ServiceActionResult | { status: 'pending'; action: string };
   onUpdate: (app: string) => void;
   onInstall: (app: string) => void;
+  onServiceAction: (app: string, action: 'start' | 'stop' | 'restart') => void;
 }
 
 export function ServiceCard({
@@ -27,13 +29,16 @@ export function ServiceCard({
   version,
   updateStatus,
   installStatus,
+  actionStatus,
   onUpdate,
   onInstall,
+  onServiceAction,
 }: ServiceCardProps) {
   const isUpdating = updateStatus?.status === 'updating';
   const isInstalling = installStatus?.status === 'installing';
   const installSuccess = installStatus?.status === 'success';
   const installError = installStatus?.status === 'error';
+  const isPending = actionStatus?.status === 'pending';
 
   const statusColor = !installed
     ? 'bg-muted-foreground'
@@ -49,6 +54,7 @@ export function ServiceCard({
 
   return (
     <div className="rounded-lg border bg-card p-4 flex flex-col gap-3">
+      {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2.5">
           <div className={`h-2.5 w-2.5 rounded-full ${statusColor}`} />
@@ -66,6 +72,7 @@ export function ServiceCard({
         )}
       </div>
 
+      {/* Meta */}
       <div className="flex items-center gap-3 font-mono text-xs text-muted-foreground">
         <span>:{port}</span>
         <span className="text-border">|</span>
@@ -95,7 +102,30 @@ export function ServiceCard({
         </span>
       )}
 
-      <div className="flex items-center gap-2 mt-auto">
+      {/* Service action feedback */}
+      {actionStatus && 'action' in actionStatus && (
+        <div className="font-mono text-xs">
+          {actionStatus.status === 'pending' && (
+            <span className="flex items-center gap-1 text-[hsl(var(--status-warning))]">
+              <Loader2 className="h-3 w-3 animate-spin" />
+              {actionStatus.action === 'start' ? 'Startar...' : actionStatus.action === 'stop' ? 'Stoppar...' : 'Startar om...'}
+            </span>
+          )}
+          {actionStatus.status === 'success' && (
+            <span className="flex items-center gap-1 text-[hsl(var(--status-online))]">
+              <CheckCircle2 className="h-3 w-3" /> {actionStatus.action === 'start' ? 'Startad' : actionStatus.action === 'stop' ? 'Stoppad' : 'Omstartad'}
+            </span>
+          )}
+          {actionStatus.status === 'error' && (
+            <span className="flex items-center gap-1 text-destructive" title={'message' in actionStatus ? actionStatus.message : ''}>
+              <AlertCircle className="h-3 w-3" /> Misslyckades
+            </span>
+          )}
+        </div>
+      )}
+
+      {/* Actions */}
+      <div className="flex flex-col gap-2 mt-auto">
         {!installed && !isInstalling && !installSuccess ? (
           <Button
             variant="default"
@@ -109,32 +139,64 @@ export function ServiceCard({
           </Button>
         ) : (
           <>
-            <Button
-              variant="secondary"
-              size="sm"
-              className="font-mono text-xs gap-1.5"
-              disabled={isUpdating || !online}
-              onClick={() => onUpdate(appKey)}
-            >
-              <RefreshCw className={`h-3 w-3 ${isUpdating ? 'animate-spin' : ''}`} />
-              {isUpdating ? 'Uppdaterar...' : 'Uppdatera'}
-            </Button>
+            {/* Service controls */}
+            <div className="flex items-center gap-1.5">
+              {!online ? (
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  className="font-mono text-xs gap-1 flex-1"
+                  disabled={isPending || !installed}
+                  onClick={() => onServiceAction(appKey, 'start')}
+                >
+                  <Play className="h-3 w-3" /> Starta
+                </Button>
+              ) : (
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  className="font-mono text-xs gap-1 flex-1"
+                  disabled={isPending}
+                  onClick={() => onServiceAction(appKey, 'stop')}
+                >
+                  <Square className="h-3 w-3" /> Stoppa
+                </Button>
+              )}
+              <Button
+                variant="secondary"
+                size="sm"
+                className="font-mono text-xs gap-1 flex-1"
+                disabled={isPending || !online}
+                onClick={() => onServiceAction(appKey, 'restart')}
+              >
+                <RotateCcw className="h-3 w-3" /> Omstart
+              </Button>
+            </div>
 
-            {updateStatus?.status === 'success' && (
-              <span className="flex items-center gap-1 text-xs text-[hsl(var(--status-online))]">
-                <CheckCircle2 className="h-3 w-3" /> Klar
-              </span>
-            )}
-            {updateStatus?.status === 'error' && (
-              <span className="flex items-center gap-1 text-xs text-destructive" title={updateStatus.message}>
-                <AlertCircle className="h-3 w-3" /> Fel
-              </span>
-            )}
-            {!online && installed && (
-              <span className="flex items-center gap-1 text-xs text-muted-foreground">
-                <XCircle className="h-3 w-3" /> Offline
-              </span>
-            )}
+            {/* Update button */}
+            <div className="flex items-center gap-2">
+              <Button
+                variant="ghost"
+                size="sm"
+                className="font-mono text-xs gap-1.5 text-muted-foreground hover:text-foreground"
+                disabled={isUpdating || !online}
+                onClick={() => onUpdate(appKey)}
+              >
+                <RefreshCw className={`h-3 w-3 ${isUpdating ? 'animate-spin' : ''}`} />
+                {isUpdating ? 'Uppdaterar...' : 'Uppdatera'}
+              </Button>
+
+              {updateStatus?.status === 'success' && (
+                <span className="flex items-center gap-1 text-xs text-[hsl(var(--status-online))]">
+                  <CheckCircle2 className="h-3 w-3" /> Klar
+                </span>
+              )}
+              {updateStatus?.status === 'error' && (
+                <span className="flex items-center gap-1 text-xs text-destructive" title={updateStatus.message}>
+                  <AlertCircle className="h-3 w-3" /> Fel
+                </span>
+              )}
+            </div>
           </>
         )}
       </div>
