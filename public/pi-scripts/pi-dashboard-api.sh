@@ -248,11 +248,30 @@ handle_request() {
       fi
       ;;
 
+    "POST /api/update/dashboard")
+      echo '{"status":"updating"}' > "$STATUS_DIR/dashboard.json"
+      local DASHBOARD_DIR="$HOME/pi-dashboard"
+      local NGINX_DIR="/var/www/pi-dashboard"
+      (
+        cd "$DASHBOARD_DIR" 2>/dev/null || exit 1
+        nice -n 15 git fetch origin main --depth=1 --quiet 2>/dev/null
+        nice -n 15 git pull origin main --quiet 2>/dev/null || exit 1
+        NODE_OPTIONS="--max-old-space-size=256" nice -n 15 ionice -c 3 npm install --production --no-audit --no-fund 2>/dev/null
+        NODE_OPTIONS="--max-old-space-size=256" nice -n 15 ionice -c 3 npm run build 2>/dev/null || exit 1
+        sudo cp -r dist/* "$NGINX_DIR/" 2>/dev/null
+      ) > "$STATUS_DIR/dashboard.log" 2>&1
+      if [ $? -eq 0 ]; then
+        echo "{\"app\":\"dashboard\",\"status\":\"success\",\"timestamp\":\"$(date -Iseconds)\"}" > "$STATUS_DIR/dashboard.json"
+      else
+        echo "{\"app\":\"dashboard\",\"status\":\"error\",\"message\":\"Update failed\",\"timestamp\":\"$(date -Iseconds)\"}" > "$STATUS_DIR/dashboard.json"
+      fi
+      response=$(cat "$STATUS_DIR/dashboard.json")
+      ;;
+
     "POST /api/update/lotus-lantern"|"POST /api/update/cast-away"|"POST /api/update/sonos-gateway")
       local app=$(echo "$path" | sed 's|/api/update/||')
       local update_script=${APP_UPDATE_SCRIPTS[$app]}
       echo '{"status":"updating"}' > "$STATUS_DIR/${app}.json"
-      # Run with low priority
       if nice -n 15 ionice -c 3 bash "$update_script" > "$STATUS_DIR/${app}.log" 2>&1; then
         echo "{\"app\":\"${app}\",\"status\":\"success\",\"timestamp\":\"$(date -Iseconds)\"}" > "$STATUS_DIR/${app}.json"
       else
