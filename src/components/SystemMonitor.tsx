@@ -40,7 +40,7 @@ export function SystemMonitor({ status, error, loading }: SystemMonitorProps) {
   if (loading) {
     return (
       <div className="rounded-lg border bg-card p-4">
-        <p className="font-mono text-sm text-muted-foreground animate-pulse">Connecting to Pi...</p>
+        <p className="font-mono text-sm text-muted-foreground animate-pulse">Ansluter till Pi...</p>
       </div>
     );
   }
@@ -48,8 +48,8 @@ export function SystemMonitor({ status, error, loading }: SystemMonitorProps) {
   if (error || !status) {
     return (
       <div className="rounded-lg border border-destructive/30 bg-card p-4">
-        <p className="font-mono text-sm text-destructive">⚠ {error || 'No data'}</p>
-        <p className="font-mono text-xs text-muted-foreground mt-1">Check Settings for correct IP/port</p>
+        <p className="font-mono text-sm text-destructive">⚠ {error || 'Ingen data'}</p>
+        <p className="font-mono text-xs text-muted-foreground mt-1">Kontrollera IP och port i inställningar</p>
       </div>
     );
   }
@@ -90,7 +90,7 @@ export function SystemMonitor({ status, error, loading }: SystemMonitorProps) {
         />
         <Gauge
           icon={<Clock className="h-3.5 w-3.5" />}
-          label="Uptime"
+          label="Drifttid"
           value={status.uptime}
         />
       </div>

@@ -177,8 +177,8 @@ const Index = () => {
         </div>
       </section>
 
-      <footer className="mt-8 text-center font-mono text-[10px] text-muted-foreground">
-        Manuell uppdatering · API: :{settings.apiPort}
+      <footer className="mt-8 pb-4 text-center font-mono text-[10px] text-muted-foreground/40">
+        {settings.deviceLabel || 'Pi Zero 2'} · {settings.piIp}
       </footer>
     </div>
   );
