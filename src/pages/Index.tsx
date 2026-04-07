@@ -1,24 +1,37 @@
 import { useState, useCallback } from 'react';
-import { RefreshCw, CheckCircle2, AlertCircle } from 'lucide-react';
+import { RefreshCw, CheckCircle2, AlertCircle, ArrowUp } from 'lucide-react';
 import { SystemMonitor } from '@/components/SystemMonitor';
 import { ServiceCard } from '@/components/ServiceCard';
 import { Settings, loadSettings, type DashboardSettings } from '@/components/Settings';
 import { useSystemStatus } from '@/hooks/useSystemStatus';
 import { useServiceUpdate } from '@/hooks/useServiceUpdate';
 import { Button } from '@/components/ui/button';
-import { triggerUpdate, fetchUpdateStatus, type UpdateResult } from '@/lib/api';
+import { triggerUpdate, fetchUpdateStatus, fetchVersions, type UpdateResult, type VersionMap } from '@/lib/api';
 
 const Index = () => {
   const [settings, setSettings] = useState<DashboardSettings>(loadSettings);
   const { status, error, loading, demo } = useSystemStatus();
   const { updates, startUpdate, installs, startInstall, actions, runServiceAction } = useServiceUpdate();
   const [dashboardUpdate, setDashboardUpdate] = useState<UpdateResult | null>(null);
+  const [versions, setVersions] = useState<VersionMap | null>(null);
+  const [checkingVersions, setCheckingVersions] = useState(false);
+
+  const handleCheckVersions = useCallback(async () => {
+    setCheckingVersions(true);
+    try {
+      const v = await fetchVersions();
+      setVersions(v);
+    } catch {
+      // silently fail
+    } finally {
+      setCheckingVersions(false);
+    }
+  }, []);
 
   const handleDashboardUpdate = useCallback(async () => {
     setDashboardUpdate({ app: 'dashboard', status: 'updating' });
     try {
       await triggerUpdate('dashboard');
-      // Poll for completion since update runs async on the Pi
       const poll = async () => {
         const result = await fetchUpdateStatus('dashboard');
         setDashboardUpdate(result);
@@ -37,6 +50,8 @@ const Index = () => {
   }, []);
 
   const isUpdatingDashboard = dashboardUpdate?.status === 'updating';
+  const dashboardVersion = versions?.dashboard;
+  const updatesAvailable = versions ? Object.values(versions).some(v => v.hasUpdate) : false;
 
   return (
     <div className="min-h-screen bg-background p-4 sm:p-6 max-w-2xl mx-auto">
@@ -49,23 +64,18 @@ const Index = () => {
           </p>
         </div>
         <div className="flex items-center gap-1">
+          {/* Check for updates button */}
           <Button
             variant="ghost"
             size="sm"
-            className="font-mono text-xs gap-1.5 text-muted-foreground hover:text-foreground"
-            disabled={isUpdatingDashboard}
-            onClick={handleDashboardUpdate}
-            title="Uppdatera dashboarden"
+            className={`font-mono text-xs gap-1.5 ${updatesAvailable ? 'text-[hsl(var(--status-warning))]' : 'text-muted-foreground hover:text-foreground'}`}
+            disabled={checkingVersions}
+            onClick={handleCheckVersions}
+            title="Sök efter uppdateringar"
           >
-            <RefreshCw className={`h-3.5 w-3.5 ${isUpdatingDashboard ? 'animate-spin' : ''}`} />
-            {isUpdatingDashboard ? 'Uppdaterar...' : 'v.update'}
+            <RefreshCw className={`h-3.5 w-3.5 ${checkingVersions ? 'animate-spin' : ''}`} />
+            {checkingVersions ? 'Söker...' : updatesAvailable ? 'Uppdateringar!' : 'Sök uppdateringar'}
           </Button>
-          {dashboardUpdate?.status === 'success' && (
-            <CheckCircle2 className="h-3.5 w-3.5 text-[hsl(var(--status-online))]" />
-          )}
-          {dashboardUpdate?.status === 'error' && (
-            <span title={dashboardUpdate.message}><AlertCircle className="h-3.5 w-3.5 text-destructive" /></span>
-          )}
           <Settings onSave={setSettings} />
         </div>
       </header>
@@ -95,6 +105,7 @@ const Index = () => {
                 ramMb={svcStatus?.ramMb ?? 0}
                 cpuCore={svcStatus?.cpuCore ?? -1}
                 deviceLabel={settings.deviceLabel}
+                versionInfo={versions?.[svc.key]}
                 updateStatus={updates[svc.key]}
                 installStatus={installs[svc.key]}
                 actionStatus={actions[svc.key]}
@@ -104,6 +115,46 @@ const Index = () => {
               />
             );
           })}
+        </div>
+      </section>
+
+      {/* Dashboard update section — below services */}
+      <section className="mt-6">
+        <div className={`rounded-lg border p-3 flex items-center justify-between ${dashboardVersion?.hasUpdate ? 'border-[hsl(var(--status-warning)/0.3)] bg-[hsl(var(--status-warning)/0.05)]' : 'bg-card'}`}>
+          <div className="font-mono text-xs">
+            <span className="text-muted-foreground">Dashboard</span>
+            {dashboardVersion && (
+              <span className="ml-2">
+                <span className="text-foreground">{dashboardVersion.local || '—'}</span>
+                {dashboardVersion.hasUpdate && (
+                  <span className="ml-1.5 text-[hsl(var(--status-warning))]">
+                    → {dashboardVersion.remote}
+                  </span>
+                )}
+                {!dashboardVersion.hasUpdate && dashboardVersion.local && (
+                  <span className="ml-1.5 text-muted-foreground/60">✓ senaste</span>
+                )}
+              </span>
+            )}
+          </div>
+          <div className="flex items-center gap-1.5">
+            {dashboardUpdate?.status === 'success' && (
+              <CheckCircle2 className="h-3.5 w-3.5 text-[hsl(var(--status-online))]" />
+            )}
+            {dashboardUpdate?.status === 'error' && (
+              <span title={dashboardUpdate.message}><AlertCircle className="h-3.5 w-3.5 text-destructive" /></span>
+            )}
+            <Button
+              variant={dashboardVersion?.hasUpdate ? 'default' : 'secondary'}
+              size="sm"
+              className="font-mono text-xs gap-1.5"
+              disabled={isUpdatingDashboard}
+              onClick={handleDashboardUpdate}
+            >
+              <RefreshCw className={`h-3 w-3 ${isUpdatingDashboard ? 'animate-spin' : ''}`} />
+              {isUpdatingDashboard ? 'Uppdaterar...' : 'Uppdatera dashboard'}
+            </Button>
+          </div>
         </div>
       </section>
 
