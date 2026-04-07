@@ -118,40 +118,36 @@ const Index = () => {
 
       {/* Dashboard update section — below services */}
       <section className="mt-6">
-        <div className={`rounded-lg border p-3 flex items-center justify-between ${dashboardVersion?.hasUpdate ? 'border-[hsl(var(--status-warning)/0.3)] bg-[hsl(var(--status-warning)/0.05)]' : 'bg-card'}`}>
-          <div className="font-mono text-xs">
-            <span className="text-muted-foreground">Dashboard</span>
-            {dashboardVersion && (
-              <span className="ml-2">
-                <span className="text-foreground">{dashboardVersion.local || '—'}</span>
-                {dashboardVersion.hasUpdate && (
-                  <span className="ml-1.5 text-[hsl(var(--status-warning))]">
-                    → {dashboardVersion.remote}
-                  </span>
-                )}
-                {!dashboardVersion.hasUpdate && dashboardVersion.local && (
-                  <span className="ml-1.5 text-muted-foreground/60">✓ senaste</span>
-                )}
-              </span>
-            )}
+        <div className={`rounded-lg border p-3 ${dashboardVersion?.hasUpdate ? 'border-[hsl(var(--status-warning)/0.3)] bg-[hsl(var(--status-warning)/0.05)]' : 'bg-card'}`}>
+          <div className="flex items-center justify-between">
+            <span className="font-mono text-xs text-muted-foreground">Dashboard</span>
+            <div className="flex items-center gap-1.5">
+              {dashboardUpdate?.status === 'success' && (
+                <CheckCircle2 className="h-3.5 w-3.5 text-[hsl(var(--status-online))]" />
+              )}
+              {dashboardUpdate?.status === 'error' && (
+                <span title={dashboardUpdate.message}><AlertCircle className="h-3.5 w-3.5 text-destructive" /></span>
+              )}
+              <Button
+                variant={dashboardVersion?.hasUpdate ? 'default' : 'secondary'}
+                size="sm"
+                className="font-mono text-xs gap-1.5"
+                disabled={isUpdatingDashboard}
+                onClick={handleDashboardUpdate}
+              >
+                <RefreshCw className={`h-3 w-3 ${isUpdatingDashboard ? 'animate-spin' : ''}`} />
+                {isUpdatingDashboard ? 'Uppdaterar...' : 'Uppdatera'}
+              </Button>
+            </div>
           </div>
-          <div className="flex items-center gap-1.5">
-            {dashboardUpdate?.status === 'success' && (
-              <CheckCircle2 className="h-3.5 w-3.5 text-[hsl(var(--status-online))]" />
+          <div className="flex items-center justify-between mt-2 font-mono text-[11px]">
+            <span className="text-foreground">{dashboardVersion?.local || status?.uptime ? (dashboardVersion?.local || '—') : '—'}</span>
+            {dashboardVersion?.hasUpdate && (
+              <span className="text-[hsl(var(--status-warning))]">ny version</span>
             )}
-            {dashboardUpdate?.status === 'error' && (
-              <span title={dashboardUpdate.message}><AlertCircle className="h-3.5 w-3.5 text-destructive" /></span>
+            {dashboardVersion && !dashboardVersion.hasUpdate && dashboardVersion.local && (
+              <span className="text-muted-foreground/60">✓ senaste</span>
             )}
-            <Button
-              variant={dashboardVersion?.hasUpdate ? 'default' : 'secondary'}
-              size="sm"
-              className="font-mono text-xs gap-1.5"
-              disabled={isUpdatingDashboard}
-              onClick={handleDashboardUpdate}
-            >
-              <RefreshCw className={`h-3 w-3 ${isUpdatingDashboard ? 'animate-spin' : ''}`} />
-              {isUpdatingDashboard ? 'Uppdaterar...' : 'Uppdatera dashboard'}
-            </Button>
           </div>
         </div>
       </section>
