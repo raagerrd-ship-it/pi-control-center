@@ -1,6 +1,7 @@
 import { useState, useCallback } from 'react';
 import { RefreshCw, CheckCircle2, AlertCircle, Cpu } from 'lucide-react';
 import { SystemMonitor } from '@/components/SystemMonitor';
+import { PullToRefresh } from '@/components/PullToRefresh';
 import { ServiceCard } from '@/components/ServiceCard';
 import { Settings, loadSettings, type DashboardSettings } from '@/components/Settings';
 import { useSystemStatus } from '@/hooks/useSystemStatus';
