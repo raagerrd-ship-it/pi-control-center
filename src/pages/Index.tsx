@@ -64,16 +64,21 @@ const Index = () => {
           </p>
         </div>
         <div className="flex items-center gap-1">
-          <Button
-            variant="ghost"
-            size="icon"
-            className={`h-8 w-8 ${updatesAvailable ? 'text-[hsl(var(--status-warning))]' : 'text-muted-foreground hover:text-foreground'}`}
-            disabled={checkingVersions}
-            onClick={handleCheckVersions}
-            title="Sök efter uppdateringar"
-          >
-            <RefreshCw className={`h-4 w-4 ${checkingVersions ? 'animate-spin' : ''}`} />
-          </Button>
+          <div className="relative">
+            <Button
+              variant="ghost"
+              size="icon"
+              className={`h-8 w-8 ${updatesAvailable ? 'text-[hsl(var(--status-warning))]' : 'text-muted-foreground hover:text-foreground'}`}
+              disabled={checkingVersions}
+              onClick={handleCheckVersions}
+              title="Sök efter uppdateringar"
+            >
+              <RefreshCw className={`h-4 w-4 ${checkingVersions ? 'animate-spin' : ''}`} />
+            </Button>
+            {updatesAvailable && (
+              <span className="absolute -top-0.5 -right-0.5 h-2.5 w-2.5 rounded-full bg-[hsl(var(--status-warning))] border-2 border-background" />
+            )}
+          </div>
           <Settings onSave={setSettings} />
         </div>
       </header>
