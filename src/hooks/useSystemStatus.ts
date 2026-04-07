@@ -10,9 +10,9 @@ const DEMO_STATUS: SystemStatus = {
   diskTotal: 16,
   uptime: '3d 7h 42m',
   services: {
-    'lotus-lantern': { online: true, installed: true, version: 'a1b2c3d', cpu: 4.2, ramMb: 38, cpuCore: 1 },
-    'cast-away': { online: true, installed: true, version: 'e4f5g6h', cpu: 1.8, ramMb: 27, cpuCore: 2 },
-    'sonos-gateway': { online: false, installed: true, version: 'i7j8k9l', cpu: 0, ramMb: 0, cpuCore: 3 },
+    'lotus-lantern': { online: true, installed: true, version: '3 apr', cpu: 4.2, ramMb: 38, cpuCore: 1 },
+    'cast-away': { online: true, installed: true, version: '1 apr', cpu: 1.8, ramMb: 27, cpuCore: 2 },
+    'sonos-gateway': { online: false, installed: true, version: '28 mar', cpu: 0, ramMb: 0, cpuCore: 3 },
   },
 };
 
