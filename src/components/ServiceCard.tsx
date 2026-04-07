@@ -1,4 +1,4 @@
-import { ExternalLink, RefreshCw, CheckCircle2, AlertCircle, Download, Loader2, Play, Square, RotateCcw, Cpu, ArrowUp } from 'lucide-react';
+import { ExternalLink, RefreshCw, CheckCircle2, AlertCircle, Download, Loader2, Play, Square, RotateCcw, Cpu } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import { LogViewer } from '@/components/LogViewer';
@@ -72,23 +72,30 @@ export function ServiceCard({
           <div className={`h-2.5 w-2.5 rounded-full ${statusColor}`} />
           <h3 className="font-medium text-sm">{name}</h3>
         </div>
-        {installed && (
+        {installed && online && (
           <a
             href={`http://${piIp}:${port}`}
             target="_blank"
             rel="noopener noreferrer"
             className="text-muted-foreground hover:text-foreground transition-colors"
+            title={`Öppna ${name}`}
           >
             <ExternalLink className="h-4 w-4" />
           </a>
         )}
       </div>
 
-      {/* Meta: port + status */}
+      {/* Meta: port + status + device */}
       <div className="flex items-center gap-3 font-mono text-xs text-muted-foreground">
         <span>:{port}</span>
         <span className="text-border">|</span>
         <span>{statusLabel}</span>
+        {deviceLabel && (
+          <>
+            <span className="text-border">|</span>
+            <span className="text-muted-foreground/60">{deviceLabel}</span>
+          </>
+        )}
       </div>
 
       {/* Resource usage */}
@@ -170,7 +177,7 @@ export function ServiceCard({
           </Button>
         ) : (
           <>
-            {/* Service controls + Logs */}
+            {/* Service controls */}
             <div className="flex items-center gap-1.5">
               {!online ? (
                 <Button
@@ -246,7 +253,7 @@ export function ServiceCard({
               </span>
             )}
 
-            {/* Logs — below version bar */}
+            {/* Logs */}
             <LogViewer appKey={appKey} appName={name} />
           </>
         )}
