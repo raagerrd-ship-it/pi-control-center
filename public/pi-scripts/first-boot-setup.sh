@@ -297,7 +297,8 @@ sudo systemctl daemon-reload
 touch "$MARKER"
 sudo systemctl disable first-boot-setup.service
 
-# Done!
+# Done! LED solid green for 30s, then restore to kernel default
+led_solid
 IP=$(hostname -I | awk '{print $1}')
 echo ""
 echo "========================================"
@@ -313,8 +314,17 @@ echo "   Core 1 → Lotus Lantern"
 echo "   Core 2 → Cast Away"
 echo "   Core 3 → Sonos Gateway"
 echo ""
+echo " LED-mönster:"
+echo "   Långsam blink → väntar på nätverk"
+echo "   Snabb blink   → installerar"
+echo "   Fast sken     → klart!"
+echo ""
 echo " RAM:  $(free -m | awk '/^Mem:/{print $7}')MB ledigt"
 echo " Swap: $(free -m | awk '/^Swap:/{print $2}')MB"
 echo ""
 echo " Öppna dashboarden på din mobil: http://${IP}"
 echo "========================================"
+
+# Keep LED solid for 30s so user sees it, then restore
+sleep 30
+led_restore
