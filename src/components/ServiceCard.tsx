@@ -238,5 +238,6 @@ export function ServiceCard({
       {/* Logs panel — expands at bottom of card */}
       {installed && <LogViewer appKey={appKey} appName={name} panelOnly />}
     </div>
+    </LogProvider>
   );
 }
