@@ -198,6 +198,9 @@ export function ServiceCard({
                 </span>
               )}
             </div>
+
+            {/* Log viewer */}
+            <LogViewer appKey={appKey} appName={name} />
           </>
         )}
       </div>
