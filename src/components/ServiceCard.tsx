@@ -1,6 +1,7 @@
 import { ExternalLink, RefreshCw, CheckCircle2, XCircle, AlertCircle, Download, Loader2, Play, Square, RotateCcw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
+import { LogViewer } from '@/components/LogViewer';
 import type { UpdateResult, InstallResult, ServiceActionResult } from '@/lib/api';
 
 interface ServiceCardProps {
@@ -197,6 +198,9 @@ export function ServiceCard({
                 </span>
               )}
             </div>
+
+            {/* Log viewer */}
+            <LogViewer appKey={appKey} appName={name} />
           </>
         )}
       </div>

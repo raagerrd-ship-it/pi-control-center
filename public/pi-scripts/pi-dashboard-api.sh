@@ -307,6 +307,28 @@ handle_request() {
       fi
       ;;
 
+    GET\ /api/update-log/*)
+      local app=$(echo "$path" | sed 's|/api/update-log/||')
+      local logfile="$STATUS_DIR/${app}.log"
+      if [ -f "$logfile" ]; then
+        local log_content=$(tail -50 "$logfile" | sed 's/\\/\\\\/g; s/"/\\"/g; s/\t/  /g' | tr '\n' '|' | sed 's/|/\\n/g')
+        response="{\"log\":\"${log_content}\"}"
+      else
+        response="{\"log\":\"Inga loggar tillgängliga\"}"
+      fi
+      ;;
+
+    GET\ /api/install-log/*)
+      local app=$(echo "$path" | sed 's|/api/install-log/||')
+      local logfile="$INSTALL_DIR/${app}.log"
+      if [ -f "$logfile" ]; then
+        local log_content=$(tail -50 "$logfile" | sed 's/\\/\\\\/g; s/"/\\"/g; s/\t/  /g' | tr '\n' '|' | sed 's/|/\\n/g')
+        response="{\"log\":\"${log_content}\"}"
+      else
+        response="{\"log\":\"Inga loggar tillgängliga\"}"
+      fi
+      ;;
+
     "OPTIONS "*)
       response=""
       ;;

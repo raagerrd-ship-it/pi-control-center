@@ -88,3 +88,11 @@ export async function serviceAction(app: string, action: 'start' | 'stop' | 'res
   if (!res.ok) throw new Error(`Failed to ${action} service`);
   return res.json();
 }
+
+export async function fetchLogs(app: string, type: 'update' | 'install' = 'update'): Promise<string> {
+  const endpoint = type === 'install' ? 'install-log' : 'update-log';
+  const res = await fetch(`${getBaseUrl()}/api/${endpoint}/${app}`, { signal: AbortSignal.timeout(4000) });
+  if (!res.ok) return 'Inga loggar tillgängliga';
+  const data = await res.json();
+  return data.log || 'Tom logg';
+}
