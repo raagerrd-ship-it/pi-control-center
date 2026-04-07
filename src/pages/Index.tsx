@@ -10,7 +10,7 @@ import { triggerUpdate, type UpdateResult } from '@/lib/api';
 
 const Index = () => {
   const [settings, setSettings] = useState<DashboardSettings>(loadSettings);
-  const { status, error, loading } = useSystemStatus();
+  const { status, error, loading, demo } = useSystemStatus();
   const { updates, startUpdate, installs, startInstall, actions, runServiceAction } = useServiceUpdate();
   const [dashboardUpdate, setDashboardUpdate] = useState<UpdateResult | null>(null);
 
