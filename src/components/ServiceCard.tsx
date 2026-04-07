@@ -12,6 +12,8 @@ interface ServiceCardProps {
   online: boolean;
   installed: boolean;
   version: string;
+  cpu: number;
+  ramMb: number;
   updateStatus?: UpdateResult;
   installStatus?: InstallResult;
   actionStatus?: ServiceActionResult | { status: 'pending'; action: string };
