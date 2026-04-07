@@ -25,6 +25,7 @@ interface LogViewerProps {
   appName: string;
   asButton?: boolean;
   asIconButton?: boolean;
+  showLabel?: boolean;
   panelOnly?: boolean;
 }
 

@@ -191,10 +191,8 @@ export function ServiceCard({
                 className="font-mono text-[11px] gap-1 h-7 px-2 flex-1"
                 disabled={isPending || !installed}
                 onClick={() => onServiceAction(appKey, 'start')}
-                title="Starta"
               >
-                <Play className="h-3 w-3" />
-                <span className="hidden min-[480px]:inline">Starta</span>
+                <Play className="h-3 w-3" /> Starta
               </Button>
             ) : (
               <Button
@@ -203,32 +201,28 @@ export function ServiceCard({
                 className="font-mono text-[11px] gap-1 h-7 px-2 flex-1"
                 disabled={isPending}
                 onClick={() => onServiceAction(appKey, 'stop')}
-                title="Stoppa"
               >
-                <Square className="h-3 w-3" />
-                <span className="hidden min-[480px]:inline">Stoppa</span>
+                <Square className="h-3 w-3" /> Stoppa
               </Button>
             )}
             <Button
               variant="secondary"
               size="sm"
-              className="font-mono text-[11px] h-7 w-7 p-0"
+              className="font-mono text-[11px] gap-1 h-7 px-2"
               disabled={isPending || !online}
               onClick={() => onServiceAction(appKey, 'restart')}
-              title="Starta om"
             >
-              <RotateCcw className="h-3 w-3" />
+              <RotateCcw className="h-3 w-3" /> Omstart
             </Button>
-            <LogViewer appKey={appKey} appName={name} asIconButton />
+            <LogViewer appKey={appKey} appName={name} asIconButton showLabel />
             {installed && online && (
               <a
                 href={`http://${piIp}:${port}`}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="inline-flex items-center justify-center h-7 w-7 rounded-md bg-secondary text-muted-foreground hover:text-foreground transition-colors"
-                title={`Öppna ${name}`}
+                className="inline-flex items-center justify-center gap-1 h-7 px-2 rounded-md bg-secondary font-mono text-[11px] text-muted-foreground hover:text-foreground transition-colors"
               >
-                <ExternalLink className="h-3 w-3" />
+                <ExternalLink className="h-3 w-3" /> Öppna
               </a>
             )}
           </>
