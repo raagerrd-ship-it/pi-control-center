@@ -128,56 +128,64 @@ const Index = () => {
         <h2 className="font-mono text-xs uppercase tracking-wider text-muted-foreground mb-3">
           System
         </h2>
-        <div className={`rounded-lg border p-3 ${dashboardVersion?.hasUpdate ? 'border-[hsl(var(--status-warning)/0.3)] bg-[hsl(var(--status-warning)/0.05)]' : 'bg-card'}`}>
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2.5">
-              <div className="h-2.5 w-2.5 rounded-full bg-[hsl(var(--status-online))]" />
-              <span className="font-medium text-sm">Dashboard + Nginx</span>
-            </div>
-            <div className="flex items-center gap-1.5">
-              {dashboardUpdate?.status === 'success' && (
-                <CheckCircle2 className="h-3.5 w-3.5 text-[hsl(var(--status-online))]" />
-              )}
-              {dashboardUpdate?.status === 'error' && (
-                <span title={dashboardUpdate.message}><AlertCircle className="h-3.5 w-3.5 text-destructive" /></span>
-              )}
-              <Button
-                variant={dashboardVersion?.hasUpdate ? 'default' : 'secondary'}
-                size="sm"
-                className="font-mono text-xs gap-1.5"
+        <div className={`rounded-lg border p-3.5 flex flex-col gap-2.5 ${dashboardVersion?.hasUpdate ? 'border-[hsl(var(--status-warning)/0.3)] bg-[hsl(var(--status-warning)/0.05)]' : 'bg-card'}`}>
+          {/* Header: status dot + name */}
+          <div className="flex items-center gap-2">
+            <div className="h-2 w-2 rounded-full bg-[hsl(var(--status-online))]" />
+            <h3 className="font-medium text-sm leading-none">Dashboard + Nginx</h3>
+          </div>
+
+          {/* Resource row */}
+          <div className="flex items-center gap-2 font-mono text-[11px] text-muted-foreground">
+            <span className="inline-flex items-center gap-1 rounded bg-secondary px-1.5 py-0.5">
+              <span className="text-foreground text-[10px]">Core 0</span>
+            </span>
+            <span>{status?.dashboardCpu?.toFixed(1) ?? '0.0'}%</span>
+            <span className="text-border">·</span>
+            <span>{status?.dashboardRamMb ?? 7}MB</span>
+          </div>
+
+          {/* Version bar */}
+          <div className={`flex items-center justify-between rounded px-2 py-1 text-[10px] font-mono ${dashboardVersion?.hasUpdate ? 'bg-[hsl(var(--status-warning)/0.08)] border border-[hsl(var(--status-warning)/0.25)]' : 'bg-secondary/30'}`}>
+            <span className="text-muted-foreground">{dashboardVersion?.local || '—'}</span>
+            {dashboardVersion?.hasUpdate ? (
+              <button
+                className="text-[hsl(var(--status-warning))] hover:text-foreground transition-colors inline-flex items-center gap-1 disabled:opacity-50"
                 disabled={isUpdatingDashboard}
                 onClick={handleDashboardUpdate}
               >
-                <RefreshCw className={`h-3 w-3 ${isUpdatingDashboard ? 'animate-spin' : ''}`} />
-                {isUpdatingDashboard ? 'Uppdaterar...' : 'Uppdatera'}
-              </Button>
-            </div>
+                <RefreshCw className={`h-2.5 w-2.5 ${isUpdatingDashboard ? 'animate-spin' : ''}`} />
+                {isUpdatingDashboard ? 'Uppdaterar' : 'Uppdatera'}
+              </button>
+            ) : (
+              <span className="text-muted-foreground/50">✓</span>
+            )}
           </div>
 
-          {/* Core + resource usage */}
-          <div className="flex items-center gap-2 font-mono text-[11px] mt-2">
-            <span className="inline-flex items-center gap-1 rounded bg-secondary px-1.5 py-0.5 text-foreground">
-              <Cpu className="h-3 w-3 text-[hsl(var(--status-online))]" />
-              Core 0
+          {/* Update feedback */}
+          {dashboardUpdate?.status === 'success' && (
+            <span className="flex items-center gap-1 text-[11px] text-[hsl(var(--status-online))] font-mono">
+              <CheckCircle2 className="h-3 w-3" /> Klar
             </span>
-            <span className="text-muted-foreground">
-              {status?.dashboardCpu?.toFixed(1) ?? '0.0'}%
+          )}
+          {dashboardUpdate?.status === 'error' && (
+            <span className="flex items-center gap-1 text-[11px] text-destructive font-mono" title={dashboardUpdate.message}>
+              <AlertCircle className="h-3 w-3" /> Misslyckades
             </span>
-            <span className="text-border">·</span>
-            <span className="text-muted-foreground">
-              {status?.dashboardRamMb ?? 7}MB
-            </span>
-          </div>
+          )}
 
-          {/* Version */}
-          <div className="flex items-center justify-between mt-2 font-mono text-[11px]">
-            <span className="text-foreground">{dashboardVersion?.local || '—'}</span>
-            {dashboardVersion?.hasUpdate && (
-              <span className="text-[hsl(var(--status-warning))]">ny version</span>
-            )}
-            {dashboardVersion && !dashboardVersion.hasUpdate && dashboardVersion.local && (
-              <span className="text-muted-foreground/60">✓ senaste</span>
-            )}
+          {/* Actions row */}
+          <div className="flex items-center gap-1">
+            <Button
+              variant={dashboardVersion?.hasUpdate ? 'default' : 'secondary'}
+              size="sm"
+              className="font-mono text-[11px] gap-1 h-7 px-2 flex-1"
+              disabled={isUpdatingDashboard}
+              onClick={handleDashboardUpdate}
+            >
+              <RefreshCw className={`h-3 w-3 ${isUpdatingDashboard ? 'animate-spin' : ''}`} />
+              {isUpdatingDashboard ? 'Uppdaterar...' : 'Uppdatera'}
+            </Button>
           </div>
         </div>
       </section>
