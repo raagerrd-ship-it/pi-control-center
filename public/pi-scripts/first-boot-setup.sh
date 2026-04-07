@@ -78,7 +78,7 @@ led_error() {
 
 led_restore() {
   # Restore default kernel trigger
-  kill "$BLINK_PID" 2>/dev/null || true
+  [ -n "${BLINK_PID:-}" ] && kill "$BLINK_PID" 2>/dev/null || true
   echo mmc0 | sudo tee "$LED_TRIGGER" > /dev/null 2>&1 || true
 }
 
