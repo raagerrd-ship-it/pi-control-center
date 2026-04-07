@@ -1,5 +1,5 @@
 import { useState, useCallback } from 'react';
-import { RefreshCw, CheckCircle2, AlertCircle, ArrowUp } from 'lucide-react';
+import { RefreshCw, CheckCircle2, AlertCircle, Cpu } from 'lucide-react';
 import { SystemMonitor } from '@/components/SystemMonitor';
 import { ServiceCard } from '@/components/ServiceCard';
 import { Settings, loadSettings, type DashboardSettings } from '@/components/Settings';
