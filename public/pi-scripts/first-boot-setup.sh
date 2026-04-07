@@ -1,26 +1,23 @@
 #!/bin/bash
 # ============================================================
-# Pi Dashboard — First-Boot Auto-Setup
+# Pi Dashboard — Auto-Setup
 # ============================================================
 #
-# USAGE:
-#   1. Flash Raspberry Pi OS Lite (64-bit) to SD card
-#   2. Mount the boot partition and configure WiFi + SSH:
-#      - Create 'ssh' (empty file) on boot partition
-#      - Create 'wpa_supplicant.conf' (or use rpi-imager)
-#   3. Mount the rootfs partition and copy this script:
-#        sudo cp first-boot-setup.sh /mnt/rootfs/opt/first-boot-setup.sh
-#        sudo chmod +x /mnt/rootfs/opt/first-boot-setup.sh
-#   4. Copy the systemd service file:
-#        sudo cp first-boot-setup.service /mnt/rootfs/etc/systemd/system/
-#        sudo ln -s /etc/systemd/system/first-boot-setup.service \
-#             /mnt/rootfs/etc/systemd/system/multi-user.target.wants/
-#   5. Unmount, insert SD card, power on
-#   6. Wait ~10-15 minutes, then open http://<pi-ip> on your phone
+# USAGE (pick one):
 #
-# The script runs ONCE at first boot, installs everything,
-# then disables itself. Progress is logged to:
-#   /var/log/pi-dashboard-setup.log
+# A) SSH one-liner (recommended):
+#    ssh pi@<pi-ip>
+#    curl -sL https://raw.githubusercontent.com/YOUR_USER/pi-dashboard/main/public/pi-scripts/first-boot-setup.sh | sudo bash
+#
+#    Or with custom repo:
+#    curl -sL <url>/first-boot-setup.sh | sudo PI_DASHBOARD_REPO=https://github.com/you/repo.git bash
+#
+# B) Pre-baked on SD card (advanced):
+#    Mount rootfs, copy script + service, boot — see prep-sd-card.sh
+#
+# The script runs ONCE, installs everything, and marks itself done.
+# Progress: /var/log/pi-dashboard-setup.log
+# LED: slow blink=network, fast blink=installing, solid=done
 #
 # ============================================================
 
@@ -29,10 +26,18 @@ set -euo pipefail
 LOG="/var/log/pi-dashboard-setup.log"
 MARKER="/opt/.pi-dashboard-installed"
 REPO_URL="${PI_DASHBOARD_REPO:-https://github.com/YOUR_USER/pi-dashboard.git}"
-DASHBOARD_DIR="/home/pi/pi-dashboard"
-NGINX_DIR="/var/www/pi-dashboard"
 API_PORT=8585
-PI_USER="pi"
+
+# Auto-detect user (works via SSH or systemd)
+if [ -n "${SUDO_USER:-}" ] && [ "$SUDO_USER" != "root" ]; then
+  PI_USER="$SUDO_USER"
+elif [ -d "/home/pi" ]; then
+  PI_USER="pi"
+else
+  PI_USER="$(ls /home/ | head -1)"
+fi
+DASHBOARD_DIR="/home/$PI_USER/pi-dashboard"
+NGINX_DIR="/var/www/pi-dashboard"
 LED="/sys/class/leds/ACT/brightness"
 LED_TRIGGER="/sys/class/leds/ACT/trigger"
 
