@@ -43,9 +43,23 @@ export interface ServiceActionResult {
   message?: string;
 }
 
+export interface VersionInfo {
+  local: string;
+  remote: string;
+  hasUpdate: boolean;
+}
+
+export type VersionMap = Record<string, VersionInfo>;
+
 export async function fetchSystemStatus(): Promise<SystemStatus> {
   const res = await fetch(`${getBaseUrl()}/api/status`, { signal: AbortSignal.timeout(4000) });
   if (!res.ok) throw new Error('Failed to fetch status');
+  return res.json();
+}
+
+export async function fetchVersions(): Promise<VersionMap> {
+  const res = await fetch(`${getBaseUrl()}/api/versions`, { signal: AbortSignal.timeout(15000) });
+  if (!res.ok) throw new Error('Failed to fetch versions');
   return res.json();
 }
 

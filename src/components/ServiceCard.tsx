@@ -1,8 +1,8 @@
-import { ExternalLink, RefreshCw, CheckCircle2, XCircle, AlertCircle, Download, Loader2, Play, Square, RotateCcw, FileText, Cpu } from 'lucide-react';
+import { ExternalLink, RefreshCw, CheckCircle2, AlertCircle, Download, Loader2, Play, Square, RotateCcw, Cpu, ArrowUp } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import { LogViewer } from '@/components/LogViewer';
-import type { UpdateResult, InstallResult, ServiceActionResult } from '@/lib/api';
+import type { UpdateResult, InstallResult, ServiceActionResult, VersionInfo } from '@/lib/api';
 
 interface ServiceCardProps {
   name: string;
@@ -16,6 +16,7 @@ interface ServiceCardProps {
   ramMb: number;
   cpuCore: number;
   deviceLabel?: string;
+  versionInfo?: VersionInfo;
   updateStatus?: UpdateResult;
   installStatus?: InstallResult;
   actionStatus?: ServiceActionResult | { status: 'pending'; action: string };
@@ -36,6 +37,7 @@ export function ServiceCard({
   ramMb,
   cpuCore,
   deviceLabel,
+  versionInfo,
   updateStatus,
   installStatus,
   actionStatus,
@@ -48,6 +50,7 @@ export function ServiceCard({
   const installSuccess = installStatus?.status === 'success';
   const installError = installStatus?.status === 'error';
   const isPending = actionStatus?.status === 'pending';
+  const hasUpdate = versionInfo?.hasUpdate ?? false;
 
   const statusColor = !installed
     ? 'bg-muted-foreground'
@@ -88,7 +91,7 @@ export function ServiceCard({
         <span>{statusLabel}</span>
       </div>
 
-      {/* Resource usage — prominent core badge, always shown when installed */}
+      {/* Resource usage */}
       {installed && cpuCore >= 0 && (
         <div className="flex items-center gap-2 font-mono text-[11px]">
           <span className="inline-flex items-center gap-1 rounded bg-secondary px-1.5 py-0.5 text-foreground">
@@ -202,22 +205,35 @@ export function ServiceCard({
               <LogViewer appKey={appKey} appName={name} asButton />
             </div>
 
-            {/* Version + Update at bottom */}
-            <div className="flex items-center justify-between rounded bg-secondary/40 px-2.5 py-1.5">
-              <div className="font-mono text-[11px]">
-                <span className="text-muted-foreground">v:</span>{' '}
+            {/* Version bar at bottom */}
+            <div className={`flex items-center justify-between rounded px-2.5 py-1.5 ${hasUpdate ? 'bg-[hsl(var(--status-warning)/0.1)] border border-[hsl(var(--status-warning)/0.3)]' : 'bg-secondary/40'}`}>
+              <div className="font-mono text-[11px] flex items-center gap-1.5">
+                <span className="text-muted-foreground">v:</span>
                 <span className="text-foreground">{version || '—'}</span>
+                {hasUpdate && versionInfo?.remote && (
+                  <>
+                    <ArrowUp className="h-3 w-3 text-[hsl(var(--status-warning))]" />
+                    <span className="text-[hsl(var(--status-warning))]">{versionInfo.remote}</span>
+                  </>
+                )}
               </div>
-              <Button
-                variant="ghost"
-                size="sm"
-                className="font-mono text-[11px] gap-1 h-6 px-2 text-muted-foreground hover:text-foreground"
-                disabled={isUpdating || !online}
-                onClick={() => onUpdate(appKey)}
-              >
-                <RefreshCw className={`h-3 w-3 ${isUpdating ? 'animate-spin' : ''}`} />
-                {isUpdating ? 'Uppdaterar...' : 'Uppdatera'}
-              </Button>
+              {hasUpdate && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="font-mono text-[11px] gap-1 h-6 px-2 text-[hsl(var(--status-warning))] hover:text-foreground"
+                  disabled={isUpdating || !online}
+                  onClick={() => onUpdate(appKey)}
+                >
+                  <RefreshCw className={`h-3 w-3 ${isUpdating ? 'animate-spin' : ''}`} />
+                  {isUpdating ? 'Uppdaterar...' : 'Uppdatera'}
+                </Button>
+              )}
+              {!hasUpdate && (
+                <span className="font-mono text-[10px] text-muted-foreground/60">
+                  ✓ senaste
+                </span>
+              )}
             </div>
 
             {/* Update status feedback */}

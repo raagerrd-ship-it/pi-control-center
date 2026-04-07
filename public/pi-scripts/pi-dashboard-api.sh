@@ -309,6 +309,29 @@ handle_request() {
       fi
       ;;
 
+    "GET /api/versions")
+      # Check remote HEAD for each app + dashboard (lightweight ls-remote)
+      local vj=""
+      for app in lotus-lantern cast-away sonos-gateway; do
+        local dir=${APP_DIRS[$app]} repo=${APP_REPOS[$app]}
+        local local_v="" remote_v=""
+        [ -d "$dir/.git" ] && local_v=$(git -C "$dir" rev-parse --short HEAD 2>/dev/null)
+        remote_v=$(git ls-remote --heads "$repo" main 2>/dev/null | cut -c1-7)
+        [ -n "$vj" ] && vj="${vj},"
+        local has_update="false"
+        [ -n "$local_v" ] && [ -n "$remote_v" ] && [ "$local_v" != "$remote_v" ] && has_update="true"
+        vj="${vj}\"${app}\":{\"local\":\"${local_v}\",\"remote\":\"${remote_v}\",\"hasUpdate\":${has_update}}"
+      done
+      # Dashboard
+      local d_local="" d_remote=""
+      [ -d "$HOME/pi-dashboard/.git" ] && d_local=$(git -C "$HOME/pi-dashboard" rev-parse --short HEAD 2>/dev/null)
+      d_remote=$(git ls-remote --heads "$(git -C "$HOME/pi-dashboard" remote get-url origin 2>/dev/null)" main 2>/dev/null | cut -c1-7)
+      local d_update="false"
+      [ -n "$d_local" ] && [ -n "$d_remote" ] && [ "$d_local" != "$d_remote" ] && d_update="true"
+      vj="${vj},\"dashboard\":{\"local\":\"${d_local}\",\"remote\":\"${d_remote}\",\"hasUpdate\":${d_update}}"
+      response="{${vj}}"
+      ;;
+
     "OPTIONS "*)
       response=""
       ;;
