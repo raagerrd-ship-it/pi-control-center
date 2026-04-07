@@ -33,6 +33,51 @@ DASHBOARD_DIR="/home/pi/pi-dashboard"
 NGINX_DIR="/var/www/pi-dashboard"
 API_PORT=8585
 PI_USER="pi"
+LED="/sys/class/leds/ACT/brightness"
+LED_TRIGGER="/sys/class/leds/ACT/trigger"
+
+# --- LED helper functions ---
+led_setup() {
+  # Take control of the green ACT LED (disable default trigger)
+  echo none | sudo tee "$LED_TRIGGER" > /dev/null 2>&1 || true
+}
+
+led_blink() {
+  # Blink in background: fast=installing, slow=waiting
+  local interval="${1:-0.3}"
+  while true; do
+    echo 1 | sudo tee "$LED" > /dev/null 2>&1
+    sleep "$interval"
+    echo 0 | sudo tee "$LED" > /dev/null 2>&1
+    sleep "$interval"
+  done
+}
+
+led_solid() {
+  # Steady on = done
+  kill "$BLINK_PID" 2>/dev/null || true
+  echo 1 | sudo tee "$LED" > /dev/null 2>&1
+}
+
+led_error() {
+  # Triple-flash pattern = error
+  kill "$BLINK_PID" 2>/dev/null || true
+  while true; do
+    for _ in 1 2 3; do
+      echo 1 | sudo tee "$LED" > /dev/null 2>&1; sleep 0.1
+      echo 0 | sudo tee "$LED" > /dev/null 2>&1; sleep 0.1
+    done
+    sleep 1
+  done
+}
+
+led_restore() {
+  # Restore default kernel trigger
+  kill "$BLINK_PID" 2>/dev/null || true
+  echo mmc0 | sudo tee "$LED_TRIGGER" > /dev/null 2>&1 || true
+}
+
+trap 'led_restore' EXIT
 
 # Redirect all output to log
 exec > >(tee -a "$LOG") 2>&1
