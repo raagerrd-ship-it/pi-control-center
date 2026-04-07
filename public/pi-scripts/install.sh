@@ -106,9 +106,8 @@ CONF
 sudo nginx -t && sudo systemctl reload nginx
 
 # 6. Set up API service with resource limits
-echo "[6/7] Setting up API service..."
+echo "[6/6] Setting up API service..."
 chmod +x "$DASHBOARD_DIR/public/pi-scripts/pi-dashboard-api.sh"
-chmod +x "$DASHBOARD_DIR/public/pi-scripts/pi-auto-update.sh"
 
 sudo tee /etc/systemd/system/pi-dashboard-api.service > /dev/null << EOF
 [Unit]
@@ -121,9 +120,7 @@ User=$USER
 ExecStart=$DASHBOARD_DIR/public/pi-scripts/pi-dashboard-api.sh $API_PORT
 Restart=always
 RestartSec=10
-# Memory limit: kill if API somehow leaks beyond 30MB
 MemoryMax=30M
-# Low CPU priority
 Nice=10
 
 [Install]
@@ -133,42 +130,8 @@ EOF
 sudo systemctl daemon-reload
 sudo systemctl enable --now pi-dashboard-api.service
 
-# 7. Set up auto-update timer (hourly, dashboard only)
-echo "[7/7] Setting up auto-update timer..."
-sudo tee /etc/systemd/system/pi-dashboard-update.service > /dev/null << EOF
-[Unit]
-Description=Pi Dashboard Auto Update
-
-[Service]
-Type=oneshot
-User=$USER
-Environment=NODE_OPTIONS=--max-old-space-size=256
-ExecStart=$DASHBOARD_DIR/public/pi-scripts/pi-auto-update.sh
-# Kill if update hangs over 10 min
-TimeoutStartSec=600
-# Low priority
-Nice=15
-IOSchedulingClass=idle
-EOF
-
-sudo tee /etc/systemd/system/pi-dashboard-update.timer > /dev/null << 'EOF'
-[Unit]
-Description=Pi Dashboard hourly update check
-
-[Timer]
-OnCalendar=hourly
-Persistent=true
-RandomizedDelaySec=300
-
-[Install]
-WantedBy=timers.target
-EOF
-
-sudo systemctl daemon-reload
-sudo systemctl enable --now pi-dashboard-update.timer
-
-# Disable other apps' auto-update timers
-for timer in lotus-light-update cast-away-update sonos-proxy-update; do
+# Disable all auto-update timers (everything is updated manually via dashboard)
+for timer in lotus-light-update cast-away-update sonos-proxy-update pi-dashboard-update; do
   if systemctl is-enabled "${timer}.timer" &>/dev/null; then
     echo "  Disabling ${timer}.timer (use dashboard for manual updates)"
     sudo systemctl disable --now "${timer}.timer" 2>/dev/null || true
@@ -194,7 +157,7 @@ echo ""
 echo "=== Done! ==="
 echo "Dashboard:   http://$(hostname -I | awk '{print $1}')"
 echo "API:         port $API_PORT"
-echo "Auto-update: every hour (dashboard only)"
+echo "Updates:     all manual via dashboard UI"
 echo "Swap:        $(free -m | awk '/^Swap:/{print $2}')MB"
 echo "RAM free:    $(free -m | awk '/^Mem:/{print $7}')MB available"
 echo ""
