@@ -11,7 +11,7 @@ import { triggerUpdate, fetchUpdateStatus, fetchVersions, type UpdateResult, typ
 
 const Index = () => {
   const [settings, setSettings] = useState<DashboardSettings>(loadSettings);
-  const { status, error, loading, demo } = useSystemStatus();
+  const { status, error, loading, demo, refresh } = useSystemStatus();
   const { updates, startUpdate, installs, startInstall, actions, runServiceAction } = useServiceUpdate();
   const [dashboardUpdate, setDashboardUpdate] = useState<UpdateResult | null>(null);
   const [versions, setVersions] = useState<VersionMap | null>(null);
