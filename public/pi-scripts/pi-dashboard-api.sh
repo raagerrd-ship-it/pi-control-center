@@ -178,7 +178,15 @@ build_status_json() {
     svc_json="${svc_json}\"${app}\":{\"online\":${online},\"installed\":${installed},\"version\":\"${ver}\",\"cpu\":${s_cpu:-0},\"ramMb\":${s_ram:-0},\"cpuCore\":${s_core}}"
   done
 
-  echo "{\"cpu\":${cpu:-0},\"temp\":${temp:-0},\"ramUsed\":${ram_used:-0},\"ramTotal\":${ram_total:-0},\"diskUsed\":${disk_used:-0},\"diskTotal\":${disk_total:-0},\"uptime\":\"${uptime_str}\",\"services\":{${svc_json}}}"
+  # Dashboard API + Nginx stats (both on core 0)
+  local dash_cpu=0 dash_ram=0
+  dash_ram=$(get_service_ram "pi-dashboard-api")
+  local nginx_ram=$(get_service_ram "nginx")
+  dash_ram=$((dash_ram + nginx_ram))
+  local dash_pid=$(systemctl show "pi-dashboard-api.service" --property=MainPID 2>/dev/null | cut -d= -f2)
+  [ -n "$dash_pid" ] && [ "$dash_pid" != "0" ] && dash_cpu=$(ps -p "$dash_pid" -o %cpu= 2>/dev/null | tr -d ' ' || echo "0")
+
+  echo "{\"cpu\":${cpu:-0},\"temp\":${temp:-0},\"ramUsed\":${ram_used:-0},\"ramTotal\":${ram_total:-0},\"diskUsed\":${disk_used:-0},\"diskTotal\":${disk_total:-0},\"uptime\":\"${uptime_str}\",\"dashboardCpu\":${dash_cpu:-0},\"dashboardRamMb\":${dash_ram:-0},\"services\":{${svc_json}}}"
 }
 
 get_cached_status() {

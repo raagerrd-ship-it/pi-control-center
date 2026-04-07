@@ -150,7 +150,13 @@ const Index = () => {
               <Cpu className="h-3 w-3 text-[hsl(var(--status-online))]" />
               Core 0
             </span>
-            <span className="text-muted-foreground">~7MB</span>
+            <span className="text-muted-foreground">
+              {status?.dashboardCpu?.toFixed(1) ?? '0.0'}%
+            </span>
+            <span className="text-border">·</span>
+            <span className="text-muted-foreground">
+              {status?.dashboardRamMb ?? 7}MB
+            </span>
           </div>
 
           {/* Version */}
