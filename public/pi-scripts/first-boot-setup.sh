@@ -1,0 +1,264 @@
+#!/bin/bash
+# ============================================================
+# Pi Dashboard — First-Boot Auto-Setup
+# ============================================================
+#
+# USAGE:
+#   1. Flash Raspberry Pi OS Lite (64-bit) to SD card
+#   2. Mount the boot partition and configure WiFi + SSH:
+#      - Create 'ssh' (empty file) on boot partition
+#      - Create 'wpa_supplicant.conf' (or use rpi-imager)
+#   3. Mount the rootfs partition and copy this script:
+#        sudo cp first-boot-setup.sh /mnt/rootfs/opt/first-boot-setup.sh
+#        sudo chmod +x /mnt/rootfs/opt/first-boot-setup.sh
+#   4. Copy the systemd service file:
+#        sudo cp first-boot-setup.service /mnt/rootfs/etc/systemd/system/
+#        sudo ln -s /etc/systemd/system/first-boot-setup.service \
+#             /mnt/rootfs/etc/systemd/system/multi-user.target.wants/
+#   5. Unmount, insert SD card, power on
+#   6. Wait ~10-15 minutes, then open http://<pi-ip> on your phone
+#
+# The script runs ONCE at first boot, installs everything,
+# then disables itself. Progress is logged to:
+#   /var/log/pi-dashboard-setup.log
+#
+# ============================================================
+
+set -euo pipefail
+
+LOG="/var/log/pi-dashboard-setup.log"
+MARKER="/opt/.pi-dashboard-installed"
+REPO_URL="${PI_DASHBOARD_REPO:-https://github.com/YOUR_USER/pi-dashboard.git}"
+DASHBOARD_DIR="/home/pi/pi-dashboard"
+NGINX_DIR="/var/www/pi-dashboard"
+API_PORT=8585
+PI_USER="pi"
+
+# Redirect all output to log
+exec > >(tee -a "$LOG") 2>&1
+
+echo ""
+echo "========================================"
+echo " Pi Dashboard — First Boot Setup"
+echo " $(date)"
+echo "========================================"
+echo ""
+
+# Guard: don't run twice
+if [ -f "$MARKER" ]; then
+  echo "Already installed. Exiting."
+  exit 0
+fi
+
+# Wait for network (WiFi may take a moment)
+echo "[0/8] Waiting for network..."
+for i in $(seq 1 60); do
+  if ping -c1 -W2 8.8.8.8 &>/dev/null; then
+    echo "  Network ready after ${i}s"
+    break
+  fi
+  sleep 2
+done
+
+if ! ping -c1 -W2 8.8.8.8 &>/dev/null; then
+  echo "ERROR: No network after 120s. Aborting."
+  exit 1
+fi
+
+# 1. Swap (critical for 512MB Pi Zero 2)
+echo "[1/8] Setting up swap..."
+if [ "$(swapon --show | wc -l)" -lt 2 ]; then
+  if [ -f /etc/dphys-swapfile ]; then
+    sudo sed -i 's/^CONF_SWAPSIZE=.*/CONF_SWAPSIZE=512/' /etc/dphys-swapfile
+    sudo dphys-swapfile setup
+    sudo dphys-swapfile swapon
+  else
+    sudo fallocate -l 512M /swapfile 2>/dev/null || sudo dd if=/dev/zero of=/swapfile bs=1M count=512
+    sudo chmod 600 /swapfile
+    sudo mkswap /swapfile
+    sudo swapon /swapfile
+    grep -q '/swapfile' /etc/fstab || echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
+  fi
+fi
+echo "  Swap: $(free -m | awk '/^Swap:/{print $2}')MB"
+
+# 2. System packages
+echo "[2/8] Installing system packages..."
+sudo apt-get update -qq
+sudo apt-get install -y -qq nginx socat git
+
+# 3. Node.js
+echo "[3/8] Installing Node.js..."
+if ! command -v node &>/dev/null; then
+  curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
+  sudo apt-get install -y -qq nodejs
+fi
+echo "  Node: $(node -v), npm: $(npm -v)"
+
+# 4. Clone & build dashboard
+echo "[4/8] Cloning dashboard..."
+export NODE_OPTIONS="--max-old-space-size=256"
+
+if [ -d "$DASHBOARD_DIR" ]; then
+  cd "$DASHBOARD_DIR" && git pull --quiet
+else
+  sudo -u "$PI_USER" git clone --depth 1 "$REPO_URL" "$DASHBOARD_DIR"
+fi
+cd "$DASHBOARD_DIR"
+
+echo "[5/8] Building dashboard (this takes ~5-10 min on Pi Zero 2)..."
+sudo -u "$PI_USER" nice -n 15 ionice -c 3 npm install --production --no-audit --no-fund
+sudo -u "$PI_USER" nice -n 15 ionice -c 3 npm run build
+sudo mkdir -p "$NGINX_DIR"
+sudo cp -r dist/* "$NGINX_DIR/"
+sudo -u "$PI_USER" npm cache clean --force 2>/dev/null || true
+
+# 6. Nginx config
+echo "[6/8] Configuring Nginx..."
+
+sudo tee /etc/nginx/nginx.conf > /dev/null << 'CONF'
+user www-data;
+worker_processes 2;
+pid /run/nginx.pid;
+include /etc/nginx/modules-enabled/*.conf;
+
+events {
+    worker_connections 64;
+    multi_accept off;
+}
+
+http {
+    sendfile on;
+    tcp_nopush on;
+    types_hash_max_size 2048;
+    server_tokens off;
+
+    include /etc/nginx/mime.types;
+    default_type application/octet-stream;
+
+    access_log off;
+    error_log /var/log/nginx/error.log crit;
+
+    gzip on;
+    gzip_types text/plain text/css application/json application/javascript text/xml;
+    gzip_min_length 256;
+    gzip_vary on;
+
+    keepalive_timeout 30;
+    client_body_buffer_size 8k;
+    client_max_body_size 1m;
+
+    include /etc/nginx/sites-enabled/*;
+}
+CONF
+
+sudo tee /etc/nginx/sites-available/pi-dashboard > /dev/null << 'SITE'
+server {
+    listen 80 default_server;
+    listen [::]:80 default_server;
+    root /var/www/pi-dashboard;
+    index index.html;
+    server_name _;
+
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+
+    location ~* \.(js|css|png|jpg|jpeg|gif|ico|svg|woff2?)$ {
+        expires 30d;
+        add_header Cache-Control "public, immutable";
+    }
+}
+SITE
+
+sudo rm -f /etc/nginx/sites-enabled/default
+sudo ln -sf /etc/nginx/sites-available/pi-dashboard /etc/nginx/sites-enabled/
+sudo nginx -t && sudo systemctl restart nginx
+
+# 7. API service
+echo "[7/8] Setting up API service..."
+chmod +x "$DASHBOARD_DIR/public/pi-scripts/pi-dashboard-api.sh"
+
+sudo tee /etc/systemd/system/pi-dashboard-api.service > /dev/null << EOF
+[Unit]
+Description=Pi Dashboard API
+After=network.target
+
+[Service]
+Type=simple
+User=$PI_USER
+ExecStart=$DASHBOARD_DIR/public/pi-scripts/pi-dashboard-api.sh $API_PORT
+Restart=always
+RestartSec=10
+MemoryMax=30M
+Nice=10
+CPUAffinity=0
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+sudo systemctl daemon-reload
+sudo systemctl enable --now pi-dashboard-api.service
+
+# Pin Nginx to core 0
+sudo mkdir -p /etc/systemd/system/nginx.service.d
+sudo tee /etc/systemd/system/nginx.service.d/cpu-pin.conf > /dev/null << 'OVER'
+[Service]
+CPUAffinity=0
+OVER
+
+# 8. Sudoers + CPU pinning prep
+echo "[8/8] Configuring permissions..."
+sudo tee /etc/sudoers.d/pi-dashboard > /dev/null << EOF
+$PI_USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl start lotus-light.service
+$PI_USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl stop lotus-light.service
+$PI_USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl restart lotus-light.service
+$PI_USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl start cast-away.service
+$PI_USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl stop cast-away.service
+$PI_USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl restart cast-away.service
+$PI_USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl start sonos-proxy.service
+$PI_USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl stop sonos-proxy.service
+$PI_USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl restart sonos-proxy.service
+EOF
+sudo chmod 440 /etc/sudoers.d/pi-dashboard
+
+# CPU pinning for app services (if they exist later)
+for pair in "lotus-light:1" "cast-away:2" "sonos-proxy:3"; do
+  svc="${pair%%:*}" core="${pair##*:}"
+  if systemctl cat "${svc}.service" &>/dev/null; then
+    sudo mkdir -p "/etc/systemd/system/${svc}.service.d"
+    sudo tee "/etc/systemd/system/${svc}.service.d/cpu-pin.conf" > /dev/null << OVER
+[Service]
+CPUAffinity=${core}
+OVER
+  fi
+done
+
+sudo systemctl daemon-reload
+
+# Mark as installed & disable this service
+touch "$MARKER"
+sudo systemctl disable first-boot-setup.service
+
+# Done!
+IP=$(hostname -I | awk '{print $1}')
+echo ""
+echo "========================================"
+echo " ✓ Installation klar!"
+echo "========================================"
+echo ""
+echo " Dashboard:  http://${IP}"
+echo " API:        http://${IP}:${API_PORT}"
+echo ""
+echo " CPU-layout:"
+echo "   Core 0 → System + Dashboard + Nginx"
+echo "   Core 1 → Lotus Lantern"
+echo "   Core 2 → Cast Away"
+echo "   Core 3 → Sonos Gateway"
+echo ""
+echo " RAM:  $(free -m | awk '/^Mem:/{print $7}')MB ledigt"
+echo " Swap: $(free -m | awk '/^Swap:/{print $2}')MB"
+echo ""
+echo " Öppna dashboarden på din mobil: http://${IP}"
+echo "========================================"
