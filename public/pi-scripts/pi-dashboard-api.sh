@@ -39,6 +39,13 @@ declare -A APP_PORTS=(
   ["sonos-gateway"]="3002"
 )
 
+# systemd service names for start/stop/restart
+declare -A APP_SERVICES=(
+  ["lotus-lantern"]="lotus-light"
+  ["cast-away"]="cast-away"
+  ["sonos-gateway"]="sonos-proxy"
+)
+
 get_cpu() { top -bn1 | grep "Cpu(s)" | awk '{print 100 - $8}'; }
 get_temp() { cat /sys/class/thermal/thermal_zone0/temp 2>/dev/null | awk '{printf "%.1f", $1/1000}' || echo "0"; }
 get_ram() { free -m | awk '/^Mem:/{print $3","$2}'; }
