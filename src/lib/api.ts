@@ -18,7 +18,7 @@ export interface SystemStatus {
   diskTotal: number;
   uptime: string;
   services: {
-    [key: string]: { online: boolean; version: string; installed: boolean; cpu: number; ramMb: number };
+    [key: string]: { online: boolean; version: string; installed: boolean; cpu: number; ramMb: number; cpuCore: number };
   };
 }
 

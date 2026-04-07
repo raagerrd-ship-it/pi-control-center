@@ -122,6 +122,8 @@ Restart=always
 RestartSec=10
 MemoryMax=30M
 Nice=10
+# Pin dashboard + API to core 0 (cores 1-3 reserved for apps)
+CPUAffinity=0
 
 [Install]
 WantedBy=multi-user.target
@@ -153,11 +155,35 @@ $USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl restart sonos-proxy.service
 EOF
 sudo chmod 440 /etc/sudoers.d/pi-dashboard
 
+# Pin app services to dedicated CPU cores
+echo "  Setting up CPU core pinning..."
+echo "  Core 0: System + Dashboard API"
+echo "  Core 1: Lotus Lantern"
+echo "  Core 2: Cast Away"
+echo "  Core 3: Sonos Gateway"
+
+for svc_core in "lotus-light:1" "cast-away:2" "sonos-proxy:3"; do
+  svc="${svc_core%%:*}"
+  core="${svc_core##*:}"
+  override_dir="/etc/systemd/system/${svc}.service.d"
+  if systemctl cat "${svc}.service" &>/dev/null; then
+    sudo mkdir -p "$override_dir"
+    sudo tee "$override_dir/cpu-pin.conf" > /dev/null << OVERRIDE
+[Service]
+CPUAffinity=${core}
+OVERRIDE
+    echo "  Pinned ${svc}.service → core ${core}"
+  fi
+done
+
+sudo systemctl daemon-reload
+
 echo ""
 echo "=== Done! ==="
 echo "Dashboard:   http://$(hostname -I | awk '{print $1}')"
 echo "API:         port $API_PORT"
 echo "Updates:     all manual via dashboard UI"
+echo "CPU layout:  core 0=system, 1=lotus, 2=castaway, 3=sonos"
 echo "Swap:        $(free -m | awk '/^Swap:/{print $2}')MB"
 echo "RAM free:    $(free -m | awk '/^Mem:/{print $7}')MB available"
 echo ""

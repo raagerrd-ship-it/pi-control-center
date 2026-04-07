@@ -48,6 +48,13 @@ declare -A APP_SERVICES=(
   ["sonos-gateway"]="sonos-proxy"
 )
 
+# CPU core assignments: core 0 = system/dashboard, 1-3 = apps
+declare -A APP_CORES=(
+  ["lotus-lantern"]="1"
+  ["cast-away"]="2"
+  ["sonos-gateway"]="3"
+)
+
 # ---------- Lightweight system stats via /proc (no subprocesses) ----------
 
 # CPU: read /proc/stat twice with 0.2s gap — fast and accurate
@@ -169,19 +176,24 @@ build_status_json() {
     local ver=$(get_version "$dir")
     local svc_cpu=0
     local svc_ram=0
+    local svc_core=${APP_CORES[$app]:-0}
 
     # Only fetch resource usage if the service is running
     if [ "$is_online" = "true" ]; then
       svc_ram=$(get_service_ram "$svc")
-      # CPU: sample via ps for the service's main PID
       local mainpid=$(systemctl show "${svc}.service" --property=MainPID 2>/dev/null | cut -d= -f2)
       if [ -n "$mainpid" ] && [ "$mainpid" != "0" ]; then
         svc_cpu=$(ps -p "$mainpid" -o %cpu= 2>/dev/null | tr -d ' ' || echo "0")
+        # Read actual CPU affinity
+        local affinity=$(taskset -p "$mainpid" 2>/dev/null | awk '{print $NF}')
+        case "$affinity" in
+          2) svc_core=1 ;; 4) svc_core=2 ;; 8) svc_core=3 ;; 1) svc_core=0 ;; *) svc_core=${APP_CORES[$app]:-0} ;;
+        esac
       fi
     fi
     
     [ -n "$services_json" ] && services_json="${services_json},"
-    services_json="${services_json}\"${app}\":{\"online\":${is_online},\"installed\":${is_installed},\"version\":\"${ver}\",\"cpu\":${svc_cpu:-0},\"ramMb\":${svc_ram:-0}}"
+    services_json="${services_json}\"${app}\":{\"online\":${is_online},\"installed\":${is_installed},\"version\":\"${ver}\",\"cpu\":${svc_cpu:-0},\"ramMb\":${svc_ram:-0},\"cpuCore\":${svc_core}}"
   done
 
   echo "{\"cpu\":${cpu:-0},\"temp\":${temp:-0},\"ramUsed\":${ram_used:-0},\"ramTotal\":${ram_total:-0},\"diskUsed\":${disk_used:-0},\"diskTotal\":${disk_total:-0},\"uptime\":\"${uptime_str}\",\"services\":{${services_json}}}"

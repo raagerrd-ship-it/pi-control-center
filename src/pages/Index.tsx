@@ -82,6 +82,7 @@ const Index = () => {
                 version={svcStatus?.version ?? '—'}
                 cpu={svcStatus?.cpu ?? 0}
                 ramMb={svcStatus?.ramMb ?? 0}
+                cpuCore={svcStatus?.cpuCore ?? -1}
                 updateStatus={updates[svc.key]}
                 installStatus={installs[svc.key]}
                 actionStatus={actions[svc.key]}
