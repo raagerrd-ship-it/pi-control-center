@@ -84,7 +84,9 @@ export function ServiceCard({
               <span>{ramMb}MB</span>
             </>
           ) : (
-            <span className="text-muted-foreground/60">Offline</span>
+            <span className="inline-flex items-center gap-1 rounded bg-[hsl(var(--status-offline)/0.15)] px-1.5 py-0.5 text-[hsl(var(--status-offline))] text-[10px] font-medium">
+              Offline
+            </span>
           )}
         </div>
       )}
