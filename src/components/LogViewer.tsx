@@ -32,7 +32,8 @@ export function LogViewer({ appKey, appName }: LogViewerProps) {
     if (open) {
       loadLog(logType);
     }
-  }, [open]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, appKey]);
 
   // Auto-scroll to bottom
   useEffect(() => {

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import { RefreshCw, CheckCircle2, AlertCircle } from 'lucide-react';
 import { SystemMonitor } from '@/components/SystemMonitor';
 import { ServiceCard } from '@/components/ServiceCard';
@@ -6,19 +6,27 @@ import { Settings, loadSettings, type DashboardSettings } from '@/components/Set
 import { useSystemStatus } from '@/hooks/useSystemStatus';
 import { useServiceUpdate } from '@/hooks/useServiceUpdate';
 import { Button } from '@/components/ui/button';
-import { triggerUpdate, type UpdateResult } from '@/lib/api';
+import { triggerUpdate, fetchUpdateStatus, type UpdateResult } from '@/lib/api';
 
 const Index = () => {
   const [settings, setSettings] = useState<DashboardSettings>(loadSettings);
-  const { status, error, loading } = useSystemStatus();
+  const { status, error, loading, demo } = useSystemStatus();
   const { updates, startUpdate, installs, startInstall, actions, runServiceAction } = useServiceUpdate();
   const [dashboardUpdate, setDashboardUpdate] = useState<UpdateResult | null>(null);
 
-  const handleDashboardUpdate = async () => {
+  const handleDashboardUpdate = useCallback(async () => {
     setDashboardUpdate({ app: 'dashboard', status: 'updating' });
     try {
-      const result = await triggerUpdate('dashboard');
-      setDashboardUpdate(result);
+      await triggerUpdate('dashboard');
+      // Poll for completion since update runs async on the Pi
+      const poll = async () => {
+        const result = await fetchUpdateStatus('dashboard');
+        setDashboardUpdate(result);
+        if (result.status === 'updating') {
+          setTimeout(poll, 3000);
+        }
+      };
+      setTimeout(poll, 3000);
     } catch (e) {
       setDashboardUpdate({
         app: 'dashboard',
@@ -26,7 +34,7 @@ const Index = () => {
         message: e instanceof Error ? e.message : 'Update failed',
       });
     }
-  };
+  }, []);
 
   const isUpdatingDashboard = dashboardUpdate?.status === 'updating';
 
@@ -35,7 +43,10 @@ const Index = () => {
       <header className="flex items-center justify-between mb-6">
         <div>
           <h1 className="font-mono text-lg font-bold tracking-tight">Pi Dashboard</h1>
-          <p className="font-mono text-xs text-muted-foreground">{settings.piIp}</p>
+          <p className="font-mono text-xs text-muted-foreground">
+            {settings.piIp}
+            {demo && <span className="ml-2 text-[hsl(var(--status-warning))]">DEMO</span>}
+          </p>
         </div>
         <div className="flex items-center gap-1">
           <Button
@@ -76,13 +87,14 @@ const Index = () => {
                 name={svc.name}
                 appKey={svc.key}
                 port={svc.port}
-                piIp={settings.piIp}
+                piIp={svc.host || settings.piIp}
                 online={svcStatus?.online ?? false}
                 installed={svcStatus?.installed ?? false}
                 version={svcStatus?.version ?? '—'}
                 cpu={svcStatus?.cpu ?? 0}
                 ramMb={svcStatus?.ramMb ?? 0}
                 cpuCore={svcStatus?.cpuCore ?? -1}
+                deviceLabel={svc.deviceLabel}
                 updateStatus={updates[svc.key]}
                 installStatus={installs[svc.key]}
                 actionStatus={actions[svc.key]}
