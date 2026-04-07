@@ -15,6 +15,7 @@ interface ServiceCardProps {
   cpu: number;
   ramMb: number;
   cpuCore: number;
+  deviceLabel?: string;
   updateStatus?: UpdateResult;
   installStatus?: InstallResult;
   actionStatus?: ServiceActionResult | { status: 'pending'; action: string };
