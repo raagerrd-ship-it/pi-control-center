@@ -30,6 +30,8 @@ export function ServiceCard({
   online,
   installed,
   version,
+  cpu,
+  ramMb,
   updateStatus,
   installStatus,
   actionStatus,
