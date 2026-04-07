@@ -72,5 +72,5 @@ export function useSystemStatus(intervalMs = 5000) {
     };
   }, [poll, intervalMs]);
 
-  return { status, error, loading, demo };
+  return { status, error, loading, demo, refresh: poll };
 }

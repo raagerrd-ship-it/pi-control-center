@@ -1,6 +1,7 @@
 import { useState, useCallback } from 'react';
 import { RefreshCw, CheckCircle2, AlertCircle, Cpu } from 'lucide-react';
 import { SystemMonitor } from '@/components/SystemMonitor';
+import { PullToRefresh } from '@/components/PullToRefresh';
 import { ServiceCard } from '@/components/ServiceCard';
 import { Settings, loadSettings, type DashboardSettings } from '@/components/Settings';
 import { useSystemStatus } from '@/hooks/useSystemStatus';
@@ -10,7 +11,7 @@ import { triggerUpdate, fetchUpdateStatus, fetchVersions, type UpdateResult, typ
 
 const Index = () => {
   const [settings, setSettings] = useState<DashboardSettings>(loadSettings);
-  const { status, error, loading, demo } = useSystemStatus();
+  const { status, error, loading, demo, refresh } = useSystemStatus();
   const { updates, startUpdate, installs, startInstall, actions, runServiceAction } = useServiceUpdate();
   const [dashboardUpdate, setDashboardUpdate] = useState<UpdateResult | null>(null);
   const [versions, setVersions] = useState<VersionMap | null>(null);
@@ -54,7 +55,8 @@ const Index = () => {
   const updatesAvailable = versions ? Object.values(versions).some(v => v.hasUpdate) : false;
 
   return (
-    <div className="min-h-screen bg-background p-4 sm:p-6 max-w-2xl mx-auto">
+    <PullToRefresh onRefresh={refresh}>
+      <div className="bg-background p-4 sm:p-6 max-w-2xl mx-auto">
       <header className="flex items-center justify-between mb-6">
         <div>
           <h1 className="font-mono text-lg font-bold tracking-tight">Pi Dashboard</h1>
@@ -183,7 +185,8 @@ const Index = () => {
       <footer className="mt-8 pb-4 text-center font-mono text-[10px] text-muted-foreground/40">
         {settings.deviceLabel || 'Pi Zero 2'} · {settings.piIp}
       </footer>
-    </div>
+     </div>
+    </PullToRefresh>
   );
 };
 
