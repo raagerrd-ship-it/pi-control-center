@@ -120,7 +120,10 @@ const Index = () => {
       <section className="mt-6">
         <div className={`rounded-lg border p-3 ${dashboardVersion?.hasUpdate ? 'border-[hsl(var(--status-warning)/0.3)] bg-[hsl(var(--status-warning)/0.05)]' : 'bg-card'}`}>
           <div className="flex items-center justify-between">
-            <span className="font-mono text-xs text-muted-foreground">Dashboard</span>
+            <div className="flex items-center gap-2.5">
+              <div className="h-2.5 w-2.5 rounded-full bg-[hsl(var(--status-online))]" />
+              <span className="font-medium text-sm">Dashboard + Nginx</span>
+            </div>
             <div className="flex items-center gap-1.5">
               {dashboardUpdate?.status === 'success' && (
                 <CheckCircle2 className="h-3.5 w-3.5 text-[hsl(var(--status-online))]" />
@@ -140,8 +143,19 @@ const Index = () => {
               </Button>
             </div>
           </div>
+
+          {/* Core + resource usage */}
+          <div className="flex items-center gap-2 font-mono text-[11px] mt-2">
+            <span className="inline-flex items-center gap-1 rounded bg-secondary px-1.5 py-0.5 text-foreground">
+              <Cpu className="h-3 w-3 text-[hsl(var(--status-online))]" />
+              Core 0
+            </span>
+            <span className="text-muted-foreground">~7MB</span>
+          </div>
+
+          {/* Version */}
           <div className="flex items-center justify-between mt-2 font-mono text-[11px]">
-            <span className="text-foreground">{dashboardVersion?.local || status?.uptime ? (dashboardVersion?.local || '—') : '—'}</span>
+            <span className="text-foreground">{dashboardVersion?.local || '—'}</span>
             {dashboardVersion?.hasUpdate && (
               <span className="text-[hsl(var(--status-warning))]">ny version</span>
             )}
