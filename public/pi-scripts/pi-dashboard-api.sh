@@ -247,22 +247,20 @@ handle_request() {
       ;;
 
     "POST /api/update/dashboard")
-      echo '{"status":"updating"}' > "$STATUS_DIR/dashboard.json"
-      local DDIR="$HOME/pi-dashboard" NDIR="/var/www/pi-dashboard"
+      local sf="$STATUS_DIR/dashboard.json"
+      echo '{"app":"dashboard","status":"updating"}' > "$sf"
+      response='{"app":"dashboard","status":"updating"}'
+      # Run update in background so HTTP response returns immediately
       (
-        cd "$DDIR" 2>/dev/null || exit 1
+        local DDIR="$HOME/pi-dashboard" NDIR="/var/www/pi-dashboard"
+        cd "$DDIR" 2>/dev/null || { echo "{\"app\":\"dashboard\",\"status\":\"error\",\"message\":\"Dir not found\",\"timestamp\":\"$(date -Iseconds)\"}" > "$sf"; exit 1; }
         nice -n 15 git fetch origin main --depth=1 --quiet 2>/dev/null
-        nice -n 15 git pull origin main --quiet 2>/dev/null || exit 1
+        nice -n 15 git pull origin main --quiet 2>/dev/null || { echo "{\"app\":\"dashboard\",\"status\":\"error\",\"message\":\"Git pull failed\",\"timestamp\":\"$(date -Iseconds)\"}" > "$sf"; exit 1; }
         NODE_OPTIONS="--max-old-space-size=256" nice -n 15 ionice -c 3 npm install --production --no-audit --no-fund 2>/dev/null
-        NODE_OPTIONS="--max-old-space-size=256" nice -n 15 ionice -c 3 npm run build 2>/dev/null || exit 1
+        NODE_OPTIONS="--max-old-space-size=256" nice -n 15 ionice -c 3 npm run build 2>/dev/null || { echo "{\"app\":\"dashboard\",\"status\":\"error\",\"message\":\"Build failed\",\"timestamp\":\"$(date -Iseconds)\"}" > "$sf"; exit 1; }
         sudo cp -r dist/* "$NDIR/" 2>/dev/null
-      ) > "$STATUS_DIR/dashboard.log" 2>&1
-      if [ $? -eq 0 ]; then
-        echo "{\"app\":\"dashboard\",\"status\":\"success\",\"timestamp\":\"$(date -Iseconds)\"}" > "$STATUS_DIR/dashboard.json"
-      else
-        echo "{\"app\":\"dashboard\",\"status\":\"error\",\"message\":\"Update failed\",\"timestamp\":\"$(date -Iseconds)\"}" > "$STATUS_DIR/dashboard.json"
-      fi
-      response=$(< "$STATUS_DIR/dashboard.json")
+        echo "{\"app\":\"dashboard\",\"status\":\"success\",\"timestamp\":\"$(date -Iseconds)\"}" > "$sf"
+      ) >> "$STATUS_DIR/dashboard.log" 2>&1 &
       ;;
 
     POST\ /api/update/*)
