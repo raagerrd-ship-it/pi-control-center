@@ -65,7 +65,7 @@ export function ServiceCard({
       : 'Offline';
 
   return (
-    <div className="rounded-lg border bg-card p-4 flex flex-col gap-3">
+    <div className={`rounded-lg border bg-card p-4 flex flex-col gap-3 transition-colors ${online ? 'border-border' : 'border-border/50'}`}>
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2.5">
