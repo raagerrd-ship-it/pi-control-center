@@ -1,0 +1,15 @@
+[Unit]
+Description=Pi Dashboard First Boot Setup
+After=network-online.target
+Wants=network-online.target
+ConditionPathExists=!/opt/.pi-dashboard-installed
+
+[Service]
+Type=oneshot
+ExecStart=/opt/first-boot-setup.sh
+RemainAfterExit=false
+TimeoutStartSec=900
+StandardOutput=journal+console
+
+[Install]
+WantedBy=multi-user.target
