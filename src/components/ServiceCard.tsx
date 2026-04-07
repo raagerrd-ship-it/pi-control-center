@@ -1,4 +1,4 @@
-import { ExternalLink, RefreshCw, CheckCircle2, XCircle, AlertCircle, Download, Loader2, Play, Square, RotateCcw } from 'lucide-react';
+import { ExternalLink, RefreshCw, CheckCircle2, XCircle, AlertCircle, Download, Loader2, Play, Square, RotateCcw, FileText, Cpu } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import { LogViewer } from '@/components/LogViewer';
@@ -86,26 +86,20 @@ export function ServiceCard({
         <span>:{port}</span>
         <span className="text-border">|</span>
         <span>{installed ? (version || statusLabel) : statusLabel}</span>
-        {deviceLabel && (
-          <>
-            <span className="text-border">|</span>
-            <span className="text-muted-foreground/60">{deviceLabel}</span>
-          </>
-        )}
       </div>
 
-      {/* Resource usage */}
+      {/* Resource usage — prominent core badge */}
       {installed && online && (
-        <div className="flex items-center gap-2.5 font-mono text-[11px]">
-          <span className="text-muted-foreground/60">Core {cpuCore}</span>
-          <span className="text-border">·</span>
+        <div className="flex items-center gap-2 font-mono text-[11px]">
+          <span className="inline-flex items-center gap-1 rounded bg-secondary px-1.5 py-0.5 text-foreground">
+            <Cpu className="h-3 w-3 text-[hsl(var(--status-online))]" />
+            Core {cpuCore}
+          </span>
           <span className={cpu > 50 ? 'text-[hsl(var(--status-warning))]' : 'text-muted-foreground'}>
             {cpu.toFixed(1)}%
           </span>
           <span className="text-border">·</span>
-          <span className="text-muted-foreground">
-            {ramMb}MB
-          </span>
+          <span className="text-muted-foreground">{ramMb}MB</span>
         </div>
       )}
 
@@ -203,33 +197,32 @@ export function ServiceCard({
               </Button>
             </div>
 
-            {/* Update button */}
-            <div className="flex items-center gap-2">
+            {/* Update + Logs as proper buttons */}
+            <div className="flex items-center gap-1.5">
               <Button
-                variant="ghost"
+                variant="secondary"
                 size="sm"
-                className="font-mono text-xs gap-1.5 text-muted-foreground hover:text-foreground"
+                className="font-mono text-xs gap-1 flex-1"
                 disabled={isUpdating || !online}
                 onClick={() => onUpdate(appKey)}
               >
                 <RefreshCw className={`h-3 w-3 ${isUpdating ? 'animate-spin' : ''}`} />
                 {isUpdating ? 'Uppdaterar...' : 'Uppdatera'}
               </Button>
-
-              {updateStatus?.status === 'success' && (
-                <span className="flex items-center gap-1 text-xs text-[hsl(var(--status-online))]">
-                  <CheckCircle2 className="h-3 w-3" /> Klar
-                </span>
-              )}
-              {updateStatus?.status === 'error' && (
-                <span className="flex items-center gap-1 text-xs text-destructive" title={updateStatus.message}>
-                  <AlertCircle className="h-3 w-3" /> Fel
-                </span>
-              )}
+              <LogViewer appKey={appKey} appName={name} asButton />
             </div>
 
-            {/* Log viewer */}
-            <LogViewer appKey={appKey} appName={name} />
+            {/* Update status feedback */}
+            {updateStatus?.status === 'success' && (
+              <span className="flex items-center gap-1 text-xs text-[hsl(var(--status-online))] font-mono">
+                <CheckCircle2 className="h-3 w-3" /> Uppdatering klar
+              </span>
+            )}
+            {updateStatus?.status === 'error' && (
+              <span className="flex items-center gap-1 text-xs text-destructive font-mono" title={updateStatus.message}>
+                <AlertCircle className="h-3 w-3" /> Uppdatering misslyckades
+              </span>
+            )}
           </>
         )}
       </div>
