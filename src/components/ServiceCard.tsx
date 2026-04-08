@@ -231,14 +231,23 @@ export function ServiceCard({
             </Button>
             <LogViewer appKey={appKey} appName={name} asIconButton showLabel />
             {installed && online && (
-              <a
-                href={`http://${piIp}:${port}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center justify-center gap-1 h-7 px-2 rounded-md bg-secondary font-mono text-[11px] text-muted-foreground hover:text-foreground transition-colors"
-              >
-                <ExternalLink className="h-3 w-3" /> Öppna
-              </a>
+              appKey === 'lotus-lantern' ? (
+                <a
+                  href="/lotus"
+                  className="inline-flex items-center justify-center gap-1 h-7 px-2 rounded-md bg-secondary font-mono text-[11px] text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  <ExternalLink className="h-3 w-3" /> Öppna
+                </a>
+              ) : (
+                <a
+                  href={`http://${piIp}:${port}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center justify-center gap-1 h-7 px-2 rounded-md bg-secondary font-mono text-[11px] text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  <ExternalLink className="h-3 w-3" /> Öppna
+                </a>
+              )
             )}
           </>
         )}
