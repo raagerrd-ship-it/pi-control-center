@@ -361,7 +361,7 @@ if alsa_mic.exists():
 PY
 
   echo '{"app":"lotus-lantern","status":"installing","progress":"Installerar dependencies och bygger..."}' > "$sf"
-  if ! sudo bash -lc 'set -e; cd /opt/lotus-light/pi; NODE_OPTIONS="--max-old-space-size=256" npm install --no-audit --no-fund; NODE_OPTIONS="--max-old-space-size=256" npm run build; npm prune --production 2>/dev/null || true' >> "$log_file" 2>&1; then
+  if ! sudo bash -lc 'set -e; cd /opt/lotus-light/pi; rm -rf node_modules; npm cache clean --force; NODE_OPTIONS="--max-old-space-size=256" npm install --no-audit --no-fund; NODE_OPTIONS="--max-old-space-size=256" npm run build; npm prune --production 2>/dev/null || true' >> "$log_file" 2>&1; then
     return 1
   fi
 
