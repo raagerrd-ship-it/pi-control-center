@@ -271,6 +271,85 @@ function SignalPreview({ cal, height = 90, showLegend = true }: { cal: typeof DE
   );
 }
 
+/* ── Live Debug Panel (temporary — remove after testing) ── */
+function LiveDebugPanel({ piBase }: { piBase: string }) {
+  const [history, setHistory] = useState<{ ts: number; sentCount: number; skipDelta: number; latMs: number; effectiveMs: number; tickMs: number }[]>([]);
+  const [expanded, setExpanded] = useState(false);
+  const prevSentRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    if (!expanded) return;
+    let cancelled = false;
+    const poll = async () => {
+      try {
+        const r = await fetch(`${piBase}/api/status`, { signal: AbortSignal.timeout(2000) });
+        if (!r.ok || cancelled) return;
+        const data = await r.json();
+        if (cancelled) return;
+        const stats = data.ble?.stats;
+        const eng = data.engine;
+        if (!stats) return;
+        const now = Date.now();
+        const sentCount = stats.sentCount ?? 0;
+        const wps = prevSentRef.current != null ? sentCount - prevSentRef.current : 0;
+        prevSentRef.current = sentCount;
+        setHistory(h => {
+          const next = [...h, {
+            ts: now,
+            sentCount: wps,
+            skipDelta: stats.skipDeltaCount ?? 0,
+            latMs: stats.writeLatMs ?? 0,
+            effectiveMs: stats.effectiveIntervalMs ?? 0,
+            tickMs: eng?.tickMs ?? 0,
+          }];
+          return next.slice(-60); // keep 60 data points
+        });
+      } catch {}
+    };
+    poll();
+    const id = setInterval(poll, 1000);
+    return () => { cancelled = true; clearInterval(id); };
+  }, [expanded, piBase]);
+
+  const Sparkline = ({ data, color, label, unit }: { data: number[]; color: string; label: string; unit: string }) => {
+    const max = Math.max(...data, 1);
+    const h = 40;
+    const w = 200;
+    const points = data.map((v, i) => `${(i / Math.max(data.length - 1, 1)) * w},${h - (v / max) * h}`).join(' ');
+    const last = data[data.length - 1];
+    return (
+      <div className="flex items-center gap-2">
+        <span className="text-[10px] text-muted-foreground w-20 text-right">{label}</span>
+        <svg width={w} height={h} className="bg-secondary/30 rounded">
+          <polyline points={points} fill="none" stroke={color} strokeWidth="1.5" />
+        </svg>
+        <span className="text-[10px] font-mono w-16">{last != null ? `${Math.round(last * 10) / 10}${unit}` : '—'}</span>
+      </div>
+    );
+  };
+
+  return (
+    <section className="mb-8 border border-dashed border-yellow-500/50 rounded-xl p-3">
+      <button onClick={() => setExpanded(!expanded)} className="flex items-center gap-2 w-full text-left">
+        <span className="text-[10px] font-bold text-yellow-500 uppercase">🐛 Debug Monitor</span>
+        <span className="text-[10px] text-muted-foreground">{expanded ? '▼' : '▶'}</span>
+      </button>
+      {expanded && (
+        <div className="mt-3 space-y-2">
+          <Sparkline data={history.map(h => h.sentCount)} color="#22c55e" label="BLE wr/s" unit="" />
+          <Sparkline data={history.map(h => h.latMs)} color="#3b82f6" label="Latens" unit="ms" />
+          <Sparkline data={history.map(h => h.effectiveMs)} color="#f59e0b" label="Interval" unit="ms" />
+          <Sparkline data={history.map(h => h.tickMs)} color="#a855f7" label="Tick" unit="ms" />
+          <div className="text-[9px] text-muted-foreground mt-1">
+            skipDelta: {history[history.length - 1]?.skipDelta ?? '—'} | 
+            Datapunkter: {history.length}/60
+          </div>
+        </div>
+      )}
+    </section>
+  );
+}
+
 /* ── BLE Fade Test ── */
 function BleFadeTest({ piBase, onResult }: { piBase: string; onResult: (wps: number) => void }) {
   const [running, setRunning] = useState(false);
@@ -937,6 +1016,9 @@ export default function PiMobile() {
           </button>
         </label>
       </section>
+
+      {/* ── Live Debug Panel (temporary) ── */}
+      <LiveDebugPanel piBase={piBase} />
     </div>
   );
 }
