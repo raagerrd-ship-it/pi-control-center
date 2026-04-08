@@ -66,21 +66,6 @@ const Index = () => {
           </p>
         </div>
         <div className="flex items-center gap-1">
-          <div className="relative">
-            <Button
-              variant="ghost"
-              size="icon"
-              className={`h-8 w-8 ${updatesAvailable ? 'text-[hsl(var(--status-warning))]' : 'text-muted-foreground hover:text-foreground'}`}
-              disabled={checkingVersions}
-              onClick={handleCheckVersions}
-              title="Sök efter uppdateringar"
-            >
-              <RefreshCw className={`h-4 w-4 ${checkingVersions ? 'animate-spin' : ''}`} />
-            </Button>
-            {updatesAvailable && (
-              <span className="absolute -top-0.5 -right-0.5 h-2.5 w-2.5 rounded-full bg-[hsl(var(--status-warning))] border-2 border-background" />
-            )}
-          </div>
           <Settings onSave={setSettings} />
         </div>
       </header>
@@ -125,9 +110,26 @@ const Index = () => {
 
       {/* Dashboard section */}
       <section className="mt-6">
-        <h2 className="font-mono text-xs uppercase tracking-wider text-muted-foreground mb-3">
-          System
-        </h2>
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="font-mono text-xs uppercase tracking-wider text-muted-foreground">
+            System
+          </h2>
+          <div className="relative">
+            <Button
+              variant="ghost"
+              size="sm"
+              className={`font-mono text-[11px] gap-1 h-6 px-2 ${updatesAvailable ? 'text-[hsl(var(--status-warning))]' : 'text-muted-foreground hover:text-foreground'}`}
+              disabled={checkingVersions}
+              onClick={handleCheckVersions}
+            >
+              <RefreshCw className={`h-3 w-3 ${checkingVersions ? 'animate-spin' : ''}`} />
+              {checkingVersions ? 'Söker...' : 'Sök uppdateringar'}
+            </Button>
+            {updatesAvailable && (
+              <span className="absolute -top-0.5 -right-0.5 h-2.5 w-2.5 rounded-full bg-[hsl(var(--status-warning))] border-2 border-background" />
+            )}
+          </div>
+        </div>
         <div className={`rounded-lg border p-3.5 flex flex-col gap-2.5 ${dashboardVersion?.hasUpdate ? 'border-[hsl(var(--status-warning)/0.3)] bg-[hsl(var(--status-warning)/0.05)]' : 'bg-card'}`}>
           <div className="flex items-center gap-2">
             <div className="h-2 w-2 rounded-full bg-[hsl(var(--status-online))]" />
