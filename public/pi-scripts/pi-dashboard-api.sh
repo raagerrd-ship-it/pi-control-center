@@ -135,7 +135,19 @@ check_service() {
 }
 
 check_installed() {
-  [ -d "$1" ] && [ -n "$(ls -A "$1" 2>/dev/null)" ] && echo "true" || echo "false"
+  local app=$1
+  local path=$2
+  local service=${APP_SERVICES[$app]}
+
+  if [ "$app" = "lotus-lantern" ]; then
+    [ -d "$path/.git" ] && [ -f "/etc/systemd/system/${service}.service" ] && echo "true" || echo "false"
+  elif [ "$app" = "cast-away" ]; then
+    [ -d "$path" ] && [ -f "$HOME/.config/systemd/user/${service}.service" ] && echo "true" || echo "false"
+  elif [ "$app" = "sonos-gateway" ]; then
+    [ -d "$path" ] && [ -f "$HOME/.config/systemd/user/${service}.service" ] && echo "true" || echo "false"
+  else
+    [ -d "$path" ] && [ -n "$(ls -A "$path" 2>/dev/null)" ] && echo "true" || echo "false"
+  fi
 }
 
 get_version() {
@@ -183,7 +195,7 @@ build_status_json() {
     install_dir=${APP_INSTALL_DIRS[$app]:-$dir}
     svc=${APP_SERVICES[$app]}
     online=$(check_service "$port")
-    installed=$(check_installed "$install_dir")
+    installed=$(check_installed "$app" "$install_dir")
     ver=$(get_version "$dir")
     s_cpu=0
     s_ram=0
@@ -390,6 +402,11 @@ WantedBy=timers.target
 EOF
 
   if ! sudo systemctl daemon-reload >> "$log_file" 2>&1 || ! sudo systemctl enable lotus-light >> "$log_file" 2>&1 || ! sudo systemctl enable --now lotus-update.timer >> "$log_file" 2>&1; then
+    return 1
+  fi
+
+  if ! sudo test -f /etc/systemd/system/lotus-light.service; then
+    echo "lotus-light.service saknas efter installation" >> "$log_file"
     return 1
   fi
 
