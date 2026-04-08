@@ -34,13 +34,13 @@ nice -n 15 ionice -c 3 npm install --no-audit --no-fund
 echo "[3/6] Updating browserslist..."
 npx -y update-browserslist-db@latest 2>/dev/null || true
 
-echo "[3/5] Building (this may take a few minutes)..."
+echo "[4/6] Building (this may take a few minutes)..."
 nice -n 15 ionice -c 3 npm run build
 
-echo "[4/5] Deploying to Nginx..."
+echo "[5/6] Deploying to Nginx..."
 sudo cp -r dist/* "$NGINX_DIR/"
 
-echo "[5/5] Cleaning up..."
+echo "[6/6] Cleaning up..."
 rm -rf node_modules
 npm cache clean --force 2>/dev/null || true
 
