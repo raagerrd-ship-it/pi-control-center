@@ -32,7 +32,7 @@ interface LogViewerProps {
 export function LogViewer({ appKey, appName, asButton, asIconButton, showLabel, panelOnly }: LogViewerProps) {
   const ctx = useContext(LogContext);
   const [localOpen, setLocalOpen] = useState(false);
-  const [logType, setLogType] = useState<'update' | 'install'>('update');
+  const [logType, setLogType] = useState<'update' | 'install' | 'service'>('service');
   const [log, setLog] = useState<string>('');
   const [loading, setLoading] = useState(false);
   const scrollRef = useRef<HTMLPreElement>(null);
@@ -40,11 +40,12 @@ export function LogViewer({ appKey, appName, asButton, asIconButton, showLabel, 
   const isOpen = ctx ? ctx.open : localOpen;
   const toggleOpen = ctx ? ctx.toggle : () => setLocalOpen(o => !o);
 
-  const loadLog = async (type: 'update' | 'install') => {
+  const loadLog = async (type: 'update' | 'install' | 'service') => {
     setLogType(type);
     setLoading(true);
     try {
-      const text = await fetchLogs(appKey, type);
+      const mappedType = type === 'service' ? 'update' : type;
+      const text = await fetchLogs(appKey, mappedType);
       setLog(text);
     } catch {
       setLog('Kunde inte hämta loggar');
@@ -88,7 +89,15 @@ export function LogViewer({ appKey, appName, asButton, asIconButton, showLabel, 
     return (
       <div className="rounded border bg-background p-2 mt-1">
         <div className="flex items-center justify-between mb-2">
-          <div className="flex gap-1">
+          <div className="flex gap-1 flex-wrap">
+            <Button
+              variant={logType === 'service' ? 'secondary' : 'ghost'}
+              size="sm"
+              className="font-mono text-[10px] h-6 px-2"
+              onClick={() => loadLog('service')}
+            >
+              Tjänst
+            </Button>
             <Button
               variant={logType === 'update' ? 'secondary' : 'ghost'}
               size="sm"
@@ -143,7 +152,15 @@ export function LogViewer({ appKey, appName, asButton, asIconButton, showLabel, 
   return (
     <div className="rounded border bg-background p-2 mt-1 col-span-full">
       <div className="flex items-center justify-between mb-2">
-        <div className="flex gap-1">
+        <div className="flex gap-1 flex-wrap">
+          <Button
+            variant={logType === 'service' ? 'secondary' : 'ghost'}
+            size="sm"
+            className="font-mono text-[10px] h-6 px-2"
+            onClick={() => loadLog('service')}
+          >
+            Tjänst
+          </Button>
           <Button
             variant={logType === 'update' ? 'secondary' : 'ghost'}
             size="sm"
