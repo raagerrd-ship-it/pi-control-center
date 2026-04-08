@@ -7,7 +7,7 @@
 #
 # A) SSH one-liner (recommended):
 #    ssh pi@<pi-ip>
-#    curl -sL https://raw.githubusercontent.com/YOUR_USER/pi-dashboard/main/public/pi-scripts/first-boot-setup.sh | sudo bash
+#    curl -sL https://raw.githubusercontent.com/raagerrd-ship-it/pi-control-center/main/public/pi-scripts/first-boot-setup.sh | sudo bash
 #
 #    Or with custom repo:
 #    curl -sL <url>/first-boot-setup.sh | sudo PI_DASHBOARD_REPO=https://github.com/you/repo.git bash
@@ -25,7 +25,7 @@ set -euo pipefail
 
 LOG="/var/log/pi-dashboard-setup.log"
 MARKER="/opt/.pi-dashboard-installed"
-REPO_URL="${PI_DASHBOARD_REPO:-https://github.com/YOUR_USER/pi-dashboard.git}"
+REPO_URL="${PI_DASHBOARD_REPO:-https://github.com/raagerrd-ship-it/pi-control-center.git}"
 API_PORT=8585
 
 # Auto-detect user (works via SSH or systemd)

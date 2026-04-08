@@ -46,7 +46,7 @@ ssh pi@<pi-ip>
 ### 3. Kör installationsscriptet
 
 ```bash
-curl -sL https://raw.githubusercontent.com/YOUR_USER/pi-dashboard/main/public/pi-scripts/first-boot-setup.sh | sudo bash
+curl -sL https://raw.githubusercontent.com/raagerrd-ship-it/pi-control-center/main/public/pi-scripts/first-boot-setup.sh | sudo bash
 ```
 
 Med eget repo:
@@ -66,7 +66,7 @@ curl -sL <url>/first-boot-setup.sh | sudo PI_DASHBOARD_REPO=https://github.com/d
 Om du vill att Pi:n ska installera allt automatiskt vid första boot (utan SSH):
 
 ```bash
-./public/pi-scripts/prep-sd-card.sh /mnt/rootfs https://github.com/YOUR_USER/pi-dashboard.git
+./public/pi-scripts/prep-sd-card.sh /mnt/rootfs https://github.com/raagerrd-ship-it/pi-control-center.git
 ```
 
 ---

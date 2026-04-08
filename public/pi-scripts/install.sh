@@ -3,7 +3,7 @@
 # Run: curl -sL <url>/pi-scripts/install.sh | bash -s -- <repo-url>
 set -e
 
-REPO_URL="${1:-https://github.com/YOUR_USER/pi-dashboard.git}"
+REPO_URL="${1:-https://github.com/raagerrd-ship-it/pi-control-center.git}"
 DASHBOARD_DIR="$HOME/pi-dashboard"
 NGINX_DIR="/var/www/pi-dashboard"
 API_PORT=8585
