@@ -219,6 +219,16 @@ export function ServiceCard({
             >
               <RotateCcw className="h-3 w-3" /> Omstart
             </Button>
+            <Button
+              variant={hasUpdate ? 'default' : 'secondary'}
+              size="sm"
+              className="font-mono text-[11px] gap-1 h-7 px-2"
+              disabled={isUpdating}
+              onClick={() => onUpdate(appKey)}
+            >
+              <RefreshCw className={`h-3 w-3 ${isUpdating ? 'animate-spin' : ''}`} />
+              {isUpdating ? '...' : 'Uppdatera'}
+            </Button>
             <LogViewer appKey={appKey} appName={name} asIconButton showLabel />
             {installed && online && (
               <a
