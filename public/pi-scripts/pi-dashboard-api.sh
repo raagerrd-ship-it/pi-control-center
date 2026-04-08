@@ -135,7 +135,19 @@ check_service() {
 }
 
 check_installed() {
-  [ -d "$1" ] && [ -n "$(ls -A "$1" 2>/dev/null)" ] && echo "true" || echo "false"
+  local app=$1
+  local path=$2
+  local service=${APP_SERVICES[$app]}
+
+  if [ "$app" = "lotus-lantern" ]; then
+    [ -d "$path/.git" ] && [ -f "/etc/systemd/system/${service}.service" ] && echo "true" || echo "false"
+  elif [ "$app" = "cast-away" ]; then
+    [ -d "$path" ] && [ -f "$HOME/.config/systemd/user/${service}.service" ] && echo "true" || echo "false"
+  elif [ "$app" = "sonos-gateway" ]; then
+    [ -d "$path" ] && [ -f "$HOME/.config/systemd/user/${service}.service" ] && echo "true" || echo "false"
+  else
+    [ -d "$path" ] && [ -n "$(ls -A "$path" 2>/dev/null)" ] && echo "true" || echo "false"
+  fi
 }
 
 get_version() {
