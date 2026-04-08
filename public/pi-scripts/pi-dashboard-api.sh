@@ -36,7 +36,7 @@ declare -A APP_REPOS=(
 declare -A APP_DIRS=(
   ["lotus-lantern"]="/opt/lotus-light"
   ["cast-away"]="$HOME/.local/share/cast-away"
-  ["sonos-gateway"]="$HOME/sonos-proxy"
+  ["sonos-gateway"]="$HOME/.local/share/sonos-proxy"
 )
 
 declare -A APP_INSTALL_SCRIPTS=(
