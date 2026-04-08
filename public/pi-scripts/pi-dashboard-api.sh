@@ -286,6 +286,17 @@ declare module "eventsource";
 TYPES
 
 sed -i 's/noble\.state/noble._state/g' "$PI_DIR/src/nobleBle.ts"
+python3 - <<'PY'
+from pathlib import Path
+
+alsa_mic = Path("/opt/lotus-light/pi/src/alsaMic.ts")
+if alsa_mic.exists():
+    source = alsa_mic.read_text()
+    original = "import { fft, util as fftUtil } from 'fft-js';"
+    replacement = "import fftJs from 'fft-js';\nconst { fft, util: fftUtil } = fftJs;"
+    if original in source and replacement not in source:
+        alsa_mic.write_text(source.replace(original, replacement))
+PY
 
 cd "$PI_DIR"
 NODE_OPTIONS="--max-old-space-size=256" npm install --no-audit --no-fund
@@ -337,6 +348,17 @@ install_lotus_lantern() {
   sudo sed -i 's/noble\.state/noble._state/g' /opt/lotus-light/pi/src/nobleBle.ts
   printf 'declare module "node-record-lpcm16";\n' | sudo tee /opt/lotus-light/pi/src/node-record-lpcm16.d.ts > /dev/null
   printf 'declare module "eventsource";\n' | sudo tee /opt/lotus-light/pi/src/eventsource.d.ts > /dev/null
+  sudo python3 - <<'PY'
+from pathlib import Path
+
+alsa_mic = Path('/opt/lotus-light/pi/src/alsaMic.ts')
+if alsa_mic.exists():
+    source = alsa_mic.read_text()
+    original = "import { fft, util as fftUtil } from 'fft-js';"
+    replacement = "import fftJs from 'fft-js';\nconst { fft, util: fftUtil } = fftJs;"
+    if original in source and replacement not in source:
+        alsa_mic.write_text(source.replace(original, replacement))
+PY
 
   echo '{"app":"lotus-lantern","status":"installing","progress":"Installerar dependencies och bygger..."}' > "$sf"
   if ! sudo bash -lc 'set -e; cd /opt/lotus-light/pi; NODE_OPTIONS="--max-old-space-size=256" npm install --no-audit --no-fund; NODE_OPTIONS="--max-old-space-size=256" npm run build; npm prune --production 2>/dev/null || true' >> "$log_file" 2>&1; then
@@ -411,6 +433,12 @@ EOF
   fi
 
   sudo systemctl start lotus-light >> "$log_file" 2>&1 || true
+  sleep 2
+  if ! sudo systemctl is-active --quiet lotus-light; then
+    sudo journalctl -u lotus-light -n 40 --no-pager >> "$log_file" 2>&1 || true
+    echo "lotus-light.service startade men avslutades direkt" >> "$log_file"
+    return 1
+  fi
 
   if [ "$needs_reboot" = "true" ]; then
     echo 'Installation klar — reboot kan krävas'
