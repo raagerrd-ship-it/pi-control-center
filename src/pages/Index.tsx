@@ -1,8 +1,9 @@
 import { useState, useCallback } from 'react';
-import { RefreshCw, CheckCircle2, AlertCircle, Cpu } from 'lucide-react';
+import { RefreshCw, CheckCircle2, AlertCircle } from 'lucide-react';
 import { SystemMonitor } from '@/components/SystemMonitor';
 import { PullToRefresh } from '@/components/PullToRefresh';
 import { ServiceCard } from '@/components/ServiceCard';
+import { ConnectionLog } from '@/components/ConnectionLog';
 import { Settings, loadSettings, type DashboardSettings } from '@/components/Settings';
 import { useSystemStatus } from '@/hooks/useSystemStatus';
 import { useServiceUpdate } from '@/hooks/useServiceUpdate';
@@ -11,7 +12,7 @@ import { triggerUpdate, fetchUpdateStatus, fetchVersions, type UpdateResult, typ
 
 const Index = () => {
   const [settings, setSettings] = useState<DashboardSettings>(loadSettings);
-  const { status, error, loading, demo, refresh } = useSystemStatus();
+  const { status, error, loading, logs, refresh } = useSystemStatus();
   const { updates, startUpdate, installs, startInstall, actions, runServiceAction } = useServiceUpdate();
   const [dashboardUpdate, setDashboardUpdate] = useState<UpdateResult | null>(null);
   const [versions, setVersions] = useState<VersionMap | null>(null);
@@ -62,7 +63,6 @@ const Index = () => {
           <h1 className="font-mono text-lg font-bold tracking-tight">Pi Dashboard</h1>
           <p className="font-mono text-xs text-muted-foreground">
             {settings.piIp}
-            {demo && <span className="ml-2 text-[hsl(var(--status-warning))]">DEMO</span>}
           </p>
         </div>
         <div className="flex items-center gap-1">
@@ -129,13 +129,11 @@ const Index = () => {
           System
         </h2>
         <div className={`rounded-lg border p-3.5 flex flex-col gap-2.5 ${dashboardVersion?.hasUpdate ? 'border-[hsl(var(--status-warning)/0.3)] bg-[hsl(var(--status-warning)/0.05)]' : 'bg-card'}`}>
-          {/* Header: status dot + name */}
           <div className="flex items-center gap-2">
             <div className="h-2 w-2 rounded-full bg-[hsl(var(--status-online))]" />
             <h3 className="font-medium text-sm leading-none">Dashboard + Nginx</h3>
           </div>
 
-          {/* Resource row */}
           <div className="flex items-center gap-2 font-mono text-[11px] text-muted-foreground">
             <span className="inline-flex items-center gap-1 rounded bg-secondary px-1.5 py-0.5">
               <span className="text-foreground text-[10px]">Core 0</span>
@@ -145,7 +143,6 @@ const Index = () => {
             <span>{status?.dashboardRamMb ?? 7}MB</span>
           </div>
 
-          {/* Version bar */}
           <div className={`flex items-center justify-between rounded px-2 py-1 text-[10px] font-mono ${dashboardVersion?.hasUpdate ? 'bg-[hsl(var(--status-warning)/0.08)] border border-[hsl(var(--status-warning)/0.25)]' : 'bg-secondary/30'}`}>
             <span className="text-muted-foreground">{dashboardVersion?.local || '—'}</span>
             {dashboardVersion?.hasUpdate ? (
@@ -162,7 +159,6 @@ const Index = () => {
             )}
           </div>
 
-          {/* Update feedback */}
           {dashboardUpdate?.status === 'success' && (
             <span className="flex items-center gap-1 text-[11px] text-[hsl(var(--status-online))] font-mono">
               <CheckCircle2 className="h-3 w-3" /> Klar
@@ -174,7 +170,6 @@ const Index = () => {
             </span>
           )}
 
-          {/* Actions row */}
           <div className="flex items-center gap-1">
             <Button
               variant={dashboardVersion?.hasUpdate ? 'default' : 'secondary'}
@@ -189,6 +184,8 @@ const Index = () => {
           </div>
         </div>
       </section>
+
+      <ConnectionLog logs={logs} />
 
       <footer className="mt-8 pb-4 text-center font-mono text-[10px] text-muted-foreground/40">
         {settings.deviceLabel || 'Pi Zero 2'} · {settings.piIp}
