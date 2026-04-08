@@ -152,7 +152,15 @@ export function LogViewer({ appKey, appName, asButton, asIconButton, showLabel, 
   return (
     <div className="rounded border bg-background p-2 mt-1 col-span-full">
       <div className="flex items-center justify-between mb-2">
-        <div className="flex gap-1">
+        <div className="flex gap-1 flex-wrap">
+          <Button
+            variant={logType === 'service' ? 'secondary' : 'ghost'}
+            size="sm"
+            className="font-mono text-[10px] h-6 px-2"
+            onClick={() => loadLog('service')}
+          >
+            Tjänst
+          </Button>
           <Button
             variant={logType === 'update' ? 'secondary' : 'ghost'}
             size="sm"
