@@ -269,6 +269,10 @@ do_install() {
   local default_port=${APP_PORTS[$app]}
   local default_core=${APP_CORES[$app]}
 
+  # Export DBUS env so install scripts can use systemctl --user
+  export XDG_RUNTIME_DIR="$USER_RUNTIME_DIR"
+  export DBUS_SESSION_BUS_ADDRESS="$USER_BUS_ADDRESS"
+
   if [ "$app" = "cast-away" ]; then
     if ! printf '\n%s\n' "$default_core" | nice -n 15 ionice -c 3 bash "$dir/$script" >> "$INSTALL_DIR/${app}.log" 2>&1; then
       echo "{\"app\":\"${app}\",\"status\":\"error\",\"message\":\"Installationsskript misslyckades\",\"timestamp\":\"$(date -Iseconds)\"}" > "$sf"
