@@ -29,7 +29,7 @@ user_systemctl() {
 # App configs
 declare -A APP_REPOS=(
   ["lotus-lantern"]="https://github.com/raagerrd-ship-it/lotus-light.git"
-  ["cast-away"]="https://github.com/raagerrd-ship-it/cast-away.git"
+  ["cast-away"]="https://github.com/raagerrd-ship-it/hromecast.git"
   ["sonos-gateway"]="https://github.com/raagerrd-ship-it/sonos-gateway.git"
 )
 
