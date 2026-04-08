@@ -143,7 +143,7 @@ export function ServiceCard({
       {/* Version bar */}
       {installed && (
         <div className={`flex items-center justify-between rounded px-2 py-1 text-[10px] font-mono ${hasUpdate ? 'bg-[hsl(var(--status-warning)/0.08)] border border-[hsl(var(--status-warning)/0.25)]' : 'bg-secondary/30'}`}>
-          <span className="text-muted-foreground">{version || '—'}</span>
+          <span className="text-muted-foreground">Version {version || '—'}</span>
           {hasUpdate ? (
             <button
               className="text-[hsl(var(--status-warning))] hover:text-foreground transition-colors inline-flex items-center gap-1 disabled:opacity-50"
