@@ -32,7 +32,7 @@ interface LogViewerProps {
 export function LogViewer({ appKey, appName, asButton, asIconButton, showLabel, panelOnly }: LogViewerProps) {
   const ctx = useContext(LogContext);
   const [localOpen, setLocalOpen] = useState(false);
-  const [logType, setLogType] = useState<'update' | 'install'>('update');
+  const [logType, setLogType] = useState<'update' | 'install' | 'service'>('service');
   const [log, setLog] = useState<string>('');
   const [loading, setLoading] = useState(false);
   const scrollRef = useRef<HTMLPreElement>(null);
