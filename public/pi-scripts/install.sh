@@ -52,6 +52,7 @@ fi
 # 4. Build with resource limits
 echo "[4/6] Building (this may take a few minutes on Pi Zero 2)..."
 nice -n 15 ionice -c 3 npm install --no-audit --no-fund
+npx -y update-browserslist-db@latest 2>/dev/null || true
 nice -n 15 ionice -c 3 npm run build
 sudo mkdir -p "$NGINX_DIR"
 sudo cp -r dist/* "$NGINX_DIR/"
