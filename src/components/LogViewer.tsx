@@ -40,11 +40,12 @@ export function LogViewer({ appKey, appName, asButton, asIconButton, showLabel, 
   const isOpen = ctx ? ctx.open : localOpen;
   const toggleOpen = ctx ? ctx.toggle : () => setLocalOpen(o => !o);
 
-  const loadLog = async (type: 'update' | 'install') => {
+  const loadLog = async (type: 'update' | 'install' | 'service') => {
     setLogType(type);
     setLoading(true);
     try {
-      const text = await fetchLogs(appKey, type);
+      const mappedType = type === 'service' ? 'update' : type;
+      const text = await fetchLogs(appKey, mappedType);
       setLog(text);
     } catch {
       setLog('Kunde inte hämta loggar');
