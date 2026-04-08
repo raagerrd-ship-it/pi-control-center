@@ -168,10 +168,11 @@ fi
 cd "$DASHBOARD_DIR"
 
 echo "[5/8] Building dashboard (this takes ~5-10 min on Pi Zero 2)..."
-sudo -u "$PI_USER" NODE_OPTIONS="--max-old-space-size=256" nice -n 15 ionice -c 3 npm install --production --no-audit --no-fund
+sudo -u "$PI_USER" NODE_OPTIONS="--max-old-space-size=256" nice -n 15 ionice -c 3 npm install --no-audit --no-fund
 sudo -u "$PI_USER" NODE_OPTIONS="--max-old-space-size=256" nice -n 15 ionice -c 3 npm run build
 sudo mkdir -p "$NGINX_DIR"
 sudo cp -r dist/* "$NGINX_DIR/"
+sudo -u "$PI_USER" rm -rf node_modules
 sudo -u "$PI_USER" npm cache clean --force 2>/dev/null || true
 
 # 6. Nginx config
