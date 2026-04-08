@@ -937,6 +937,9 @@ export default function PiMobile() {
           </button>
         </label>
       </section>
+
+      {/* ── Live Debug Panel (temporary) ── */}
+      <LiveDebugPanel piBase={piBase} />
     </div>
   );
 }
