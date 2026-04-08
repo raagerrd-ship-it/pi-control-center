@@ -24,9 +24,10 @@ fi
 
 cd "$DASHBOARD_DIR"
 
-echo "[1/5] Pulling latest code..."
+echo "[1/6] Pulling latest code..."
 git checkout -- . 2>/dev/null
 git pull
+chmod +x "$DASHBOARD_DIR/public/pi-scripts/"*.sh
 
 echo "[2/6] Installing dependencies..."
 nice -n 15 ionice -c 3 npm install --no-audit --no-fund
