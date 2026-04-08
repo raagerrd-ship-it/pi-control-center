@@ -195,7 +195,7 @@ build_status_json() {
     install_dir=${APP_INSTALL_DIRS[$app]:-$dir}
     svc=${APP_SERVICES[$app]}
     online=$(check_service "$port")
-    installed=$(check_installed "$install_dir")
+    installed=$(check_installed "$app" "$install_dir")
     ver=$(get_version "$dir")
     s_cpu=0
     s_ram=0
