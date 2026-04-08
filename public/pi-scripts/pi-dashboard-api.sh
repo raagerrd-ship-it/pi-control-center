@@ -52,7 +52,7 @@ declare -A APP_INSTALL_SCRIPTS=(
 )
 
 declare -A APP_UPDATE_SCRIPTS=(
-  ["lotus-lantern"]="/opt/lotus-light/pi/update-services.sh"
+  ["lotus-lantern"]="/opt/lotus-light/pi/dashboard-update.sh"
   ["cast-away"]="$HOME/.local/share/hromecast/bridge-pi/update.sh"
   ["sonos-gateway"]="$HOME/.local/share/sonos-proxy/bridge/update.sh"
 )
