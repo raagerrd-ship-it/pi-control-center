@@ -46,7 +46,7 @@ declare -A APP_INSTALL_DIRS=(
 )
 
 declare -A APP_INSTALL_SCRIPTS=(
-  ["lotus-lantern"]="pi/install.sh"
+  ["lotus-lantern"]="pi/setup-lotus.sh"
   ["cast-away"]="bridge-pi/install-linux.sh"
   ["sonos-gateway"]="bridge/install-linux.sh"
 )
@@ -249,39 +249,61 @@ do_install() {
 
   echo "{\"app\":\"${app}\",\"status\":\"installing\",\"progress\":\"Klonar repo...\"}" > "$sf"
 
-  [ -d "$dir" ] && rm -rf "$dir"
-  mkdir -p "$(dirname "$dir")"
-
-  if ! nice -n 15 git clone --depth 1 "$repo" "$dir" > "$INSTALL_DIR/${app}.log" 2>&1; then
-    echo "{\"app\":\"${app}\",\"status\":\"error\",\"message\":\"Git clone misslyckades\",\"timestamp\":\"$(date -Iseconds)\"}" > "$sf"
-    return 1
-  fi
-
-  echo "{\"app\":\"${app}\",\"status\":\"installing\",\"progress\":\"Kör installationsskript...\"}" > "$sf"
-
-  if [ ! -f "$dir/$script" ]; then
-    echo "{\"app\":\"${app}\",\"status\":\"error\",\"message\":\"Installationsskript saknas\",\"timestamp\":\"$(date -Iseconds)\"}" > "$sf"
-    return 1
-  fi
-
-  chmod +x "$dir/$script"
-
-  local default_port=${APP_PORTS[$app]}
-  local default_core=${APP_CORES[$app]}
-
   # Export DBUS env so install scripts can use systemctl --user
   export XDG_RUNTIME_DIR="$USER_RUNTIME_DIR"
   export DBUS_SESSION_BUS_ADDRESS="$USER_BUS_ADDRESS"
 
-  if [ "$app" = "cast-away" ]; then
-    if ! printf '\n%s\n' "$default_core" | nice -n 15 ionice -c 3 bash "$dir/$script" >> "$INSTALL_DIR/${app}.log" 2>&1; then
-      echo "{\"app\":\"${app}\",\"status\":\"error\",\"message\":\"Installationsskript misslyckades\",\"timestamp\":\"$(date -Iseconds)\"}" > "$sf"
+  local default_port=${APP_PORTS[$app]}
+  local default_core=${APP_CORES[$app]}
+
+  if [ "$app" = "lotus-lantern" ]; then
+    # Lotus Lantern uses sudo and installs to /opt/lotus-light itself
+    # Clone to temp dir, then run setup script with sudo
+    local tmp_dir="/tmp/lotus-light-install"
+    rm -rf "$tmp_dir"
+    if ! nice -n 15 git clone --depth 1 "$repo" "$tmp_dir" > "$INSTALL_DIR/${app}.log" 2>&1; then
+      echo "{\"app\":\"${app}\",\"status\":\"error\",\"message\":\"Git clone misslyckades\",\"timestamp\":\"$(date -Iseconds)\"}" > "$sf"
       return 1
     fi
-  else
-    if ! printf '%s\n%s\n' "$default_port" "$default_core" | nice -n 15 ionice -c 3 bash "$dir/$script" >> "$INSTALL_DIR/${app}.log" 2>&1; then
+
+    echo "{\"app\":\"${app}\",\"status\":\"installing\",\"progress\":\"Kör installationsskript (sudo)...\"}" > "$sf"
+    chmod +x "$tmp_dir/$script"
+
+    if ! printf '%s\n' "$default_core" | sudo CPU_CORE="$default_core" nice -n 15 ionice -c 3 bash "$tmp_dir/$script" >> "$INSTALL_DIR/${app}.log" 2>&1; then
       echo "{\"app\":\"${app}\",\"status\":\"error\",\"message\":\"Installationsskript misslyckades\",\"timestamp\":\"$(date -Iseconds)\"}" > "$sf"
+      rm -rf "$tmp_dir"
       return 1
+    fi
+    rm -rf "$tmp_dir"
+  else
+    # User-space apps: clone to APP_DIRS, then run install script
+    [ -d "$dir" ] && rm -rf "$dir"
+    mkdir -p "$(dirname "$dir")"
+
+    if ! nice -n 15 git clone --depth 1 "$repo" "$dir" > "$INSTALL_DIR/${app}.log" 2>&1; then
+      echo "{\"app\":\"${app}\",\"status\":\"error\",\"message\":\"Git clone misslyckades\",\"timestamp\":\"$(date -Iseconds)\"}" > "$sf"
+      return 1
+    fi
+
+    echo "{\"app\":\"${app}\",\"status\":\"installing\",\"progress\":\"Kör installationsskript...\"}" > "$sf"
+
+    if [ ! -f "$dir/$script" ]; then
+      echo "{\"app\":\"${app}\",\"status\":\"error\",\"message\":\"Installationsskript saknas\",\"timestamp\":\"$(date -Iseconds)\"}" > "$sf"
+      return 1
+    fi
+
+    chmod +x "$dir/$script"
+
+    if [ "$app" = "cast-away" ]; then
+      if ! printf '\n%s\n' "$default_core" | nice -n 15 ionice -c 3 bash "$dir/$script" >> "$INSTALL_DIR/${app}.log" 2>&1; then
+        echo "{\"app\":\"${app}\",\"status\":\"error\",\"message\":\"Installationsskript misslyckades\",\"timestamp\":\"$(date -Iseconds)\"}" > "$sf"
+        return 1
+      fi
+    else
+      if ! printf '%s\n%s\n' "$default_port" "$default_core" | nice -n 15 ionice -c 3 bash "$dir/$script" >> "$INSTALL_DIR/${app}.log" 2>&1; then
+        echo "{\"app\":\"${app}\",\"status\":\"error\",\"message\":\"Installationsskript misslyckades\",\"timestamp\":\"$(date -Iseconds)\"}" > "$sf"
+        return 1
+      fi
     fi
   fi
 
