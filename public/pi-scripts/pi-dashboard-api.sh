@@ -134,9 +134,17 @@ get_version() {
 }
 
 get_service_ram() {
-  systemctl show "$1.service" --property=MemoryCurrent 2>/dev/null | awk -F= '{
-    if ($2 ~ /^\[/ || $2 == "") print 0; else printf "%d", $2/1048576
-  }' || echo "0"
+  local val
+  val=$(systemctl show "$1.service" --property=MemoryCurrent 2>/dev/null | cut -d= -f2)
+  # Try user-level if system-level returns nothing useful
+  if [ -z "$val" ] || [ "$val" = "[not set]" ] || [ "$val" = "infinity" ]; then
+    val=$(systemctl --user show "$1.service" --property=MemoryCurrent 2>/dev/null | cut -d= -f2)
+  fi
+  if [ -n "$val" ] && [ "$val" != "[not set]" ] && [ "$val" != "infinity" ] && [ "$val" != "" ]; then
+    echo $((val / 1048576))
+  else
+    echo "0"
+  fi
 }
 
 build_status_json() {
