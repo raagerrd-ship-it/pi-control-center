@@ -13,9 +13,9 @@ mkdir -p "$STATUS_DIR" "$INSTALL_DIR"
 
 # App configs
 declare -A APP_REPOS=(
-  ["lotus-lantern"]="https://github.com/YOUR_USER/lotus-light.git"
-  ["cast-away"]="https://github.com/YOUR_USER/cast-away.git"
-  ["sonos-gateway"]="https://github.com/YOUR_USER/sonos-proxy.git"
+  ["lotus-lantern"]="https://github.com/raagerrd-ship-it/lotus-light.git"
+  ["cast-away"]="https://github.com/raagerrd-ship-it/cast-away.git"
+  ["sonos-gateway"]="https://github.com/raagerrd-ship-it/sonos-proxy.git"
 )
 
 declare -A APP_DIRS=(
