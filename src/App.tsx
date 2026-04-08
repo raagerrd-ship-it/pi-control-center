@@ -4,6 +4,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import Index from "./pages/Index.tsx";
 import NotFound from "./pages/NotFound.tsx";
+import LotusControl from "./pages/LotusControl.tsx";
 
 const App = () => (
   <TooltipProvider>
@@ -12,6 +13,7 @@ const App = () => (
     <BrowserRouter>
       <Routes>
         <Route path="/" element={<Index />} />
+        <Route path="/lotus" element={<LotusControl />} />
         <Route path="*" element={<NotFound />} />
       </Routes>
     </BrowserRouter>
