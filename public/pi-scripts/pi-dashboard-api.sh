@@ -48,7 +48,7 @@ declare -A APP_INSTALL_SCRIPTS=(
 declare -A APP_UPDATE_SCRIPTS=(
   ["lotus-lantern"]="/opt/lotus-light/pi/update-services.sh"
   ["cast-away"]="$HOME/.local/share/cast-away/update.sh"
-  ["sonos-gateway"]="$HOME/sonos-proxy/update.sh"
+  ["sonos-gateway"]="$HOME/.local/share/sonos-proxy/bridge/update.sh"
 )
 
 declare -A APP_PORTS=(
