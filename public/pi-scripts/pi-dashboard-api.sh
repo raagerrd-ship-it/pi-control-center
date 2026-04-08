@@ -322,11 +322,23 @@ handle_request() {
       if [ -z "$svc" ]; then
         status_line="HTTP/1.1 404 Not Found"
         response="{\"error\":\"Unknown app: ${app}\"}"
-      elif sudo systemctl "$action" "${svc}.service" 2>/dev/null; then
-        rm -f "$CACHE_FILE"
-        response="{\"app\":\"${app}\",\"action\":\"${action}\",\"status\":\"success\"}"
       else
-        response="{\"app\":\"${app}\",\"action\":\"${action}\",\"status\":\"error\",\"message\":\"systemctl ${action} failed\"}"
+        local svc_ok="false" svc_err=""
+        # Try system-level first, then user-level
+        if sudo systemctl "$action" "${svc}.service" 2>/tmp/svc-err-$$; then
+          svc_ok="true"
+        elif systemctl --user "$action" "${svc}.service" 2>/tmp/svc-err-$$; then
+          svc_ok="true"
+        else
+          svc_err=$(cat /tmp/svc-err-$$ 2>/dev/null | head -1 | sed 's/"/\\"/g')
+        fi
+        rm -f /tmp/svc-err-$$
+        if [ "$svc_ok" = "true" ]; then
+          rm -f "$CACHE_FILE"
+          response="{\"app\":\"${app}\",\"action\":\"${action}\",\"status\":\"success\"}"
+        else
+          response="{\"app\":\"${app}\",\"action\":\"${action}\",\"status\":\"error\",\"message\":\"${svc_err:-systemctl ${action} failed}\"}"
+        fi
       fi
       ;;
 
