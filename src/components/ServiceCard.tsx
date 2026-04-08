@@ -169,9 +169,16 @@ export function ServiceCard({
         </span>
       )}
       {updateStatus?.status === 'error' && (
-        <span className="flex items-center gap-1 text-[11px] text-destructive font-mono" title={updateStatus.message}>
-          <AlertCircle className="h-3 w-3" /> Misslyckades
-        </span>
+        <div className="flex flex-col gap-0.5">
+          <span className="flex items-center gap-1 text-[11px] text-destructive font-mono">
+            <AlertCircle className="h-3 w-3" /> Misslyckades
+          </span>
+          {updateStatus.message && (
+            <span className="text-[10px] text-destructive/70 font-mono pl-4 break-all">
+              {updateStatus.message}
+            </span>
+          )}
+        </div>
       )}
 
       {/* Actions — all on one row */}
