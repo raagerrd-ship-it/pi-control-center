@@ -35,19 +35,25 @@ declare -A APP_REPOS=(
 
 declare -A APP_DIRS=(
   ["lotus-lantern"]="/opt/lotus-light"
+  ["cast-away"]="$HOME/.local/share/hromecast"
+  ["sonos-gateway"]="$HOME/.local/share/sonos-proxy"
+)
+
+declare -A APP_INSTALL_DIRS=(
+  ["lotus-lantern"]="/opt/lotus-light"
   ["cast-away"]="$HOME/.local/share/cast-away"
   ["sonos-gateway"]="$HOME/.local/share/sonos-proxy"
 )
 
 declare -A APP_INSTALL_SCRIPTS=(
   ["lotus-lantern"]="pi/install.sh"
-  ["cast-away"]="install.sh"
+  ["cast-away"]="bridge-pi/install-linux.sh"
   ["sonos-gateway"]="bridge/install-linux.sh"
 )
 
 declare -A APP_UPDATE_SCRIPTS=(
   ["lotus-lantern"]="/opt/lotus-light/pi/update-services.sh"
-  ["cast-away"]="$HOME/.local/share/cast-away/update.sh"
+  ["cast-away"]="$HOME/.local/share/hromecast/bridge-pi/update.sh"
   ["sonos-gateway"]="$HOME/.local/share/sonos-proxy/bridge/update.sh"
 )
 
@@ -129,7 +135,7 @@ check_service() {
 }
 
 check_installed() {
-  [ -d "$1/.git" ] && echo "true" || echo "false"
+  [ -d "$1" ] && [ -n "$(ls -A "$1" 2>/dev/null)" ] && echo "true" || echo "false"
 }
 
 get_version() {
@@ -171,12 +177,13 @@ build_status_json() {
   svc_json=""
 
   for app in lotus-lantern cast-away sonos-gateway; do
-    local port dir svc online installed ver s_cpu s_ram s_core pid aff
+    local port dir install_dir svc online installed ver s_cpu s_ram s_core pid aff
     port=${APP_PORTS[$app]}
     dir=${APP_DIRS[$app]}
+    install_dir=${APP_INSTALL_DIRS[$app]:-$dir}
     svc=${APP_SERVICES[$app]}
     online=$(check_service "$port")
-    installed=$(check_installed "$dir")
+    installed=$(check_installed "$install_dir")
     ver=$(get_version "$dir")
     s_cpu=0
     s_ram=0
@@ -252,17 +259,29 @@ do_install() {
 
   echo "{\"app\":\"${app}\",\"status\":\"installing\",\"progress\":\"Kör installationsskript...\"}" > "$sf"
 
-  if [ -f "$dir/$script" ]; then
-    chmod +x "$dir/$script"
-    # Feed default answers for interactive install scripts (port, cpu core, continue prompts)
-    local default_port=${APP_PORTS[$app]}
-    local default_core=${APP_CORES[$app]}
+  if [ ! -f "$dir/$script" ]; then
+    echo "{\"app\":\"${app}\",\"status\":\"error\",\"message\":\"Installationsskript saknas\",\"timestamp\":\"$(date -Iseconds)\"}" > "$sf"
+    return 1
+  fi
+
+  chmod +x "$dir/$script"
+
+  local default_port=${APP_PORTS[$app]}
+  local default_core=${APP_CORES[$app]}
+
+  if [ "$app" = "cast-away" ]; then
+    if ! printf '\n%s\n' "$default_core" | nice -n 15 ionice -c 3 bash "$dir/$script" >> "$INSTALL_DIR/${app}.log" 2>&1; then
+      echo "{\"app\":\"${app}\",\"status\":\"error\",\"message\":\"Installationsskript misslyckades\",\"timestamp\":\"$(date -Iseconds)\"}" > "$sf"
+      return 1
+    fi
+  else
     if ! printf '%s\n%s\n' "$default_port" "$default_core" | nice -n 15 ionice -c 3 bash "$dir/$script" >> "$INSTALL_DIR/${app}.log" 2>&1; then
       echo "{\"app\":\"${app}\",\"status\":\"error\",\"message\":\"Installationsskript misslyckades\",\"timestamp\":\"$(date -Iseconds)\"}" > "$sf"
       return 1
     fi
   fi
 
+  rm -f "$CACHE_FILE"
   echo "{\"app\":\"${app}\",\"status\":\"success\",\"message\":\"Installation klar\",\"timestamp\":\"$(date -Iseconds)\"}" > "$sf"
 }
 
