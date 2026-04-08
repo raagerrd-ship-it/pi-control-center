@@ -36,19 +36,19 @@ declare -A APP_REPOS=(
 declare -A APP_DIRS=(
   ["lotus-lantern"]="/opt/lotus-light"
   ["cast-away"]="$HOME/.local/share/cast-away"
-  ["sonos-gateway"]="$HOME/sonos-proxy"
+  ["sonos-gateway"]="$HOME/.local/share/sonos-proxy"
 )
 
 declare -A APP_INSTALL_SCRIPTS=(
   ["lotus-lantern"]="pi/install.sh"
   ["cast-away"]="install.sh"
-  ["sonos-gateway"]="install.sh"
+  ["sonos-gateway"]="bridge/install-linux.sh"
 )
 
 declare -A APP_UPDATE_SCRIPTS=(
   ["lotus-lantern"]="/opt/lotus-light/pi/update-services.sh"
   ["cast-away"]="$HOME/.local/share/cast-away/update.sh"
-  ["sonos-gateway"]="$HOME/sonos-proxy/update.sh"
+  ["sonos-gateway"]="$HOME/.local/share/sonos-proxy/bridge/update.sh"
 )
 
 declare -A APP_PORTS=(
@@ -254,7 +254,10 @@ do_install() {
 
   if [ -f "$dir/$script" ]; then
     chmod +x "$dir/$script"
-    if ! nice -n 15 ionice -c 3 bash "$dir/$script" >> "$INSTALL_DIR/${app}.log" 2>&1; then
+    # Feed default answers for interactive install scripts (port, cpu core, continue prompts)
+    local default_port=${APP_PORTS[$app]}
+    local default_core=${APP_CORES[$app]}
+    if ! printf '%s\n%s\n' "$default_port" "$default_core" | nice -n 15 ionice -c 3 bash "$dir/$script" >> "$INSTALL_DIR/${app}.log" 2>&1; then
       echo "{\"app\":\"${app}\",\"status\":\"error\",\"message\":\"Installationsskript misslyckades\",\"timestamp\":\"$(date -Iseconds)\"}" > "$sf"
       return 1
     fi
