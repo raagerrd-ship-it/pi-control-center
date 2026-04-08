@@ -405,6 +405,11 @@ EOF
     return 1
   fi
 
+  if ! sudo test -f /etc/systemd/system/lotus-light.service; then
+    echo "lotus-light.service saknas efter installation" >> "$log_file"
+    return 1
+  fi
+
   sudo systemctl start lotus-light >> "$log_file" 2>&1 || true
 
   if [ "$needs_reboot" = "true" ]; then
