@@ -385,7 +385,7 @@ RestartSec=5
 Environment=NODE_ENV=production
 Environment=BRIDGE_URL=http://localhost:3000/api/sonos
 Environment=CONFIG_PORT=3001
-Environment=TICK_MS=30
+Environment=TICK_MS=50
 MemoryMax=128M
 AllowedCPUs=${default_core}
 CPUQuota=100%
