@@ -46,7 +46,7 @@ declare -A APP_INSTALL_DIRS=(
 )
 
 declare -A APP_INSTALL_SCRIPTS=(
-  ["lotus-lantern"]="pi/install.sh"
+  ["lotus-lantern"]="pi/setup-lotus.sh"
   ["cast-away"]="bridge-pi/install-linux.sh"
   ["sonos-gateway"]="bridge/install-linux.sh"
 )
