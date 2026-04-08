@@ -51,10 +51,11 @@ fi
 
 # 4. Build with resource limits
 echo "[4/6] Building (this may take a few minutes on Pi Zero 2)..."
-nice -n 15 ionice -c 3 npm install --production --no-audit --no-fund
+nice -n 15 ionice -c 3 npm install --no-audit --no-fund
 nice -n 15 ionice -c 3 npm run build
 sudo mkdir -p "$NGINX_DIR"
 sudo cp -r dist/* "$NGINX_DIR/"
+rm -rf node_modules
 npm cache clean --force 2>/dev/null || true
 
 # 5. Configure Nginx (optimized for Pi Zero 2 W)
