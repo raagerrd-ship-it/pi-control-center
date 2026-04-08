@@ -14,8 +14,17 @@ STATUS_DIR="/tmp/pi-dashboard"
 INSTALL_DIR="/tmp/pi-dashboard/install"
 CACHE_FILE="$STATUS_DIR/status-cache.json"
 CACHE_MAX_AGE=2  # seconds
+USER_ID="$(id -u)"
+USER_RUNTIME_DIR="/run/user/$USER_ID"
+USER_BUS_ADDRESS="unix:path=$USER_RUNTIME_DIR/bus"
 
 mkdir -p "$STATUS_DIR" "$INSTALL_DIR"
+
+user_systemctl() {
+  XDG_RUNTIME_DIR="$USER_RUNTIME_DIR" \
+  DBUS_SESSION_BUS_ADDRESS="$USER_BUS_ADDRESS" \
+  systemctl --user "$@"
+}
 
 # App configs
 declare -A APP_REPOS=(
@@ -138,7 +147,7 @@ get_service_ram() {
   val=$(systemctl show "$1.service" --property=MemoryCurrent 2>/dev/null | cut -d= -f2)
   # Try user-level if system-level returns nothing useful
   if [ -z "$val" ] || [ "$val" = "[not set]" ] || [ "$val" = "infinity" ]; then
-    val=$(systemctl --user show "$1.service" --property=MemoryCurrent 2>/dev/null | cut -d= -f2)
+    val=$(user_systemctl show "$1.service" --property=MemoryCurrent 2>/dev/null | cut -d= -f2)
   fi
   if [ -n "$val" ] && [ "$val" != "[not set]" ] && [ "$val" != "infinity" ] && [ "$val" != "" ]; then
     echo $((val / 1048576))
@@ -178,7 +187,7 @@ build_status_json() {
       pid=$(systemctl show "${svc}.service" --property=MainPID 2>/dev/null | cut -d= -f2)
       # Try user-level if system-level PID is 0
       if [ -z "$pid" ] || [ "$pid" = "0" ]; then
-        pid=$(systemctl --user show "${svc}.service" --property=MainPID 2>/dev/null | cut -d= -f2)
+        pid=$(user_systemctl show "${svc}.service" --property=MainPID 2>/dev/null | cut -d= -f2)
       fi
       if [ -n "$pid" ] && [ "$pid" != "0" ]; then
         s_cpu=$(ps -p "$pid" -o %cpu= 2>/dev/null | tr -d ' ' || echo "0")
@@ -335,11 +344,13 @@ handle_request() {
         status_line="HTTP/1.1 404 Not Found"
         response="{\"error\":\"Unknown app: ${app}\"}"
       else
-        local svc_ok="false" svc_err=""
-        # Try system-level first, then user-level
+        local svc_ok="false" svc_err="" log_file now
+        log_file="$STATUS_DIR/${app}.log"
+        now="$(date -Iseconds)"
+        # Try system-level first, then user-level with explicit user bus env
         if sudo systemctl "$action" "${svc}.service" 2>/tmp/svc-err-$$; then
           svc_ok="true"
-        elif systemctl --user "$action" "${svc}.service" 2>/tmp/svc-err-$$; then
+        elif user_systemctl "$action" "${svc}.service" 2>/tmp/svc-err-$$; then
           svc_ok="true"
         else
           svc_err=$(cat /tmp/svc-err-$$ 2>/dev/null | head -1 | sed 's/"/\\"/g')
@@ -347,8 +358,10 @@ handle_request() {
         rm -f /tmp/svc-err-$$
         if [ "$svc_ok" = "true" ]; then
           rm -f "$CACHE_FILE"
+          printf "[%s] service %s %s: success\n" "$now" "$svc" "$action" >> "$log_file"
           response="{\"app\":\"${app}\",\"action\":\"${action}\",\"status\":\"success\"}"
         else
+          printf "[%s] service %s %s: %s\n" "$now" "$svc" "$action" "${svc_err:-systemctl ${action} failed}" >> "$log_file"
           response="{\"app\":\"${app}\",\"action\":\"${action}\",\"status\":\"error\",\"message\":\"${svc_err:-systemctl ${action} failed}\"}"
         fi
       fi
