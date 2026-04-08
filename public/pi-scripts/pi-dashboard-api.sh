@@ -111,9 +111,12 @@ get_uptime() {
 check_service() {
   local hex_port
   hex_port=$(printf '%04X' "$1")
-  grep -q ":${hex_port} " /proc/net/tcp 2>/dev/null || \
-  grep -q ":${hex_port} " /proc/net/tcp6 2>/dev/null
-  [ $? -eq 0 ] && echo "true" || echo "false"
+  if grep -q ":${hex_port} " /proc/net/tcp 2>/dev/null || \
+     grep -q ":${hex_port} " /proc/net/tcp6 2>/dev/null; then
+    echo "true"
+  else
+    echo "false"
+  fi
 }
 
 check_installed() {
