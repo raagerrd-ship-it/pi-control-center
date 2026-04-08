@@ -176,6 +176,10 @@ build_status_json() {
     if [ "$online" = "true" ]; then
       s_ram=$(get_service_ram "$svc")
       pid=$(systemctl show "${svc}.service" --property=MainPID 2>/dev/null | cut -d= -f2)
+      # Try user-level if system-level PID is 0
+      if [ -z "$pid" ] || [ "$pid" = "0" ]; then
+        pid=$(systemctl --user show "${svc}.service" --property=MainPID 2>/dev/null | cut -d= -f2)
+      fi
       if [ -n "$pid" ] && [ "$pid" != "0" ]; then
         s_cpu=$(ps -p "$pid" -o %cpu= 2>/dev/null | tr -d ' ' || echo "0")
         aff=$(taskset -p "$pid" 2>/dev/null | awk '{print $NF}')
