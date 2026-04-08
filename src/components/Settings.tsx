@@ -92,23 +92,16 @@ export function Settings({ onSave }: { onSave: (s: DashboardSettings) => void })
         <div className="flex flex-col gap-4">
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <Label className="text-xs text-muted-foreground font-mono">IP / Hostname</Label>
-              <Input
-                className="font-mono text-sm mt-1"
-                placeholder="192.168.1.100"
-                value={settings.piIp}
-                onChange={e => setSettings(s => ({ ...s, piIp: e.target.value }))}
-              />
+              <Label className="text-xs text-muted-foreground font-mono">IP / Hostname <span className="text-muted-foreground/50">(auto)</span></Label>
+              <div className="font-mono text-sm mt-1 px-3 py-2 rounded-md bg-secondary text-muted-foreground truncate">
+                {settings.piIp}
+              </div>
             </div>
             <div>
-              <Label className="text-xs text-muted-foreground font-mono">API-port</Label>
-              <Input
-                className="font-mono text-sm mt-1"
-                type="number"
-                placeholder="8585"
-                value={settings.apiPort}
-                onChange={e => setSettings(s => ({ ...s, apiPort: Number(e.target.value) }))}
-              />
+              <Label className="text-xs text-muted-foreground font-mono">API-port <span className="text-muted-foreground/50">(auto)</span></Label>
+              <div className="font-mono text-sm mt-1 px-3 py-2 rounded-md bg-secondary text-muted-foreground">
+                {settings.apiPort}
+              </div>
             </div>
           </div>
           <div>
