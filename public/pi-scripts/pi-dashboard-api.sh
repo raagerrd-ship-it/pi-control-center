@@ -21,7 +21,7 @@ mkdir -p "$STATUS_DIR" "$INSTALL_DIR"
 declare -A APP_REPOS=(
   ["lotus-lantern"]="https://github.com/raagerrd-ship-it/lotus-light.git"
   ["cast-away"]="https://github.com/raagerrd-ship-it/cast-away.git"
-  ["sonos-gateway"]="https://github.com/raagerrd-ship-it/sonos-proxy.git"
+  ["sonos-gateway"]="https://github.com/raagerrd-ship-it/sonos-gateway.git"
 )
 
 declare -A APP_DIRS=(
