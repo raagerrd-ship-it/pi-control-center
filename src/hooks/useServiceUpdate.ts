@@ -60,14 +60,15 @@ export function useServiceUpdate() {
     try {
       const result = await serviceAction(app, action);
       setActions(prev => ({ ...prev, [app]: result }));
-      // Auto-clear after 3s
+      // Auto-clear success after 3s, keep errors visible for 8s
+      const delay = result.status === 'error' ? 8000 : 3000;
       setTimeout(() => {
         setActions(prev => {
           const next = { ...prev };
           delete next[app];
           return next;
         });
-      }, 3000);
+      }, delay);
     } catch (e) {
       setActions(prev => ({
         ...prev,

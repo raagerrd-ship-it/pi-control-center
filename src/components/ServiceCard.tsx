@@ -133,8 +133,11 @@ export function ServiceCard({
             </span>
           )}
           {actionStatus.status === 'error' && (
-            <span className="flex items-center gap-1 text-destructive" title={'message' in actionStatus ? actionStatus.message : ''}>
-              <AlertCircle className="h-3 w-3" /> Misslyckades
+            <span className="flex items-center gap-1 text-destructive">
+              <AlertCircle className="h-3 w-3" />
+              {'message' in actionStatus && actionStatus.message
+                ? actionStatus.message
+                : 'Misslyckades'}
             </span>
           )}
         </div>
