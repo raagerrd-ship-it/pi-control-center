@@ -239,17 +239,180 @@ get_cached_status() {
   echo "$json"
 }
 
+write_lotus_update_script() {
+  local update_script
+  update_script="/opt/lotus-light/pi/dashboard-update.sh"
+
+  sudo tee "$update_script" > /dev/null <<'EOF'
+#!/bin/bash
+set -euo pipefail
+
+APP_DIR="/opt/lotus-light"
+PI_DIR="$APP_DIR/pi"
+SERVICE="lotus-light"
+REMOTE_REF="origin/main"
+
+[ -d "$APP_DIR/.git" ] || exit 1
+
+cd "$APP_DIR"
+git fetch origin main --quiet 2>/dev/null || git fetch origin master --quiet 2>/dev/null || exit 1
+git rev-parse origin/main >/dev/null 2>&1 || REMOTE_REF="origin/master"
+
+LOCAL_HEAD=$(git rev-parse HEAD 2>/dev/null || echo "")
+REMOTE_HEAD=$(git rev-parse "$REMOTE_REF" 2>/dev/null || echo "")
+[ -n "$REMOTE_HEAD" ] || exit 1
+[ "$LOCAL_HEAD" = "$REMOTE_HEAD" ] && exit 0
+
+git reset --hard "$REMOTE_REF" -q
+
+cat > "$PI_DIR/src/node-record-lpcm16.d.ts" <<'TYPES'
+declare module "node-record-lpcm16";
+TYPES
+
+cat > "$PI_DIR/src/eventsource.d.ts" <<'TYPES'
+declare module "eventsource";
+TYPES
+
+sed -i 's/noble\.state/noble._state/g' "$PI_DIR/src/nobleBle.ts"
+
+cd "$PI_DIR"
+NODE_OPTIONS="--max-old-space-size=256" npm install --no-audit --no-fund
+NODE_OPTIONS="--max-old-space-size=256" npm run build
+npm prune --production 2>/dev/null || true
+systemctl restart "$SERVICE"
+EOF
+
+  sudo chmod +x "$update_script"
+}
+
+install_lotus_lantern() {
+  local repo log_file sf default_core overlay_file needs_reboot node_major
+  repo=$1
+  log_file=$2
+  sf=$3
+  default_core=$4
+  needs_reboot="false"
+  overlay_file="/boot/config.txt"
+  [ -f /boot/firmware/config.txt ] && overlay_file="/boot/firmware/config.txt"
+
+  export DEBIAN_FRONTEND=noninteractive
+
+  echo '{"app":"lotus-lantern","status":"installing","progress":"Installerar systempaket..."}' > "$sf"
+  if ! sudo apt-get update -qq >> "$log_file" 2>&1 || ! sudo apt-get install -y -qq bluez libbluetooth-dev libasound2-dev alsa-utils git curl >> "$log_file" 2>&1; then
+    return 1
+  fi
+
+  node_major=$(node -v 2>/dev/null | cut -d. -f1 | tr -d 'v' || echo 0)
+  if [ -z "$node_major" ] || [ "$node_major" -lt 20 ]; then
+    echo '{"app":"lotus-lantern","status":"installing","progress":"Installerar Node.js 20..."}' > "$sf"
+    if ! curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash - >> "$log_file" 2>&1 || ! sudo apt-get install -y -qq nodejs >> "$log_file" 2>&1; then
+      return 1
+    fi
+  fi
+
+  if ! sudo grep -q 'googlevoicehat-soundcard' "$overlay_file" 2>/dev/null; then
+    echo 'dtoverlay=googlevoicehat-soundcard' | sudo tee -a "$overlay_file" > /dev/null
+    needs_reboot="true"
+  fi
+
+  echo '{"app":"lotus-lantern","status":"installing","progress":"Klonar repo..."}' > "$sf"
+  sudo rm -rf /opt/lotus-light
+  if ! sudo git clone --depth 1 "$repo" /opt/lotus-light >> "$log_file" 2>&1; then
+    return 1
+  fi
+
+  echo '{"app":"lotus-lantern","status":"installing","progress":"Applicerar byggfixar..."}' > "$sf"
+  sudo sed -i 's/noble\.state/noble._state/g' /opt/lotus-light/pi/src/nobleBle.ts
+  printf 'declare module "node-record-lpcm16";\n' | sudo tee /opt/lotus-light/pi/src/node-record-lpcm16.d.ts > /dev/null
+  printf 'declare module "eventsource";\n' | sudo tee /opt/lotus-light/pi/src/eventsource.d.ts > /dev/null
+
+  echo '{"app":"lotus-lantern","status":"installing","progress":"Installerar dependencies och bygger..."}' > "$sf"
+  if ! sudo bash -lc 'set -e; cd /opt/lotus-light/pi; NODE_OPTIONS="--max-old-space-size=256" npm install --no-audit --no-fund; NODE_OPTIONS="--max-old-space-size=256" npm run build; npm prune --production 2>/dev/null || true' >> "$log_file" 2>&1; then
+    return 1
+  fi
+
+  sudo setcap cap_net_raw+eip "$(readlink -f "$(which node)")" >> "$log_file" 2>&1 || true
+  write_lotus_update_script
+
+  echo '{"app":"lotus-lantern","status":"installing","progress":"Skapar systemtjänster..."}' > "$sf"
+  sudo tee /etc/systemd/system/lotus-light.service > /dev/null <<EOF
+[Unit]
+Description=Lotus Light Link — Audio-reactive BLE LED controller
+After=network.target bluetooth.target
+Wants=bluetooth.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/lotus-light/pi
+ExecStart=/usr/bin/node dist/index.js
+Restart=always
+RestartSec=5
+Environment=NODE_ENV=production
+Environment=BRIDGE_URL=http://localhost:3000/api/sonos
+Environment=CONFIG_PORT=3001
+Environment=TICK_MS=30
+MemoryMax=128M
+AllowedCPUs=${default_core}
+CPUQuota=100%
+Nice=-5
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=lotus-light
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+  sudo tee /etc/systemd/system/lotus-update.service > /dev/null <<'EOF'
+[Unit]
+Description=Lotus Light Link — Auto-update from dashboard
+
+[Service]
+Type=oneshot
+ExecStart=/opt/lotus-light/pi/dashboard-update.sh
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=lotus-update
+EOF
+
+  sudo tee /etc/systemd/system/lotus-update.timer > /dev/null <<'EOF'
+[Unit]
+Description=Lotus Light Link — Auto-update timer (every 5 min)
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=5min
+Persistent=true
+
+[Install]
+WantedBy=timers.target
+EOF
+
+  if ! sudo systemctl daemon-reload >> "$log_file" 2>&1 || ! sudo systemctl enable lotus-light >> "$log_file" 2>&1 || ! sudo systemctl enable --now lotus-update.timer >> "$log_file" 2>&1; then
+    return 1
+  fi
+
+  sudo systemctl start lotus-light >> "$log_file" 2>&1 || true
+
+  if [ "$needs_reboot" = "true" ]; then
+    echo 'Installation klar — reboot kan krävas'
+  else
+    echo 'Installation klar'
+  fi
+}
+
 do_install() {
-  local app repo dir script sf
+  local app repo dir script sf install_message
   app=$1
   repo=${APP_REPOS[$app]}
   dir=${APP_DIRS[$app]}
   script=${APP_INSTALL_SCRIPTS[$app]}
   sf="$INSTALL_DIR/${app}.json"
+  install_message="Installation klar"
 
-  echo "{\"app\":\"${app}\",\"status\":\"installing\",\"progress\":\"Klonar repo...\"}" > "$sf"
+  echo "{\"app\":\"${app}\",\"status\":\"installing\",\"progress\":\"Startar installation...\"}" > "$sf"
 
-  # Export DBUS env so install scripts can use systemctl --user
   export XDG_RUNTIME_DIR="$USER_RUNTIME_DIR"
   export DBUS_SESSION_BUS_ADDRESS="$USER_BUS_ADDRESS"
 
@@ -257,43 +420,27 @@ do_install() {
   local default_core=${APP_CORES[$app]}
 
   if [ "$app" = "lotus-lantern" ]; then
-    # Lotus Lantern uses sudo and installs to /opt/lotus-light itself
-    # Clone to temp dir, then run setup script with sudo
-    local tmp_dir="/tmp/lotus-light-install"
-    rm -rf "$tmp_dir"
-    if ! nice -n 15 git clone --depth 1 "$repo" "$tmp_dir" > "$INSTALL_DIR/${app}.log" 2>&1; then
-      echo "{\"app\":\"${app}\",\"status\":\"error\",\"message\":\"Git clone misslyckades\",\"timestamp\":\"$(date -Iseconds)\"}" > "$sf"
-      return 1
-    fi
-
-    echo "{\"app\":\"${app}\",\"status\":\"installing\",\"progress\":\"Kör installationsskript (sudo)...\"}" > "$sf"
-    chmod +x "$tmp_dir/$script"
-
-    if ! printf '%s\n' "$default_core" | sudo CPU_CORE="$default_core" nice -n 15 ionice -c 3 bash "$tmp_dir/$script" >> "$INSTALL_DIR/${app}.log" 2>&1; then
+    if ! install_message=$(install_lotus_lantern "$repo" "$INSTALL_DIR/${app}.log" "$sf" "$default_core"); then
       echo "{\"app\":\"${app}\",\"status\":\"error\",\"message\":\"Installationsskript misslyckades\",\"timestamp\":\"$(date -Iseconds)\"}" > "$sf"
-      rm -rf "$tmp_dir"
       return 1
     fi
-    rm -rf "$tmp_dir"
   else
-    # User-space apps: clone to APP_DIRS, then run install script
     [ -d "$dir" ] && rm -rf "$dir"
     mkdir -p "$(dirname "$dir")"
 
+    echo "{\"app\":\"${app}\",\"status\":\"installing\",\"progress\":\"Klonar repo...\"}" > "$sf"
     if ! nice -n 15 git clone --depth 1 "$repo" "$dir" > "$INSTALL_DIR/${app}.log" 2>&1; then
       echo "{\"app\":\"${app}\",\"status\":\"error\",\"message\":\"Git clone misslyckades\",\"timestamp\":\"$(date -Iseconds)\"}" > "$sf"
       return 1
     fi
 
     echo "{\"app\":\"${app}\",\"status\":\"installing\",\"progress\":\"Kör installationsskript...\"}" > "$sf"
-
     if [ ! -f "$dir/$script" ]; then
       echo "{\"app\":\"${app}\",\"status\":\"error\",\"message\":\"Installationsskript saknas\",\"timestamp\":\"$(date -Iseconds)\"}" > "$sf"
       return 1
     fi
 
     chmod +x "$dir/$script"
-
     if [ "$app" = "cast-away" ]; then
       if ! printf '\n%s\n' "$default_core" | nice -n 15 ionice -c 3 bash "$dir/$script" >> "$INSTALL_DIR/${app}.log" 2>&1; then
         echo "{\"app\":\"${app}\",\"status\":\"error\",\"message\":\"Installationsskript misslyckades\",\"timestamp\":\"$(date -Iseconds)\"}" > "$sf"
@@ -308,7 +455,7 @@ do_install() {
   fi
 
   rm -f "$CACHE_FILE"
-  echo "{\"app\":\"${app}\",\"status\":\"success\",\"message\":\"Installation klar\",\"timestamp\":\"$(date -Iseconds)\"}" > "$sf"
+  echo "{\"app\":\"${app}\",\"status\":\"success\",\"message\":\"${install_message}\",\"timestamp\":\"$(date -Iseconds)\"}" > "$sf"
 }
 
 handle_request() {
