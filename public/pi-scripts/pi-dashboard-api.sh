@@ -42,7 +42,7 @@ declare -A APP_DIRS=(
 declare -A APP_INSTALL_SCRIPTS=(
   ["lotus-lantern"]="pi/install.sh"
   ["cast-away"]="install.sh"
-  ["sonos-gateway"]="install.sh"
+  ["sonos-gateway"]="bridge/install-linux.sh"
 )
 
 declare -A APP_UPDATE_SCRIPTS=(
