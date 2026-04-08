@@ -144,16 +144,9 @@ const Index = () => {
           </div>
 
           <div className={`flex items-center justify-between rounded px-2 py-1 text-[10px] font-mono ${dashboardVersion?.hasUpdate ? 'bg-[hsl(var(--status-warning)/0.08)] border border-[hsl(var(--status-warning)/0.25)]' : 'bg-secondary/30'}`}>
-            <span className="text-muted-foreground">{dashboardVersion?.local || '—'}</span>
+            <span className="text-muted-foreground">Version {dashboardVersion?.local || '—'}</span>
             {dashboardVersion?.hasUpdate ? (
-              <button
-                className="text-[hsl(var(--status-warning))] hover:text-foreground transition-colors inline-flex items-center gap-1 disabled:opacity-50"
-                disabled={isUpdatingDashboard}
-                onClick={handleDashboardUpdate}
-              >
-                <RefreshCw className={`h-2.5 w-2.5 ${isUpdatingDashboard ? 'animate-spin' : ''}`} />
-                {isUpdatingDashboard ? 'Uppdaterar' : 'Uppdatera'}
-              </button>
+              <span className="text-[hsl(var(--status-warning))]">Ny version</span>
             ) : (
               <span className="text-muted-foreground/50">✓</span>
             )}
