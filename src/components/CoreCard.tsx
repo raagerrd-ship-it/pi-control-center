@@ -225,8 +225,17 @@ export const CoreCard = memo(function CoreCard({
       {/* Version bar */}
       <div className={`flex items-center justify-between rounded px-2 py-1 text-[10px] font-mono ${hasUpdate ? 'bg-[hsl(var(--status-warning)/0.08)] border border-[hsl(var(--status-warning)/0.25)]' : 'bg-secondary/30'}`}>
         <span className="text-muted-foreground">Version {version || '—'}</span>
-        {hasUpdate ? (
-          <span className="text-[hsl(var(--status-warning))]">Ny version</span>
+        {isUpdating ? (
+          <span className="flex items-center gap-1 text-[hsl(var(--status-warning))]">
+            <Loader2 className="h-3 w-3 animate-spin" /> Uppdaterar...
+          </span>
+        ) : hasUpdate ? (
+          <button
+            onClick={() => onUpdate(def.key)}
+            className="text-[hsl(var(--status-warning))] hover:underline font-semibold"
+          >
+            Ny version
+          </button>
         ) : (
           <span className="text-muted-foreground/50">✓</span>
         )}
