@@ -44,8 +44,7 @@ export function LogViewer({ appKey, appName, asButton, asIconButton, showLabel, 
     setLogType(type);
     setLoading(true);
     try {
-      const mappedType = type === 'service' ? 'update' : type;
-      const text = await fetchLogs(appKey, mappedType);
+      const text = await fetchLogs(appKey, type);
       setLog(text);
     } catch {
       setLog('Kunde inte hämta loggar');

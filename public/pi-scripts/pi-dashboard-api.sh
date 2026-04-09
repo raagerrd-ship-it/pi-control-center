@@ -607,6 +607,20 @@ handle_request() {
       fi
       ;;
 
+    GET\ /api/service-log/*)
+      local app svc lc
+      app=${path#/api/service-log/}
+      svc=${APP_SERVICES[$app]}
+      if [ -z "$svc" ]; then
+        status_line="HTTP/1.1 404 Not Found"
+        response="{\"error\":\"Unknown app: ${app}\"}"
+      else
+        lc=$(sudo journalctl -u "${svc}.service" -n 60 --no-pager 2>/dev/null | sed 's/\\/\\\\/g; s/"/\\"/g; s/\t/  /g' | tr '\n' '|' | sed 's/|/\\n/g')
+        [ -z "$lc" ] && lc="Inga journalctl-loggar tillgängliga"
+        response="{\"log\":\"${lc}\"}"
+      fi
+      ;;
+
     GET\ /api/update-log/*|GET\ /api/install-log/*)
       local logtype app lf lc
       logtype=${path#/api/}

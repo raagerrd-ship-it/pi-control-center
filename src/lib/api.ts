@@ -104,8 +104,8 @@ export async function serviceAction(app: string, action: 'start' | 'stop' | 'res
   return res.json();
 }
 
-export async function fetchLogs(app: string, type: 'update' | 'install' = 'update'): Promise<string> {
-  const endpoint = type === 'install' ? 'install-log' : 'update-log';
+export async function fetchLogs(app: string, type: 'update' | 'install' | 'service' = 'update'): Promise<string> {
+  const endpoint = type === 'install' ? 'install-log' : type === 'service' ? 'service-log' : 'update-log';
   const res = await fetch(`${getBaseUrl()}/api/${endpoint}/${app}`, { signal: AbortSignal.timeout(4000) });
   if (!res.ok) return 'Inga loggar tillgängliga';
   const data = await res.json();
