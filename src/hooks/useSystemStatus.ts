@@ -1,24 +1,14 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { fetchSystemStatus, type SystemStatus } from '@/lib/api';
-
-export interface ConnectionLog {
-  time: string;
-  message: string;
-  type: 'info' | 'error' | 'success';
-}
+import { useActivityLog } from '@/hooks/useActivityLog';
 
 export function useSystemStatus(intervalMs = 5000) {
   const [status, setStatus] = useState<SystemStatus | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  const [logs, setLogs] = useState<ConnectionLog[]>([]);
   const intervalRef = useRef<number | null>(null);
   const wasConnected = useRef(false);
-
-  const addLog = useCallback((message: string, type: ConnectionLog['type']) => {
-    const time = new Date().toLocaleTimeString('sv-SE', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-    setLogs(prev => [...prev.slice(-49), { time, message, type }]);
-  }, []);
+  const { addEntry } = useActivityLog();
 
   const poll = useCallback(async () => {
     try {
@@ -26,25 +16,25 @@ export function useSystemStatus(intervalMs = 5000) {
       setStatus(data);
       setError(null);
       if (!wasConnected.current) {
-        addLog('Ansluten till Pi', 'success');
+        addEntry('SYSTEM', 'Ansluten till Pi', 'success');
         wasConnected.current = true;
       }
     } catch (e) {
       const msg = e instanceof Error ? e.message : 'Anslutning misslyckades';
       setError(msg);
       if (wasConnected.current) {
-        addLog('Tappade anslutning: ' + msg, 'error');
+        addEntry('SYSTEM', 'Tappade anslutning: ' + msg, 'error');
         wasConnected.current = false;
       } else if (loading) {
-        addLog('Kunde inte ansluta: ' + msg, 'error');
+        addEntry('SYSTEM', 'Kunde inte ansluta: ' + msg, 'error');
       }
     } finally {
       setLoading(false);
     }
-  }, [addLog, loading]);
+  }, [addEntry, loading]);
 
   useEffect(() => {
-    addLog('Ansluter till API...', 'info');
+    addEntry('SYSTEM', 'Ansluter till API...', 'info');
     poll();
     intervalRef.current = window.setInterval(poll, intervalMs);
 
@@ -68,5 +58,5 @@ export function useSystemStatus(intervalMs = 5000) {
     };
   }, [poll, intervalMs]);
 
-  return { status, error, loading, logs, refresh: poll };
+  return { status, error, loading, refresh: poll };
 }

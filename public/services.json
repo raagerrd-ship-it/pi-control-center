@@ -1,0 +1,32 @@
+[
+  {
+    "key": "lotus-lantern",
+    "name": "Lotus Lantern Control",
+    "repo": "https://github.com/raagerrd-ship-it/lotus-light-link.git",
+    "installDir": "/opt/lotus-light",
+    "installScript": "pi/setup-lotus.sh",
+    "updateScript": "/opt/lotus-light/pi/dashboard-update.sh",
+    "uninstallScript": "pi/uninstall.sh",
+    "service": "lotus-light"
+  },
+  {
+    "key": "cast-away",
+    "name": "Cast Away Web",
+    "repo": "https://github.com/raagerrd-ship-it/hromecast.git",
+    "installDir": "$HOME/.local/share/cast-away",
+    "installScript": "bridge-pi/install-linux.sh",
+    "updateScript": "$HOME/.local/share/hromecast/bridge-pi/update.sh",
+    "uninstallScript": "bridge-pi/uninstall.sh",
+    "service": "cast-away"
+  },
+  {
+    "key": "sonos-gateway",
+    "name": "Sonos Gateway",
+    "repo": "https://github.com/raagerrd-ship-it/sonos-gateway.git",
+    "installDir": "$HOME/.local/share/sonos-proxy",
+    "installScript": "bridge/install-linux.sh",
+    "updateScript": "$HOME/.local/share/sonos-proxy/bridge/update.sh",
+    "uninstallScript": "bridge/uninstall.sh",
+    "service": "sonos-proxy"
+  }
+]

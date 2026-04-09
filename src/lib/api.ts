@@ -1,5 +1,3 @@
-
-
 const getBaseUrl = (): string =>
   `http://${window.location.hostname}:8585`;
 
@@ -14,7 +12,7 @@ export interface SystemStatus {
   dashboardCpu: number;
   dashboardRamMb: number;
   services: {
-    [key: string]: { online: boolean; version: string; installed: boolean; cpu: number; ramMb: number; cpuCore: number };
+    [key: string]: { online: boolean; version: string; installed: boolean; cpu: number; ramMb: number; cpuCore: number; port?: number };
   };
 }
 
@@ -48,9 +46,32 @@ export interface VersionInfo {
 
 export type VersionMap = Record<string, VersionInfo>;
 
+export interface ServiceDefinition {
+  key: string;
+  name: string;
+  repo: string;
+  installDir: string;
+  installScript: string;
+  updateScript: string;
+  uninstallScript: string;
+  service: string;
+}
+
+export interface UninstallResult {
+  app: string;
+  status: 'success' | 'error';
+  message?: string;
+}
+
 export async function fetchSystemStatus(): Promise<SystemStatus> {
   const res = await fetch(`${getBaseUrl()}/api/status`, { signal: AbortSignal.timeout(4000) });
   if (!res.ok) throw new Error('Failed to fetch status');
+  return res.json();
+}
+
+export async function fetchAvailableServices(): Promise<ServiceDefinition[]> {
+  const res = await fetch(`${getBaseUrl()}/api/available-services`, { signal: AbortSignal.timeout(4000) });
+  if (!res.ok) throw new Error('Failed to fetch available services');
   return res.json();
 }
 
@@ -75,9 +96,11 @@ export async function fetchUpdateStatus(app: string): Promise<UpdateResult> {
   return res.json();
 }
 
-export async function triggerInstall(app: string): Promise<InstallResult> {
+export async function triggerInstall(app: string, port: number, core: number): Promise<InstallResult> {
   const res = await fetch(`${getBaseUrl()}/api/install/${app}`, {
     method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ port, core }),
     signal: AbortSignal.timeout(300000),
   });
   if (!res.ok) throw new Error('Failed to trigger install');
@@ -96,6 +119,15 @@ export async function serviceAction(app: string, action: 'start' | 'stop' | 'res
     signal: AbortSignal.timeout(15000),
   });
   if (!res.ok) throw new Error(`Failed to ${action} service`);
+  return res.json();
+}
+
+export async function triggerUninstall(app: string): Promise<UninstallResult> {
+  const res = await fetch(`${getBaseUrl()}/api/uninstall/${app}`, {
+    method: 'POST',
+    signal: AbortSignal.timeout(60000),
+  });
+  if (!res.ok) throw new Error('Failed to trigger uninstall');
   return res.json();
 }
 

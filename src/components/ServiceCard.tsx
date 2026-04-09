@@ -1,13 +1,25 @@
-import { ExternalLink, RefreshCw, CheckCircle2, AlertCircle, Download, Loader2, Play, Square, RotateCcw, FileText } from 'lucide-react';
+import { useState } from 'react';
+import { ExternalLink, RefreshCw, CheckCircle2, AlertCircle, Loader2, Play, Square, RotateCcw, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
-import { LogViewer, LogProvider } from '@/components/LogViewer';
-import type { UpdateResult, InstallResult, ServiceActionResult, VersionInfo } from '@/lib/api';
+import { InstallDialog } from '@/components/InstallDialog';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '@/components/ui/alert-dialog';
+import type { UpdateResult, InstallResult, ServiceActionResult, VersionInfo, UninstallResult, SystemStatus } from '@/lib/api';
 
 interface ServiceCardProps {
   name: string;
   appKey: string;
-  port: number;
+  port?: number;
   piIp: string;
   online: boolean;
   installed: boolean;
@@ -15,13 +27,17 @@ interface ServiceCardProps {
   cpu: number;
   ramMb: number;
   cpuCore: number;
-  deviceLabel?: string;
   versionInfo?: VersionInfo;
   updateStatus?: UpdateResult;
   installStatus?: InstallResult;
   actionStatus?: ServiceActionResult | { status: 'pending'; action: string };
+  uninstallStatus?: UninstallResult;
+  usedPorts: number[];
+  usedCores: number[];
+  status: SystemStatus | null;
   onUpdate: (app: string) => void;
-  onInstall: (app: string) => void;
+  onInstall: (app: string, port: number, core: number) => void;
+  onUninstall: (app: string) => void;
   onServiceAction: (app: string, action: 'start' | 'stop' | 'restart') => void;
 }
 
@@ -40,8 +56,12 @@ export function ServiceCard({
   updateStatus,
   installStatus,
   actionStatus,
+  usedPorts,
+  usedCores,
+  status,
   onUpdate,
   onInstall,
+  onUninstall,
   onServiceAction,
 }: ServiceCardProps) {
   const isUpdating = updateStatus?.status === 'updating';
@@ -58,13 +78,12 @@ export function ServiceCard({
       : 'bg-[hsl(var(--status-offline))]';
 
   return (
-    <LogProvider>
     <div className={`rounded-lg border bg-card p-3.5 flex flex-col gap-2.5 transition-colors ${online ? 'border-border' : 'border-border/50'}`}>
       {/* Header: status dot + name + port */}
       <div className="flex items-center gap-2">
         <div className={`h-2 w-2 rounded-full ${statusColor}`} />
         <h3 className="font-medium text-sm leading-none">{name}</h3>
-        <span className="font-mono text-[11px] text-muted-foreground">:{port}</span>
+        {port && <span className="font-mono text-[11px] text-muted-foreground">:{port}</span>}
       </div>
 
       {/* Resource row */}
@@ -181,19 +200,18 @@ export function ServiceCard({
         </div>
       )}
 
-      {/* Actions — all on one row */}
-      <div className="flex items-center gap-1 mt-auto">
+      {/* Actions */}
+      <div className="flex items-center gap-1 mt-auto flex-wrap">
         {!installed && !isInstalling && !installSuccess ? (
-          <Button
-            variant="default"
-            size="sm"
-            className="font-mono text-xs gap-1.5 flex-1"
+          <InstallDialog
+            appKey={appKey}
+            appName={name}
+            usedPorts={usedPorts}
+            usedCores={usedCores}
+            status={status}
+            onInstall={onInstall}
             disabled={isInstalling}
-            onClick={() => onInstall(appKey)}
-          >
-            <Download className="h-3 w-3" />
-            Installera
-          </Button>
+          />
         ) : (
           <>
             {!online ? (
@@ -236,7 +254,6 @@ export function ServiceCard({
               <RefreshCw className={`h-3 w-3 ${isUpdating ? 'animate-spin' : ''}`} />
               {isUpdating ? '...' : 'Uppdatera'}
             </Button>
-            <LogViewer appKey={appKey} appName={name} asIconButton showLabel />
             {installed && online && (
               appKey === 'lotus-lantern' ? (
                 <a
@@ -245,7 +262,7 @@ export function ServiceCard({
                 >
                   <ExternalLink className="h-3 w-3" /> Öppna
                 </a>
-              ) : (
+              ) : port ? (
                 <a
                   href={`http://${piIp}:${port}`}
                   target="_blank"
@@ -254,23 +271,41 @@ export function ServiceCard({
                 >
                   <ExternalLink className="h-3 w-3" /> Öppna
                 </a>
-              )
+              ) : null
+            )}
+            {installed && (
+              <AlertDialog>
+                <AlertDialogTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="font-mono text-[11px] gap-1 h-7 px-2 text-destructive hover:text-destructive"
+                  >
+                    <Trash2 className="h-3 w-3" />
+                  </Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle className="font-mono text-sm">Avinstallera {name}?</AlertDialogTitle>
+                    <AlertDialogDescription className="text-xs">
+                      Tjänsten stoppas och tas bort. Detta kan inte ångras.
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel className="font-mono text-xs">Avbryt</AlertDialogCancel>
+                    <AlertDialogAction
+                      className="font-mono text-xs bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                      onClick={() => onUninstall(appKey)}
+                    >
+                      Avinstallera
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
             )}
           </>
         )}
       </div>
-
-      {/* Logs panel — expands at bottom of card */}
-      {installed && (
-        <LogViewer
-          appKey={appKey}
-          appName={name}
-          panelOnly
-          liveActive={isUpdating || isInstalling}
-          liveLogType={isInstalling ? 'install' : 'update'}
-        />
-      )}
     </div>
-    </LogProvider>
   );
 }
