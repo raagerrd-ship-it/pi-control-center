@@ -16,7 +16,7 @@ const CORES = [1, 2, 3];
 
 const Index = () => {
   const [settings, setSettings] = useState<DashboardSettings>(loadSettings);
-  const { status, error, loading, refresh } = useSystemStatus();
+  const { status, error, loading, connection, refresh } = useSystemStatus();
   const { addEntry } = useActivityLog();
 
   const [availableServices, setAvailableServices] = useState<ServiceDefinition[]>([]);
@@ -138,6 +138,7 @@ const Index = () => {
         <section className="mb-6">
           <SystemMonitor
             status={status} error={error} loading={loading}
+            connection={connection}
             dashboardVersion={dashboardVersion}
             dashboardUpdate={dashboardUpdate}
             isUpdatingDashboard={isUpdatingDashboard}
