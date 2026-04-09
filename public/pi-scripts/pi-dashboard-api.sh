@@ -392,6 +392,9 @@ handle_request() {
         status_line="HTTP/1.1 404 Not Found"
         response="{\"error\":\"Unknown app: ${app}\"}"
       else
+        # Clear stale status and log before starting new install
+        echo "{\"app\":\"${app}\",\"status\":\"installing\",\"progress\":\"Startar installation...\"}" > "$INSTALL_DIR/${app}.json"
+        rm -f "$INSTALL_DIR/${app}.log"
         do_install "$app" "$req_port" "$req_core" &
         response="{\"app\":\"${app}\",\"status\":\"installing\",\"progress\":\"Startar installation...\"}"
       fi
