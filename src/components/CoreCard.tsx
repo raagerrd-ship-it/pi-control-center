@@ -41,6 +41,8 @@ interface CoreCardProps {
   };
   /** Services available to install (not yet installed) */
   availableServices: ServiceDefinition[];
+  /** All pending/completed installs keyed by service key */
+  allInstalls: Record<string, import('@/lib/api').InstallResult>;
   usedPorts: number[];
   status: SystemStatus | null;
   onUpdate: (app: string) => void;
@@ -53,6 +55,7 @@ export const CoreCard = memo(function CoreCard({
   coreIndex,
   service,
   availableServices,
+  allInstalls,
   usedPorts,
   status,
   onUpdate,
