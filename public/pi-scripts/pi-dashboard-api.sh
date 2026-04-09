@@ -537,19 +537,22 @@ handle_request() {
       ;;
 
     "POST /api/update/dashboard")
-      local sf ddir ndir dashboard_log
+      local sf ddir ndir dashboard_log remote_ref
       sf="$STATUS_DIR/dashboard.json"
       ddir="$HOME/pi-dashboard"
       ndir="/var/www/pi-dashboard"
       dashboard_log="$STATUS_DIR/dashboard.log"
+      remote_ref="origin/main"
       mkdir -p "$STATUS_DIR"
       echo '{"app":"dashboard","status":"updating"}' > "$sf"
       : > "$dashboard_log"
       response='{"app":"dashboard","status":"updating"}'
       (
         cd "$ddir" 2>/dev/null || { echo "{\"app\":\"dashboard\",\"status\":\"error\",\"message\":\"Dir not found\",\"timestamp\":\"$(date -Iseconds)\"}" > "$sf"; exit 1; }
-        nice -n 15 git fetch origin main --depth=1 --quiet || { echo "{\"app\":\"dashboard\",\"status\":\"error\",\"message\":\"Git fetch failed\",\"timestamp\":\"$(date -Iseconds)\"}" > "$sf"; exit 1; }
-        nice -n 15 git pull origin main --quiet || { echo "{\"app\":\"dashboard\",\"status\":\"error\",\"message\":\"Git pull failed\",\"timestamp\":\"$(date -Iseconds)\"}" > "$sf"; exit 1; }
+        nice -n 15 git fetch origin main --depth=1 --quiet 2>/dev/null || nice -n 15 git fetch origin master --depth=1 --quiet 2>/dev/null || { echo "{\"app\":\"dashboard\",\"status\":\"error\",\"message\":\"Git fetch failed\",\"timestamp\":\"$(date -Iseconds)\"}" > "$sf"; exit 1; }
+        git rev-parse origin/main >/dev/null 2>&1 || remote_ref="origin/master"
+        git reset --hard "$remote_ref" --quiet || { echo "{\"app\":\"dashboard\",\"status\":\"error\",\"message\":\"Git reset failed\",\"timestamp\":\"$(date -Iseconds)\"}" > "$sf"; exit 1; }
+        git clean -fd >/dev/null 2>&1 || true
         sed -i 's/\r$//' "$ddir/public/pi-scripts/"*.sh
         chmod +x "$ddir/public/pi-scripts/"*.sh
         NODE_OPTIONS="--max-old-space-size=256" nice -n 15 ionice -c 3 npm install --no-audit --no-fund || { echo "{\"app\":\"dashboard\",\"status\":\"error\",\"message\":\"npm install failed\",\"timestamp\":\"$(date -Iseconds)\"}" > "$sf"; exit 1; }
