@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
-import { triggerUpdate, triggerInstall, fetchInstallStatus, serviceAction, type UpdateResult, type InstallResult, type ServiceActionResult } from '@/lib/api';
+import { triggerUpdate, fetchUpdateStatus, triggerInstall, fetchInstallStatus, serviceAction, type UpdateResult, type InstallResult, type ServiceActionResult } from '@/lib/api';
 
 export function useServiceUpdate() {
   const [updates, setUpdates] = useState<Record<string, UpdateResult>>({});
@@ -7,29 +7,59 @@ export function useServiceUpdate() {
   const [actions, setActions] = useState<Record<string, ServiceActionResult | { status: 'pending'; action: string }>>({});
   const pollTimers = useRef<Record<string, number>>({});
 
+  const pollUpdateStatus = useCallback((app: string) => {
+    const timerKey = `update:${app}`;
+    const poll = async () => {
+      try {
+        const result = await fetchUpdateStatus(app);
+        setUpdates(prev => ({ ...prev, [app]: result }));
+        if (result.status === 'updating') {
+          pollTimers.current[timerKey] = window.setTimeout(poll, 3000);
+        } else {
+          delete pollTimers.current[timerKey];
+        }
+      } catch {
+        pollTimers.current[timerKey] = window.setTimeout(poll, 5000);
+      }
+    };
+    poll();
+  }, []);
+
   const startUpdate = useCallback(async (app: string) => {
+    const timerKey = `update:${app}`;
+    if (pollTimers.current[timerKey]) {
+      clearTimeout(pollTimers.current[timerKey]);
+      delete pollTimers.current[timerKey];
+    }
+
     setUpdates(prev => ({ ...prev, [app]: { app, status: 'updating' } }));
     try {
       const result = await triggerUpdate(app);
       setUpdates(prev => ({ ...prev, [app]: result }));
+      if (result.status === 'updating') {
+        pollUpdateStatus(app);
+      }
     } catch (e) {
       setUpdates(prev => ({
         ...prev,
         [app]: { app, status: 'error', message: e instanceof Error ? e.message : 'Update failed' },
       }));
     }
-  }, []);
+  }, [pollUpdateStatus]);
 
   const pollInstallStatus = useCallback((app: string) => {
+    const timerKey = `install:${app}`;
     const poll = async () => {
       try {
         const result = await fetchInstallStatus(app);
         setInstalls(prev => ({ ...prev, [app]: result }));
         if (result.status === 'installing') {
-          pollTimers.current[app] = window.setTimeout(poll, 3000);
+          pollTimers.current[timerKey] = window.setTimeout(poll, 3000);
+        } else {
+          delete pollTimers.current[timerKey];
         }
       } catch {
-        pollTimers.current[app] = window.setTimeout(poll, 5000);
+        pollTimers.current[timerKey] = window.setTimeout(poll, 5000);
       }
     };
     poll();
@@ -60,7 +90,6 @@ export function useServiceUpdate() {
     try {
       const result = await serviceAction(app, action);
       setActions(prev => ({ ...prev, [app]: result }));
-      // Auto-clear success after 3s, keep errors visible for 8s
       const delay = result.status === 'error' ? 8000 : 3000;
       setTimeout(() => {
         setActions(prev => {

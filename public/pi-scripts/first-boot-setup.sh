@@ -276,6 +276,7 @@ sudo tee /etc/sudoers.d/pi-dashboard > /dev/null << EOF
 $PI_USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl start lotus-light.service
 $PI_USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl stop lotus-light.service
 $PI_USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl restart lotus-light.service
+$PI_USER ALL=(ALL) NOPASSWD: /opt/lotus-light/pi/dashboard-update.sh
 $PI_USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl start cast-away.service
 $PI_USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl stop cast-away.service
 $PI_USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl restart cast-away.service
