@@ -83,6 +83,9 @@ export const CoreCard = memo(function CoreCard({
                 <Loader2 className="h-3 w-3 animate-spin" />
                 <span className="font-mono text-[11px]">{service?.installStatus?.progress || 'Installerar...'}</span>
               </div>
+              {service?.installStatus?.elapsed && (
+                <span className="font-mono text-[10px] text-muted-foreground pl-4.5">⏱ {service.installStatus.elapsed}</span>
+              )}
               <Progress value={undefined} className="h-1 bg-secondary animate-pulse" />
             </div>
           )}
