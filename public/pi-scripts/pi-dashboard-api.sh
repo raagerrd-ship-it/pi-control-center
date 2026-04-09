@@ -277,14 +277,15 @@ do_install() {
   export DBUS_SESSION_BUS_ADDRESS="$USER_BUS_ADDRESS"
 
   progress "$sf" "$app" "Förbereder katalog..." "$start_time"
-    [ -d "$install_dir" ] && rm -rf "$install_dir"
-    mkdir -p "$(dirname "$install_dir")"
+    [ -d "$install_dir" ] && sudo rm -rf "$install_dir"
+    sudo mkdir -p "$(dirname "$install_dir")"
 
     progress "$sf" "$app" "Klonar repo..." "$start_time"
-    if ! nice -n 15 git clone --depth 1 "$repo" "$install_dir" > "$INSTALL_DIR/${app}.log" 2>&1; then
+    if ! nice -n 15 sudo git clone --depth 1 "$repo" "$install_dir" > "$INSTALL_DIR/${app}.log" 2>&1; then
       echo "{\"app\":\"${app}\",\"status\":\"error\",\"message\":\"Git clone misslyckades\",\"timestamp\":\"$(date -Iseconds)\"}" > "$sf"
       return 1
     fi
+    sudo chown -R "$(whoami):$(whoami)" "$install_dir"
 
     progress "$sf" "$app" "Verifierar installationsskript..." "$start_time"
     if [ ! -f "$install_dir/$script" ]; then
