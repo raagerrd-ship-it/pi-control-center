@@ -1,7 +1,8 @@
-import { Cpu, Thermometer, HardDrive, Clock, MemoryStick, RefreshCw, CheckCircle2, AlertCircle } from 'lucide-react';
+import { Cpu, Thermometer, HardDrive, Clock, MemoryStick, RefreshCw, CheckCircle2, AlertCircle, Loader2 } from 'lucide-react';
 import { Progress } from '@/components/ui/progress';
 import { Button } from '@/components/ui/button';
 import type { SystemStatus, UpdateResult, VersionInfo } from '@/lib/api';
+import type { ConnectionState } from '@/hooks/useSystemStatus';
 
 interface GaugeProps {
   icon: React.ReactNode;
