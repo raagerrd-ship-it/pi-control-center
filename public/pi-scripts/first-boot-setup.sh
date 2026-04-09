@@ -270,33 +270,17 @@ sudo tee /etc/systemd/system/nginx.service.d/cpu-pin.conf > /dev/null << 'OVER'
 CPUAffinity=0
 OVER
 
-# 8. Sudoers + CPU pinning prep
+# 8. Sudoers — allow dashboard API to manage any systemd service
 echo "[8/8] Configuring permissions..."
 sudo tee /etc/sudoers.d/pi-dashboard > /dev/null << EOF
-$PI_USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl start lotus-light.service
-$PI_USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl stop lotus-light.service
-$PI_USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl restart lotus-light.service
-$PI_USER ALL=(ALL) NOPASSWD: /opt/lotus-light/pi/dashboard-update.sh
-$PI_USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl start cast-away.service
-$PI_USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl stop cast-away.service
-$PI_USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl restart cast-away.service
-$PI_USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl start sonos-proxy.service
-$PI_USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl stop sonos-proxy.service
-$PI_USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl restart sonos-proxy.service
+$PI_USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl start *
+$PI_USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl stop *
+$PI_USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl restart *
+$PI_USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl enable *
+$PI_USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl disable *
+$PI_USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl daemon-reload
 EOF
 sudo chmod 440 /etc/sudoers.d/pi-dashboard
-
-# CPU pinning for app services (if they exist later)
-for pair in "lotus-light:1" "cast-away:2" "sonos-proxy:3"; do
-  svc="${pair%%:*}" core="${pair##*:}"
-  if systemctl cat "${svc}.service" &>/dev/null; then
-    sudo mkdir -p "/etc/systemd/system/${svc}.service.d"
-    sudo tee "/etc/systemd/system/${svc}.service.d/cpu-pin.conf" > /dev/null << OVER
-[Service]
-CPUAffinity=${core}
-OVER
-  fi
-done
 
 sudo systemctl daemon-reload
 
@@ -317,9 +301,7 @@ echo " API:        http://${IP}:${API_PORT}"
 echo ""
 echo " CPU-layout:"
 echo "   Core 0 → System + Dashboard + Nginx"
-echo "   Core 1 → Lotus Lantern"
-echo "   Core 2 → Cast Away"
-echo "   Core 3 → Sonos Gateway"
+echo "   Core 1-3 → Tilldelas per tjänst via dashboarden"
 echo ""
 echo " LED-mönster:"
 echo "   Långsam blink → väntar på nätverk"

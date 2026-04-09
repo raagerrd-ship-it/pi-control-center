@@ -148,49 +148,23 @@ EOF
 sudo systemctl daemon-reload
 sudo systemctl enable --now pi-dashboard-api.service
 
-# Disable all auto-update timers
-for timer in lotus-light-update cast-away-update sonos-proxy-update pi-dashboard-update; do
-  systemctl is-enabled "${timer}.timer" &>/dev/null && \
-    sudo systemctl disable --now "${timer}.timer" 2>/dev/null && \
-    echo "  Disabled ${timer}.timer" || true
+# Disable any legacy auto-update timers
+for timer in $(systemctl list-timers --all --no-legend 2>/dev/null | awk '/-update\.timer/{print $NF}'); do
+  sudo systemctl disable --now "$timer" 2>/dev/null && echo "  Disabled $timer" || true
 done
 
-# Sudoers for service control
+# Sudoers — allow dashboard API to manage any systemd service
 sudo tee /etc/sudoers.d/pi-dashboard > /dev/null << EOF
-$USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl start lotus-light.service
-$USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl stop lotus-light.service
-$USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl restart lotus-light.service
-$USER ALL=(ALL) NOPASSWD: /opt/lotus-light/pi/dashboard-update.sh
-$USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl start cast-away.service
-$USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl stop cast-away.service
-$USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl restart cast-away.service
-$USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl start sonos-proxy.service
-$USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl stop sonos-proxy.service
-$USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl restart sonos-proxy.service
+$USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl start *
+$USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl stop *
+$USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl restart *
+$USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl enable *
+$USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl disable *
+$USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl daemon-reload
 EOF
 sudo chmod 440 /etc/sudoers.d/pi-dashboard
 
-# CPU core pinning per app
-echo ""
-echo "  CPU core layout:"
-echo "    Core 0 → System + Dashboard + Nginx"
-echo "    Core 1 → Lotus Lantern"
-echo "    Core 2 → Cast Away"
-echo "    Core 3 → Sonos Gateway"
-
-for pair in "lotus-light:1" "cast-away:2" "sonos-proxy:3"; do
-  svc="${pair%%:*}" core="${pair##*:}"
-  if systemctl cat "${svc}.service" &>/dev/null; then
-    sudo mkdir -p "/etc/systemd/system/${svc}.service.d"
-    sudo tee "/etc/systemd/system/${svc}.service.d/cpu-pin.conf" > /dev/null << OVER
-[Service]
-CPUAffinity=${core}
-OVER
-    echo "    Pinned ${svc} → core ${core}"
-  fi
-done
-
-# Pin Nginx to core 0 too
+# Pin Nginx + API to core 0
 sudo mkdir -p /etc/systemd/system/nginx.service.d
 sudo tee /etc/systemd/system/nginx.service.d/cpu-pin.conf > /dev/null << 'OVER'
 [Service]
@@ -204,7 +178,7 @@ echo "=== Done! ==="
 echo "Dashboard:   http://$(hostname -I | awk '{print $1}')"
 echo "API:         port $API_PORT"
 echo "Updates:     all manual via dashboard UI"
-echo "CPU layout:  core 0=system, 1=lotus, 2=castaway, 3=sonos"
+echo "CPU layout:  core 0=system, cores 1-3 assigned per service"
 echo "Swap:        $(free -m | awk '/^Swap:/{print $2}')MB"
 echo "RAM free:    $(free -m | awk '/^Mem:/{print $7}')MB available"
 echo ""
