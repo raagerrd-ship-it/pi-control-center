@@ -1,7 +1,7 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import {
   triggerUpdate, fetchUpdateStatus,
-  triggerInstall, fetchInstallStatus,
+  triggerInstall, fetchInstallStatus, fetchAvailableServices,
   serviceAction, triggerUninstall,
   type UpdateResult, type InstallResult, type ServiceActionResult, type UninstallResult,
 } from '@/lib/api';
@@ -183,7 +183,42 @@ export function useServiceUpdate(serviceNames: Record<string, string>) {
     }
   }, []);
 
+  // On mount: check for any active installs or updates and resume polling
   useEffect(() => {
+    const resumeActive = async () => {
+      try {
+        const services = await fetchAvailableServices();
+        for (const svc of services) {
+          try {
+            const installResult = await fetchInstallStatus(svc.key);
+            if (installResult.status === 'installing') {
+              addEntryRef.current(label(svc.key), 'Återupptar spårning av pågående installation', 'info');
+              setInstalls(prev => ({ ...prev, [svc.key]: installResult }));
+              pollInstallStatus(svc.key);
+            }
+          } catch {}
+          try {
+            const updateResult = await fetchUpdateStatus(svc.key);
+            if (updateResult.status === 'updating') {
+              addEntryRef.current(label(svc.key), 'Återupptar spårning av pågående uppdatering', 'info');
+              setUpdates(prev => ({ ...prev, [svc.key]: updateResult }));
+              pollUpdateStatus(svc.key);
+            }
+          } catch {}
+        }
+        // Also check dashboard update
+        try {
+          const dashResult = await fetchUpdateStatus('dashboard');
+          if (dashResult.status === 'updating') {
+            addEntryRef.current('DASHBOARD', 'Återupptar spårning av pågående uppdatering', 'info');
+            setUpdates(prev => ({ ...prev, dashboard: dashResult }));
+            pollUpdateStatus('dashboard');
+          }
+        } catch {}
+      } catch {}
+    };
+    resumeActive();
+
     return () => {
       Object.values(pollTimers.current).forEach(clearTimeout);
     };

@@ -1,9 +1,10 @@
 import { useEffect, useRef } from 'react';
-import { Terminal } from 'lucide-react';
+import { Terminal, Trash2 } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 import { useActivityLog } from '@/hooks/useActivityLog';
 
 export function ActivityLog() {
-  const { entries } = useActivityLog();
+  const { entries, clearLog } = useActivityLog();
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -16,10 +17,15 @@ export function ActivityLog() {
 
   return (
     <section className="mt-6">
-      <h2 className="font-mono text-xs uppercase tracking-wider text-muted-foreground mb-3 flex items-center gap-1.5">
-        <Terminal className="h-3 w-3" />
-        Logg
-      </h2>
+      <div className="flex items-center justify-between mb-3">
+        <h2 className="font-mono text-xs uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+          <Terminal className="h-3 w-3" />
+          Logg
+        </h2>
+        <Button variant="ghost" size="sm" className="h-6 px-1.5 text-muted-foreground/50 hover:text-destructive" onClick={clearLog} title="Rensa logg">
+          <Trash2 className="h-3 w-3" />
+        </Button>
+      </div>
       <div
         ref={scrollRef}
         className="rounded-lg border bg-card p-3 max-h-48 overflow-y-auto"
