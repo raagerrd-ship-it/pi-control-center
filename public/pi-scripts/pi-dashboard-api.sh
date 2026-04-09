@@ -560,10 +560,15 @@ handle_request() {
       app=${path#/api/update/}
       uscript=${APP_UPDATE_SCRIPTS[$app]}
       echo '{"status":"updating"}' > "$STATUS_DIR/${app}.json"
-      if nice -n 15 ionice -c 3 bash "$uscript" > "$STATUS_DIR/${app}.log" 2>&1; then
+      if [ ! -f "$uscript" ]; then
+        echo "Uppdateringsskript saknas: $uscript" > "$STATUS_DIR/${app}.log"
+        echo "{\"app\":\"${app}\",\"status\":\"error\",\"message\":\"Uppdateringsskript saknas\",\"timestamp\":\"$(date -Iseconds)\"}" > "$STATUS_DIR/${app}.json"
+      elif nice -n 15 ionice -c 3 bash "$uscript" > "$STATUS_DIR/${app}.log" 2>&1; then
         echo "{\"app\":\"${app}\",\"status\":\"success\",\"timestamp\":\"$(date -Iseconds)\"}" > "$STATUS_DIR/${app}.json"
       else
-        echo "{\"app\":\"${app}\",\"status\":\"error\",\"message\":\"Update failed\",\"timestamp\":\"$(date -Iseconds)\"}" > "$STATUS_DIR/${app}.json"
+        local tail_err
+        tail_err=$(tail -5 "$STATUS_DIR/${app}.log" 2>/dev/null | tr '\n' ' ' | sed 's/"/\\"/g' | cut -c1-200)
+        echo "{\"app\":\"${app}\",\"status\":\"error\",\"message\":\"${tail_err:-Update failed}\",\"timestamp\":\"$(date -Iseconds)\"}" > "$STATUS_DIR/${app}.json"
       fi
       response=$(< "$STATUS_DIR/${app}.json")
       ;;
@@ -604,6 +609,20 @@ handle_request() {
           printf "[%s] service %s %s: %s\n" "$now" "$svc" "$action" "${svc_err:-systemctl ${action} failed}" >> "$log_file"
           response="{\"app\":\"${app}\",\"action\":\"${action}\",\"status\":\"error\",\"message\":\"${svc_err:-systemctl ${action} failed}\"}"
         fi
+      fi
+      ;;
+
+    GET\ /api/service-log/*)
+      local app svc lc
+      app=${path#/api/service-log/}
+      svc=${APP_SERVICES[$app]}
+      if [ -z "$svc" ]; then
+        status_line="HTTP/1.1 404 Not Found"
+        response="{\"error\":\"Unknown app: ${app}\"}"
+      else
+        lc=$(sudo journalctl -u "${svc}.service" -n 60 --no-pager 2>/dev/null | sed 's/\\/\\\\/g; s/"/\\"/g; s/\t/  /g' | tr '\n' '|' | sed 's/|/\\n/g')
+        [ -z "$lc" ] && lc="Inga journalctl-loggar tillgängliga"
+        response="{\"log\":\"${lc}\"}"
       fi
       ;;
 
