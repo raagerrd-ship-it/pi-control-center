@@ -435,7 +435,7 @@ handle_request() {
         chmod +x "$ddir/public/pi-scripts/"*.sh
         NODE_OPTIONS="--max-old-space-size=256" nice -n 15 ionice -c 3 npm install --no-audit --no-fund || { echo "{\"app\":\"dashboard\",\"status\":\"error\",\"message\":\"npm install failed\",\"timestamp\":\"$(date -Iseconds)\"}" > "$sf"; exit 1; }
         npx -y update-browserslist-db@latest >/dev/null 2>&1 || true
-        NODE_OPTIONS="--max-old-space-size=256" nice -n 15 ionice -c 3 npm run build || { echo "{\"app\":\"dashboard\",\"status\":\"error\",\"message\":\"Build failed\",\"timestamp\":\"$(date -Iseconds)\"}" > "$sf"; exit 1; }
+        NODE_OPTIONS="--max-old-space-size=256" nice -n 15 ionice -c 3 npx vite build || { echo "{\"app\":\"dashboard\",\"status\":\"error\",\"message\":\"Build failed\",\"timestamp\":\"$(date -Iseconds)\"}" > "$sf"; exit 1; }
         sudo mkdir -p "$ndir"
         sudo cp -r dist/* "$ndir/" || { echo "{\"app\":\"dashboard\",\"status\":\"error\",\"message\":\"Deploy failed\",\"timestamp\":\"$(date -Iseconds)\"}" > "$sf"; exit 1; }
         # Copy services.json to deployed location
