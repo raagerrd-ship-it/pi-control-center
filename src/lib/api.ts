@@ -11,6 +11,8 @@ export interface SystemStatus {
   uptime: string;
   dashboardCpu: number;
   dashboardRamMb: number;
+  commit: string;
+  branch: string;
   services: {
     [key: string]: { online: boolean; version: string; installed: boolean; cpu: number; ramMb: number; cpuCore: number; port?: number };
   };

@@ -25,6 +25,16 @@ ASSIGNMENTS_FILE="/etc/pi-dashboard/assignments.json"
 mkdir -p "$STATUS_DIR" "$INSTALL_DIR"
 sudo mkdir -p /etc/pi-dashboard 2>/dev/null || true
 
+# Read git info once at startup
+DASHBOARD_COMMIT=""
+DASHBOARD_COMMIT_SHORT=""
+DASHBOARD_BRANCH=""
+if [ -d "$HOME/pi-dashboard/.git" ]; then
+  DASHBOARD_COMMIT=$(git -C "$HOME/pi-dashboard" rev-parse HEAD 2>/dev/null || echo "")
+  DASHBOARD_COMMIT_SHORT=$(git -C "$HOME/pi-dashboard" rev-parse --short HEAD 2>/dev/null || echo "")
+  DASHBOARD_BRANCH=$(git -C "$HOME/pi-dashboard" rev-parse --abbrev-ref HEAD 2>/dev/null || echo "")
+fi
+
 # Initialize assignments file if missing
 [ -f "$ASSIGNMENTS_FILE" ] || echo '{}' | sudo tee "$ASSIGNMENTS_FILE" > /dev/null
 
@@ -221,7 +231,7 @@ build_status_json() {
   dash_pid=$(systemctl show "pi-dashboard-api.service" --property=MainPID 2>/dev/null | cut -d= -f2)
   [ -n "$dash_pid" ] && [ "$dash_pid" != "0" ] && dash_cpu=$(ps -p "$dash_pid" -o %cpu= 2>/dev/null | tr -d ' ' || echo "0")
 
-  echo "{\"cpu\":${cpu:-0},\"temp\":${temp:-0},\"ramUsed\":${ram_used:-0},\"ramTotal\":${ram_total:-0},\"diskUsed\":${disk_used:-0},\"diskTotal\":${disk_total:-0},\"uptime\":\"${uptime_str}\",\"dashboardCpu\":${dash_cpu:-0},\"dashboardRamMb\":${dash_ram:-0},\"services\":{${svc_json}}}"
+  echo "{\"cpu\":${cpu:-0},\"temp\":${temp:-0},\"ramUsed\":${ram_used:-0},\"ramTotal\":${ram_total:-0},\"diskUsed\":${disk_used:-0},\"diskTotal\":${disk_total:-0},\"uptime\":\"${uptime_str}\",\"dashboardCpu\":${dash_cpu:-0},\"dashboardRamMb\":${dash_ram:-0},\"commit\":\"${DASHBOARD_COMMIT_SHORT}\",\"branch\":\"${DASHBOARD_BRANCH}\",\"services\":{${svc_json}}}"
 }
 
 get_cached_status() {
@@ -520,6 +530,10 @@ handle_request() {
   case "$method $path" in
     "GET /api/status")
       response=$(get_cached_status)
+      ;;
+
+    "GET /api/version")
+      response="{\"name\":\"Pi Dashboard\",\"version\":\"1.0.0\",\"commit\":\"${DASHBOARD_COMMIT}\",\"commitShort\":\"${DASHBOARD_COMMIT_SHORT}\",\"branch\":\"${DASHBOARD_BRANCH}\"}"
       ;;
 
     "GET /api/available-services")

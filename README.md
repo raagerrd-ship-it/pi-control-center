@@ -94,7 +94,8 @@ Om du vill att Pi:n ska installera allt automatiskt vid första boot (utan SSH):
 
 | Endpoint | Metod | Beskrivning |
 |----------|-------|-------------|
-| `/api/status` | GET | Systemstatus (CPU, RAM, disk, tjänster) |
+| `/api/status` | GET | Systemstatus (CPU, RAM, disk, tjänster, commit, branch) |
+| `/api/version` | GET | Dashboard-info (name, version, commit, commitShort, branch) |
 | `/api/versions` | GET | Lokala och remote-versioner |
 | `/api/update/:app` | POST | Starta uppdatering |
 | `/api/install/:app` | POST | Installera en tjänst |
