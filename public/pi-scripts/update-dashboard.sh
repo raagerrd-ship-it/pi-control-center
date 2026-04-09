@@ -27,6 +27,7 @@ cd "$DASHBOARD_DIR"
 echo "[1/6] Pulling latest code..."
 git checkout -- . 2>/dev/null
 git pull
+sed -i 's/\r$//' "$DASHBOARD_DIR/public/pi-scripts/"*.sh
 chmod +x "$DASHBOARD_DIR/public/pi-scripts/"*.sh
 
 echo "[2/6] Installing dependencies..."
