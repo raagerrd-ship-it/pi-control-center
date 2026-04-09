@@ -5,8 +5,8 @@
     "repo": "https://github.com/raagerrd-ship-it/lotus-light-link.git",
     "installDir": "/opt/lotus-light",
     "installScript": "pi/setup-lotus.sh",
-    "updateScript": "/opt/lotus-light/pi/dashboard-update.sh",
-    "uninstallScript": "pi/uninstall.sh",
+    "updateScript": "/opt/lotus-light/pi/update-services.sh",
+    "uninstallScript": "pi/uninstall-lotus.sh",
     "service": "lotus-light"
   },
   {
@@ -15,8 +15,8 @@
     "repo": "https://github.com/raagerrd-ship-it/hromecast.git",
     "installDir": "$HOME/.local/share/cast-away",
     "installScript": "bridge-pi/install-linux.sh",
-    "updateScript": "$HOME/.local/share/hromecast/bridge-pi/update.sh",
-    "uninstallScript": "bridge-pi/uninstall.sh",
+    "updateScript": "$HOME/.local/share/cast-away/bridge-pi/update.sh",
+    "uninstallScript": "bridge-pi/uninstall-linux.sh",
     "service": "cast-away"
   },
   {
@@ -26,7 +26,7 @@
     "installDir": "$HOME/.local/share/sonos-proxy",
     "installScript": "bridge/install-linux.sh",
     "updateScript": "$HOME/.local/share/sonos-proxy/bridge/update.sh",
-    "uninstallScript": "bridge/uninstall.sh",
+    "uninstallScript": "bridge/uninstall-linux.sh",
     "service": "sonos-proxy"
   }
 ]
