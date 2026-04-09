@@ -261,7 +261,15 @@ export function ServiceCard({
       </div>
 
       {/* Logs panel — expands at bottom of card */}
-      {installed && <LogViewer appKey={appKey} appName={name} panelOnly />}
+      {installed && (
+        <LogViewer
+          appKey={appKey}
+          appName={name}
+          panelOnly
+          liveActive={isUpdating || isInstalling}
+          liveLogType={isInstalling ? 'install' : 'update'}
+        />
+      )}
     </div>
     </LogProvider>
   );

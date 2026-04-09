@@ -27,15 +27,20 @@ interface LogViewerProps {
   asIconButton?: boolean;
   showLabel?: boolean;
   panelOnly?: boolean;
+  /** When true, auto-opens with the given liveLogType and polls every 2s */
+  liveActive?: boolean;
+  liveLogType?: 'update' | 'install' | 'service';
 }
 
-export function LogViewer({ appKey, appName, asButton, asIconButton, showLabel, panelOnly }: LogViewerProps) {
+export function LogViewer({ appKey, appName, asButton, asIconButton, showLabel, panelOnly, liveActive, liveLogType }: LogViewerProps) {
   const ctx = useContext(LogContext);
   const [localOpen, setLocalOpen] = useState(false);
   const [logType, setLogType] = useState<'update' | 'install' | 'service'>('service');
   const [log, setLog] = useState<string>('');
   const [loading, setLoading] = useState(false);
   const scrollRef = useRef<HTMLPreElement>(null);
+  const liveTimer = useRef<number | null>(null);
+  const prevLiveActive = useRef(false);
 
   const isOpen = ctx ? ctx.open : localOpen;
   const toggleOpen = ctx ? ctx.toggle : () => setLocalOpen(o => !o);
@@ -53,8 +58,37 @@ export function LogViewer({ appKey, appName, asButton, asIconButton, showLabel, 
     }
   };
 
+  // Auto-open and live-poll when liveActive becomes true
   useEffect(() => {
-    if (isOpen) {
+    if (liveActive && !prevLiveActive.current) {
+      // Just became active — auto-open and switch to correct log type
+      if (ctx && !ctx.open) ctx.toggle();
+      else if (!ctx) setLocalOpen(true);
+      const type = liveLogType || 'update';
+      setLogType(type);
+    }
+    prevLiveActive.current = !!liveActive;
+  }, [liveActive, liveLogType, ctx]);
+
+  // Live polling
+  useEffect(() => {
+    if (liveActive && isOpen) {
+      const type = liveLogType || 'update';
+      const poll = async () => {
+        try {
+          const text = await fetchLogs(appKey, type);
+          setLog(text);
+        } catch { /* ignore */ }
+        liveTimer.current = window.setTimeout(poll, 2000);
+      };
+      poll();
+      return () => { if (liveTimer.current) clearTimeout(liveTimer.current); };
+    }
+    return () => { if (liveTimer.current) clearTimeout(liveTimer.current); };
+  }, [liveActive, isOpen, appKey, liveLogType]);
+
+  useEffect(() => {
+    if (isOpen && !liveActive) {
       loadLog(logType);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
