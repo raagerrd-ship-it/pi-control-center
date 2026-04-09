@@ -139,11 +139,7 @@ check_installed() {
   local install_dir=$2
   local svc=$3
 
-  if [ "$app" = "lotus-lantern" ]; then
-    [ -d "$install_dir/.git" ] && [ -f "/etc/systemd/system/${svc}.service" ] && echo "true" || echo "false"
-  else
-    [ -d "$install_dir" ] && { [ -f "$HOME/.config/systemd/user/${svc}.service" ] || [ -f "/etc/systemd/system/${svc}.service" ]; } && echo "true" || echo "false"
-  fi
+  [ -d "$install_dir" ] && { [ -f "$HOME/.config/systemd/user/${svc}.service" ] || [ -f "/etc/systemd/system/${svc}.service" ]; } && echo "true" || echo "false"
 }
 
 get_version() {
