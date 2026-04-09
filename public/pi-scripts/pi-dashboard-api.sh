@@ -421,8 +421,17 @@ EOF
   fi
 }
 
+progress() {
+  local sf=$1 app=$2 msg=$3 start=$4
+  local elapsed=$(( $(date +%s) - start ))
+  local min=$((elapsed / 60)) sec=$((elapsed % 60))
+  local time_str
+  if [ "$min" -gt 0 ]; then time_str="${min}m ${sec}s"; else time_str="${sec}s"; fi
+  echo "{\"app\":\"${app}\",\"status\":\"installing\",\"progress\":\"${msg}\",\"elapsed\":\"${time_str}\"}" > "$sf"
+}
+
 do_install() {
-  local app repo install_dir script svc sf install_message req_port req_core
+  local app repo install_dir script svc sf install_message req_port req_core start_time
   app=$1
   req_port=$2
   req_core=$3
@@ -432,47 +441,57 @@ do_install() {
   svc=$(registry_get "$app" "service")
   sf="$INSTALL_DIR/${app}.json"
   install_message="Installation klar"
+  start_time=$(date +%s)
 
   [ -z "$repo" ] && { echo "{\"app\":\"${app}\",\"status\":\"error\",\"message\":\"Okänd app\"}" > "$sf"; return 1; }
 
-  echo "{\"app\":\"${app}\",\"status\":\"installing\",\"progress\":\"Startar installation...\"}" > "$sf"
+  progress "$sf" "$app" "Startar installation..." "$start_time"
 
   export XDG_RUNTIME_DIR="$USER_RUNTIME_DIR"
   export DBUS_SESSION_BUS_ADDRESS="$USER_BUS_ADDRESS"
 
   if [ "$app" = "lotus-lantern" ]; then
-    if ! install_message=$(install_lotus_lantern "$repo" "$INSTALL_DIR/${app}.log" "$sf" "$req_core" "$req_port"); then
+    if ! install_message=$(install_lotus_lantern "$repo" "$INSTALL_DIR/${app}.log" "$sf" "$req_core" "$req_port" "$start_time"); then
       echo "{\"app\":\"${app}\",\"status\":\"error\",\"message\":\"Installationsskript misslyckades\",\"timestamp\":\"$(date -Iseconds)\"}" > "$sf"
       return 1
     fi
   else
+    progress "$sf" "$app" "Förbereder katalog..." "$start_time"
     [ -d "$install_dir" ] && rm -rf "$install_dir"
     mkdir -p "$(dirname "$install_dir")"
 
-    echo "{\"app\":\"${app}\",\"status\":\"installing\",\"progress\":\"Klonar repo...\"}" > "$sf"
+    progress "$sf" "$app" "Klonar repo..." "$start_time"
     if ! nice -n 15 git clone --depth 1 "$repo" "$install_dir" > "$INSTALL_DIR/${app}.log" 2>&1; then
       echo "{\"app\":\"${app}\",\"status\":\"error\",\"message\":\"Git clone misslyckades\",\"timestamp\":\"$(date -Iseconds)\"}" > "$sf"
       return 1
     fi
 
-    echo "{\"app\":\"${app}\",\"status\":\"installing\",\"progress\":\"Kör installationsskript...\"}" > "$sf"
+    progress "$sf" "$app" "Verifierar installationsskript..." "$start_time"
     if [ ! -f "$install_dir/$script" ]; then
       echo "{\"app\":\"${app}\",\"status\":\"error\",\"message\":\"Installationsskript saknas\",\"timestamp\":\"$(date -Iseconds)\"}" > "$sf"
       return 1
     fi
 
     chmod +x "$install_dir/$script"
+
+    progress "$sf" "$app" "Kör installationsskript (kan ta flera minuter)..." "$start_time"
     if ! nice -n 15 ionice -c 3 bash "$install_dir/$script" --port "$req_port" --core "$req_core" >> "$INSTALL_DIR/${app}.log" 2>&1; then
       echo "{\"app\":\"${app}\",\"status\":\"error\",\"message\":\"Installationsskript misslyckades\",\"timestamp\":\"$(date -Iseconds)\"}" > "$sf"
       return 1
     fi
+
+    progress "$sf" "$app" "Sparar konfiguration..." "$start_time"
   fi
 
   # Save assignment
   assignment_set "$app" "$req_port" "$req_core"
 
   rm -f "$CACHE_FILE"
-  echo "{\"app\":\"${app}\",\"status\":\"success\",\"message\":\"${install_message}\",\"timestamp\":\"$(date -Iseconds)\"}" > "$sf"
+  local total_elapsed=$(( $(date +%s) - start_time ))
+  local t_min=$((total_elapsed / 60)) t_sec=$((total_elapsed % 60))
+  local total_str
+  if [ "$t_min" -gt 0 ]; then total_str="${t_min}m ${t_sec}s"; else total_str="${t_sec}s"; fi
+  echo "{\"app\":\"${app}\",\"status\":\"success\",\"message\":\"${install_message} (${total_str})\",\"timestamp\":\"$(date -Iseconds)\"}" > "$sf"
 }
 
 do_uninstall() {
