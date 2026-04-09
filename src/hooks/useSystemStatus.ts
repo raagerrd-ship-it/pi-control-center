@@ -17,11 +17,12 @@ export function useSystemStatus() {
   const addEntryRef = useRef(addEntry);
   addEntryRef.current = addEntry;
 
+  const pollRef = useRef<() => Promise<void>>();
+
   const scheduleNext = useCallback(() => {
     if (intervalRef.current) clearTimeout(intervalRef.current);
-    // Exponential backoff: 5s → 10s → 20s → 40s → 60s cap
     const delay = Math.min(BASE_INTERVAL * Math.pow(2, failCount.current), MAX_INTERVAL);
-    intervalRef.current = window.setTimeout(poll, delay);
+    intervalRef.current = window.setTimeout(() => pollRef.current?.(), delay);
   }, []);
 
   const poll = useCallback(async () => {
@@ -51,6 +52,8 @@ export function useSystemStatus() {
     }
   }, [scheduleNext]);
 
+  pollRef.current = poll;
+
   useEffect(() => {
     addEntryRef.current('SYSTEM', 'Ansluter till API...', 'info');
     poll();
@@ -62,7 +65,7 @@ export function useSystemStatus() {
           intervalRef.current = null;
         }
       } else {
-        failCount.current = 0; // Reset backoff on tab focus
+        failCount.current = 0;
         poll();
       }
     };
