@@ -3,10 +3,12 @@
 # Pulls latest code, rebuilds, and deploys to Nginx
 # Usage: bash ~/pi-dashboard/public/pi-scripts/update-dashboard.sh
 
-set -e
+set -euo pipefail
 
 DASHBOARD_DIR="$HOME/pi-dashboard"
 NGINX_DIR="/var/www/pi-dashboard"
+API_SCRIPT="$DASHBOARD_DIR/public/pi-scripts/pi-dashboard-api.sh"
+SYSTEM_API_SCRIPT="/usr/local/bin/pi-dashboard-api.sh"
 
 export NODE_OPTIONS="--max-old-space-size=256"
 
@@ -40,7 +42,11 @@ echo "[4/6] Building (this may take a few minutes)..."
 nice -n 15 ionice -c 3 npm run build
 
 echo "[5/6] Deploying to Nginx..."
+sudo mkdir -p "$NGINX_DIR"
 sudo cp -r dist/* "$NGINX_DIR/"
+if [ -f "$API_SCRIPT" ]; then
+  sudo install -m 755 "$API_SCRIPT" "$SYSTEM_API_SCRIPT"
+fi
 
 echo "[6/6] Cleaning up..."
 rm -rf node_modules

@@ -537,22 +537,34 @@ handle_request() {
       ;;
 
     "POST /api/update/dashboard")
-      local sf
+      local sf ddir ndir dashboard_log
       sf="$STATUS_DIR/dashboard.json"
+      ddir="$HOME/pi-dashboard"
+      ndir="/var/www/pi-dashboard"
+      dashboard_log="$STATUS_DIR/dashboard.log"
+      mkdir -p "$STATUS_DIR"
       echo '{"app":"dashboard","status":"updating"}' > "$sf"
+      : > "$dashboard_log"
       response='{"app":"dashboard","status":"updating"}'
       (
-        local DDIR NDIR
-        DDIR="$HOME/pi-dashboard"
-        NDIR="/var/www/pi-dashboard"
-        cd "$DDIR" 2>/dev/null || { echo "{\"app\":\"dashboard\",\"status\":\"error\",\"message\":\"Dir not found\",\"timestamp\":\"$(date -Iseconds)\"}" > "$sf"; exit 1; }
-        nice -n 15 git fetch origin main --depth=1 --quiet 2>/dev/null
-        nice -n 15 git pull origin main --quiet 2>/dev/null || { echo "{\"app\":\"dashboard\",\"status\":\"error\",\"message\":\"Git pull failed\",\"timestamp\":\"$(date -Iseconds)\"}" > "$sf"; exit 1; }
-        NODE_OPTIONS="--max-old-space-size=256" nice -n 15 ionice -c 3 npm install --production --no-audit --no-fund 2>/dev/null
-        NODE_OPTIONS="--max-old-space-size=256" nice -n 15 ionice -c 3 npm run build 2>/dev/null || { echo "{\"app\":\"dashboard\",\"status\":\"error\",\"message\":\"Build failed\",\"timestamp\":\"$(date -Iseconds)\"}" > "$sf"; exit 1; }
-        sudo cp -r dist/* "$NDIR/" 2>/dev/null
+        cd "$ddir" 2>/dev/null || { echo "{\"app\":\"dashboard\",\"status\":\"error\",\"message\":\"Dir not found\",\"timestamp\":\"$(date -Iseconds)\"}" > "$sf"; exit 1; }
+        nice -n 15 git fetch origin main --depth=1 --quiet || { echo "{\"app\":\"dashboard\",\"status\":\"error\",\"message\":\"Git fetch failed\",\"timestamp\":\"$(date -Iseconds)\"}" > "$sf"; exit 1; }
+        nice -n 15 git pull origin main --quiet || { echo "{\"app\":\"dashboard\",\"status\":\"error\",\"message\":\"Git pull failed\",\"timestamp\":\"$(date -Iseconds)\"}" > "$sf"; exit 1; }
+        sed -i 's/\r$//' "$ddir/public/pi-scripts/"*.sh
+        chmod +x "$ddir/public/pi-scripts/"*.sh
+        NODE_OPTIONS="--max-old-space-size=256" nice -n 15 ionice -c 3 npm install --no-audit --no-fund || { echo "{\"app\":\"dashboard\",\"status\":\"error\",\"message\":\"npm install failed\",\"timestamp\":\"$(date -Iseconds)\"}" > "$sf"; exit 1; }
+        npx -y update-browserslist-db@latest >/dev/null 2>&1 || true
+        NODE_OPTIONS="--max-old-space-size=256" nice -n 15 ionice -c 3 npm run build || { echo "{\"app\":\"dashboard\",\"status\":\"error\",\"message\":\"Build failed\",\"timestamp\":\"$(date -Iseconds)\"}" > "$sf"; exit 1; }
+        sudo mkdir -p "$ndir"
+        sudo cp -r dist/* "$ndir/" || { echo "{\"app\":\"dashboard\",\"status\":\"error\",\"message\":\"Deploy failed\",\"timestamp\":\"$(date -Iseconds)\"}" > "$sf"; exit 1; }
+        if [ -f "$ddir/public/pi-scripts/pi-dashboard-api.sh" ]; then
+          sudo install -m 755 "$ddir/public/pi-scripts/pi-dashboard-api.sh" /usr/local/bin/pi-dashboard-api.sh || true
+        fi
+        rm -rf node_modules
+        npm cache clean --force >/dev/null 2>&1 || true
         echo "{\"app\":\"dashboard\",\"status\":\"success\",\"timestamp\":\"$(date -Iseconds)\"}" > "$sf"
-      ) >> "$STATUS_DIR/dashboard.log" 2>&1 &
+        sudo systemctl restart pi-dashboard-api >/dev/null 2>&1 || true
+      ) >> "$dashboard_log" 2>&1 &
       ;;
 
     POST\ /api/update/*)
