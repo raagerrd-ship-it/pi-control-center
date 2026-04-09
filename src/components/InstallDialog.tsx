@@ -11,20 +11,13 @@ import {
   DialogTrigger,
   DialogDescription,
 } from '@/components/ui/dialog';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
 import type { SystemStatus } from '@/lib/api';
 
 interface InstallDialogProps {
   appKey: string;
   appName: string;
+  core: number;
   usedPorts: number[];
-  usedCores: number[];
   status: SystemStatus | null;
   onInstall: (app: string, port: number, core: number) => void;
   disabled?: boolean;
@@ -33,8 +26,8 @@ interface InstallDialogProps {
 export function InstallDialog({
   appKey,
   appName,
+  core,
   usedPorts,
-  usedCores,
   status,
   onInstall,
   disabled,
@@ -48,14 +41,13 @@ export function InstallDialog({
   }, [usedPorts]);
 
   const [port, setPort] = useState(suggestedPort);
-  const [core, setCore] = useState('1');
 
   const portConflict = usedPorts.includes(port);
   const ramFree = status ? status.ramTotal - status.ramUsed : 999;
   const lowRam = ramFree < 100;
 
   const handleInstall = () => {
-    onInstall(appKey, port, parseInt(core));
+    onInstall(appKey, port, core);
     setOpen(false);
   };
 
@@ -65,7 +57,7 @@ export function InstallDialog({
         <Button
           variant="default"
           size="sm"
-          className="font-mono text-xs gap-1.5 flex-1"
+          className="font-mono text-xs gap-1.5 w-full"
           disabled={disabled}
         >
           <Download className="h-3 w-3" />
@@ -76,7 +68,7 @@ export function InstallDialog({
         <DialogHeader>
           <DialogTitle className="font-mono text-sm">Installera {appName}</DialogTitle>
           <DialogDescription className="text-xs text-muted-foreground">
-            Välj port och CPU-core för tjänsten.
+            Installeras på Core {core}. Välj port för tjänsten.
           </DialogDescription>
         </DialogHeader>
         <div className="flex flex-col gap-4">
@@ -97,26 +89,6 @@ export function InstallDialog({
             )}
           </div>
 
-          <div>
-            <Label className="text-xs text-muted-foreground font-mono">CPU Core</Label>
-            <Select value={core} onValueChange={setCore}>
-              <SelectTrigger className="font-mono text-sm mt-1">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="0" disabled>
-                  Core 0 — Reserverad (Dashboard)
-                </SelectItem>
-                {[1, 2, 3].map(c => (
-                  <SelectItem key={c} value={String(c)}>
-                    Core {c}
-                    {usedCores.includes(c) ? ' — Upptagen' : ''}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
           {lowRam && (
             <p className="text-[10px] text-[hsl(var(--status-warning))] font-mono">
               ⚠ Lite RAM kvar ({ramFree}MB). Installation kan misslyckas.
@@ -128,7 +100,7 @@ export function InstallDialog({
             disabled={portConflict || port < 1024}
             className="font-mono text-sm"
           >
-            Installera
+            Installera på Core {core}
           </Button>
         </div>
       </DialogContent>
