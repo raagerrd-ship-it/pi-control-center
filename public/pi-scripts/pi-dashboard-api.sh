@@ -466,11 +466,7 @@ handle_request() {
         : > "$update_log"
         response=$(< "$update_json")
         (
-          if [ "$app" = "lotus-lantern" ]; then
-            sudo -n "$uscript"
-          else
-            nice -n 15 ionice -c 3 bash "$uscript"
-          fi
+          nice -n 15 ionice -c 3 bash "$uscript"
           exit_code=$?
           if [ "$exit_code" -eq 0 ]; then
             echo "{\"app\":\"${app}\",\"status\":\"success\",\"timestamp\":\"$(date -Iseconds)\"}" > "$update_json"
