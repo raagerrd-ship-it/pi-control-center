@@ -93,54 +93,48 @@ export function SystemMonitor({
             <span className="font-mono text-[11px] text-border">·</span>
             <span className="font-mono text-[11px] text-muted-foreground">{noData ? '—' : `${status.dashboardRamMb ?? 7}MB`}</span>
           </div>
-          <div className="relative">
-            <Button
-              variant="ghost"
-              size="sm"
-              className={`font-mono text-[11px] gap-1 h-6 px-2 ${updatesAvailable ? 'text-[hsl(var(--status-warning))]' : 'text-muted-foreground hover:text-foreground'}`}
-              disabled={checkingVersions}
-              onClick={onCheckVersions}
-            >
-              <RefreshCw className={`h-3 w-3 ${checkingVersions ? 'animate-spin' : ''}`} />
-              {checkingVersions ? 'Söker...' : 'Sök uppdateringar'}
-            </Button>
-            {updatesAvailable && (
-              <span className="absolute -top-0.5 -right-0.5 h-2.5 w-2.5 rounded-full bg-[hsl(var(--status-warning))] border-2 border-background" />
-            )}
-          </div>
         </div>
 
         <div className="flex items-center gap-2">
-          <div className={`flex-1 flex items-center justify-between rounded px-2 py-1 text-[10px] font-mono ${dashboardVersion?.hasUpdate ? 'bg-[hsl(var(--status-warning)/0.08)] border border-[hsl(var(--status-warning)/0.25)]' : 'bg-secondary/30'}`}>
-            <span className="text-muted-foreground">Version {dashboardVersion?.local || '—'}</span>
+          <span className="font-mono text-[10px] text-muted-foreground">
+            Version {dashboardVersion?.local || '—'}
+          </span>
+          {dashboardUpdate?.status === 'success' && (
+            <span className="flex items-center gap-1 text-[11px] text-[hsl(var(--status-online))] font-mono">
+              <CheckCircle2 className="h-3 w-3" /> Klar
+            </span>
+          )}
+          {dashboardUpdate?.status === 'error' && (
+            <span className="flex items-center gap-1 text-[11px] text-destructive font-mono" title={dashboardUpdate.message}>
+              <AlertCircle className="h-3 w-3" /> Misslyckades
+            </span>
+          )}
+          <div className="ml-auto">
             {dashboardVersion?.hasUpdate ? (
-              <span className="text-[hsl(var(--status-warning))]">Ny version</span>
+              <Button
+                variant="default"
+                size="sm"
+                className="font-mono text-[11px] gap-1 h-7 px-2"
+                disabled={isUpdatingDashboard}
+                onClick={onDashboardUpdate}
+              >
+                <RefreshCw className={`h-3 w-3 ${isUpdatingDashboard ? 'animate-spin' : ''}`} />
+                {isUpdatingDashboard ? 'Uppdaterar...' : 'Uppdatera'}
+              </Button>
             ) : (
-              <span className="text-muted-foreground/50">✓</span>
+              <Button
+                variant="ghost"
+                size="sm"
+                className={`font-mono text-[11px] gap-1 h-7 px-2 ${checkingVersions ? 'text-muted-foreground' : 'text-muted-foreground hover:text-foreground'}`}
+                disabled={checkingVersions}
+                onClick={onCheckVersions}
+              >
+                <RefreshCw className={`h-3 w-3 ${checkingVersions ? 'animate-spin' : ''}`} />
+                {checkingVersions ? 'Söker...' : 'Sök uppdateringar'}
+              </Button>
             )}
           </div>
-          <Button
-            variant={dashboardVersion?.hasUpdate ? 'default' : 'secondary'}
-            size="sm"
-            className="font-mono text-[11px] gap-1 h-7 px-2"
-            disabled={isUpdatingDashboard}
-            onClick={onDashboardUpdate}
-          >
-            <RefreshCw className={`h-3 w-3 ${isUpdatingDashboard ? 'animate-spin' : ''}`} />
-            {isUpdatingDashboard ? 'Uppdaterar...' : 'Uppdatera'}
-          </Button>
         </div>
-
-        {dashboardUpdate?.status === 'success' && (
-          <span className="flex items-center gap-1 text-[11px] text-[hsl(var(--status-online))] font-mono">
-            <CheckCircle2 className="h-3 w-3" /> Klar
-          </span>
-        )}
-        {dashboardUpdate?.status === 'error' && (
-          <span className="flex items-center gap-1 text-[11px] text-destructive font-mono" title={dashboardUpdate.message}>
-            <AlertCircle className="h-3 w-3" /> Misslyckades
-          </span>
-        )}
       </div>
     </div>
   );
