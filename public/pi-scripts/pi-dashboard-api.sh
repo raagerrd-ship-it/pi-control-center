@@ -370,6 +370,10 @@ handle_request() {
   ct="application/json"
 
   case "$method $path" in
+    "GET /api/ping")
+      response='{"pong":true}'
+      ;;
+
     "GET /api/status")
       response=$(get_cached_status)
       ;;
