@@ -30,6 +30,7 @@ export interface InstallResult {
   status: 'idle' | 'installing' | 'success' | 'error';
   message?: string;
   progress?: string;
+  elapsed?: string;
   timestamp?: string;
 }
 

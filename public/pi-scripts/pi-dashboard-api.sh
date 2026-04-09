@@ -307,43 +307,50 @@ EOF
 }
 
 install_lotus_lantern() {
-  local repo log_file sf default_core default_port needs_reboot node_major overlay_file
+  local repo log_file sf default_core default_port start_time needs_reboot node_major overlay_file
   repo=$1
   log_file=$2
   sf=$3
   default_core=$4
   default_port=$5
+  start_time=${6:-$(date +%s)}
   needs_reboot="false"
   overlay_file="/boot/config.txt"
   [ -f /boot/firmware/config.txt ] && overlay_file="/boot/firmware/config.txt"
 
   export DEBIAN_FRONTEND=noninteractive
 
-  echo '{"app":"lotus-lantern","status":"installing","progress":"Installerar systempaket..."}' > "$sf"
-  if ! sudo apt-get update -qq >> "$log_file" 2>&1 || ! sudo apt-get install -y -qq bluez libbluetooth-dev libasound2-dev alsa-utils git curl >> "$log_file" 2>&1; then
+  progress "$sf" "lotus-lantern" "Uppdaterar paketlistor..." "$start_time"
+  if ! sudo apt-get update -qq >> "$log_file" 2>&1; then
+    return 1
+  fi
+
+  progress "$sf" "lotus-lantern" "Installerar systempaket (bluez, alsa, etc.)..." "$start_time"
+  if ! sudo apt-get install -y -qq bluez libbluetooth-dev libasound2-dev alsa-utils git curl >> "$log_file" 2>&1; then
     return 1
   fi
 
   node_major=$(node -v 2>/dev/null | cut -d. -f1 | tr -d 'v' || echo 0)
   if [ -z "$node_major" ] || [ "$node_major" -lt 20 ]; then
-    echo '{"app":"lotus-lantern","status":"installing","progress":"Installerar Node.js 20..."}' > "$sf"
+    progress "$sf" "lotus-lantern" "Installerar Node.js 20..." "$start_time"
     if ! curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash - >> "$log_file" 2>&1 || ! sudo apt-get install -y -qq nodejs >> "$log_file" 2>&1; then
       return 1
     fi
   fi
 
   if ! sudo grep -q 'googlevoicehat-soundcard' "$overlay_file" 2>/dev/null; then
+    progress "$sf" "lotus-lantern" "Konfigurerar ljudkort-overlay..." "$start_time"
     echo 'dtoverlay=googlevoicehat-soundcard' | sudo tee -a "$overlay_file" > /dev/null
     needs_reboot="true"
   fi
 
-  echo '{"app":"lotus-lantern","status":"installing","progress":"Klonar repo..."}' > "$sf"
+  progress "$sf" "lotus-lantern" "Klonar repo..." "$start_time"
   sudo rm -rf /opt/lotus-light
   if ! sudo git clone --depth 1 "$repo" /opt/lotus-light >> "$log_file" 2>&1; then
     return 1
   fi
 
-  echo '{"app":"lotus-lantern","status":"installing","progress":"Applicerar byggfixar..."}' > "$sf"
+  progress "$sf" "lotus-lantern" "Applicerar byggfixar (noble, fft-js)..." "$start_time"
   sudo sed -i 's/noble\.state/noble._state/g' /opt/lotus-light/pi/src/nobleBle.ts
   printf 'declare module "node-record-lpcm16";\n' | sudo tee /opt/lotus-light/pi/src/node-record-lpcm16.d.ts > /dev/null
   printf 'declare module "eventsource";\n' | sudo tee /opt/lotus-light/pi/src/eventsource.d.ts > /dev/null
@@ -359,15 +366,27 @@ if alsa_mic.exists():
         alsa_mic.write_text(source.replace(original, replacement))
 PY
 
-  echo '{"app":"lotus-lantern","status":"installing","progress":"Installerar dependencies och bygger..."}' > "$sf"
-  if ! sudo bash -lc 'set -e; cd /opt/lotus-light/pi; rm -rf node_modules; npm cache clean --force; NODE_OPTIONS="--max-old-space-size=256" npm install --no-audit --no-fund; NODE_OPTIONS="--max-old-space-size=256" npm run build; npm prune --production 2>/dev/null || true' >> "$log_file" 2>&1; then
+  progress "$sf" "lotus-lantern" "Rensar gamla dependencies..." "$start_time"
+  sudo bash -c 'cd /opt/lotus-light/pi && rm -rf node_modules && npm cache clean --force' >> "$log_file" 2>&1 || true
+
+  progress "$sf" "lotus-lantern" "Installerar npm-paket (kan ta 3-5 min)..." "$start_time"
+  if ! sudo bash -lc 'set -e; cd /opt/lotus-light/pi; NODE_OPTIONS="--max-old-space-size=256" npm install --no-audit --no-fund' >> "$log_file" 2>&1; then
     return 1
   fi
 
+  progress "$sf" "lotus-lantern" "Bygger TypeScript (kan ta 2-3 min)..." "$start_time"
+  if ! sudo bash -lc 'set -e; cd /opt/lotus-light/pi; NODE_OPTIONS="--max-old-space-size=256" npm run build' >> "$log_file" 2>&1; then
+    return 1
+  fi
+
+  progress "$sf" "lotus-lantern" "Rensar dev-dependencies..." "$start_time"
+  sudo bash -lc 'cd /opt/lotus-light/pi; npm prune --production 2>/dev/null || true' >> "$log_file" 2>&1
+
+  progress "$sf" "lotus-lantern" "Sätter BLE-rättigheter..." "$start_time"
   sudo setcap cap_net_raw+eip "$(readlink -f "$(which node)")" >> "$log_file" 2>&1 || true
   write_lotus_update_script
 
-  echo '{"app":"lotus-lantern","status":"installing","progress":"Skapar systemtjänster..."}' > "$sf"
+  progress "$sf" "lotus-lantern" "Skapar systemtjänst..." "$start_time"
   sudo tee /etc/systemd/system/lotus-light.service > /dev/null <<EOF
 [Unit]
 Description=Lotus Light Link — Audio-reactive BLE LED controller
@@ -397,6 +416,7 @@ SyslogIdentifier=lotus-light
 WantedBy=multi-user.target
 EOF
 
+  progress "$sf" "lotus-lantern" "Aktiverar tjänst..." "$start_time"
   if ! sudo systemctl daemon-reload >> "$log_file" 2>&1 || ! sudo systemctl enable lotus-light >> "$log_file" 2>&1; then
     return 1
   fi
@@ -406,6 +426,7 @@ EOF
     return 1
   fi
 
+  progress "$sf" "lotus-lantern" "Startar tjänst..." "$start_time"
   sudo systemctl start lotus-light >> "$log_file" 2>&1 || true
   sleep 2
   if ! sudo systemctl is-active --quiet lotus-light; then
@@ -421,8 +442,17 @@ EOF
   fi
 }
 
+progress() {
+  local sf=$1 app=$2 msg=$3 start=$4
+  local elapsed=$(( $(date +%s) - start ))
+  local min=$((elapsed / 60)) sec=$((elapsed % 60))
+  local time_str
+  if [ "$min" -gt 0 ]; then time_str="${min}m ${sec}s"; else time_str="${sec}s"; fi
+  echo "{\"app\":\"${app}\",\"status\":\"installing\",\"progress\":\"${msg}\",\"elapsed\":\"${time_str}\"}" > "$sf"
+}
+
 do_install() {
-  local app repo install_dir script svc sf install_message req_port req_core
+  local app repo install_dir script svc sf install_message req_port req_core start_time
   app=$1
   req_port=$2
   req_core=$3
@@ -432,47 +462,57 @@ do_install() {
   svc=$(registry_get "$app" "service")
   sf="$INSTALL_DIR/${app}.json"
   install_message="Installation klar"
+  start_time=$(date +%s)
 
   [ -z "$repo" ] && { echo "{\"app\":\"${app}\",\"status\":\"error\",\"message\":\"Okänd app\"}" > "$sf"; return 1; }
 
-  echo "{\"app\":\"${app}\",\"status\":\"installing\",\"progress\":\"Startar installation...\"}" > "$sf"
+  progress "$sf" "$app" "Startar installation..." "$start_time"
 
   export XDG_RUNTIME_DIR="$USER_RUNTIME_DIR"
   export DBUS_SESSION_BUS_ADDRESS="$USER_BUS_ADDRESS"
 
   if [ "$app" = "lotus-lantern" ]; then
-    if ! install_message=$(install_lotus_lantern "$repo" "$INSTALL_DIR/${app}.log" "$sf" "$req_core" "$req_port"); then
+    if ! install_message=$(install_lotus_lantern "$repo" "$INSTALL_DIR/${app}.log" "$sf" "$req_core" "$req_port" "$start_time"); then
       echo "{\"app\":\"${app}\",\"status\":\"error\",\"message\":\"Installationsskript misslyckades\",\"timestamp\":\"$(date -Iseconds)\"}" > "$sf"
       return 1
     fi
   else
+    progress "$sf" "$app" "Förbereder katalog..." "$start_time"
     [ -d "$install_dir" ] && rm -rf "$install_dir"
     mkdir -p "$(dirname "$install_dir")"
 
-    echo "{\"app\":\"${app}\",\"status\":\"installing\",\"progress\":\"Klonar repo...\"}" > "$sf"
+    progress "$sf" "$app" "Klonar repo..." "$start_time"
     if ! nice -n 15 git clone --depth 1 "$repo" "$install_dir" > "$INSTALL_DIR/${app}.log" 2>&1; then
       echo "{\"app\":\"${app}\",\"status\":\"error\",\"message\":\"Git clone misslyckades\",\"timestamp\":\"$(date -Iseconds)\"}" > "$sf"
       return 1
     fi
 
-    echo "{\"app\":\"${app}\",\"status\":\"installing\",\"progress\":\"Kör installationsskript...\"}" > "$sf"
+    progress "$sf" "$app" "Verifierar installationsskript..." "$start_time"
     if [ ! -f "$install_dir/$script" ]; then
       echo "{\"app\":\"${app}\",\"status\":\"error\",\"message\":\"Installationsskript saknas\",\"timestamp\":\"$(date -Iseconds)\"}" > "$sf"
       return 1
     fi
 
     chmod +x "$install_dir/$script"
+
+    progress "$sf" "$app" "Kör installationsskript (kan ta flera minuter)..." "$start_time"
     if ! nice -n 15 ionice -c 3 bash "$install_dir/$script" --port "$req_port" --core "$req_core" >> "$INSTALL_DIR/${app}.log" 2>&1; then
       echo "{\"app\":\"${app}\",\"status\":\"error\",\"message\":\"Installationsskript misslyckades\",\"timestamp\":\"$(date -Iseconds)\"}" > "$sf"
       return 1
     fi
+
+    progress "$sf" "$app" "Sparar konfiguration..." "$start_time"
   fi
 
   # Save assignment
   assignment_set "$app" "$req_port" "$req_core"
 
   rm -f "$CACHE_FILE"
-  echo "{\"app\":\"${app}\",\"status\":\"success\",\"message\":\"${install_message}\",\"timestamp\":\"$(date -Iseconds)\"}" > "$sf"
+  local total_elapsed=$(( $(date +%s) - start_time ))
+  local t_min=$((total_elapsed / 60)) t_sec=$((total_elapsed % 60))
+  local total_str
+  if [ "$t_min" -gt 0 ]; then total_str="${t_min}m ${t_sec}s"; else total_str="${t_sec}s"; fi
+  echo "{\"app\":\"${app}\",\"status\":\"success\",\"message\":\"${install_message} (${total_str})\",\"timestamp\":\"$(date -Iseconds)\"}" > "$sf"
 }
 
 do_uninstall() {
