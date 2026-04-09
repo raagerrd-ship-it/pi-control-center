@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, memo } from 'react';
 import { ExternalLink, RefreshCw, CheckCircle2, AlertCircle, Loader2, Play, Square, RotateCcw, Trash2, Plus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
@@ -49,7 +49,7 @@ interface CoreCardProps {
   onServiceAction: (app: string, action: 'start' | 'stop' | 'restart') => void;
 }
 
-export function CoreCard({
+export const CoreCard = memo(function CoreCard({
   coreIndex,
   service,
   availableServices,
@@ -282,4 +282,4 @@ export function CoreCard({
       </div>
     </div>
   );
-}
+});
