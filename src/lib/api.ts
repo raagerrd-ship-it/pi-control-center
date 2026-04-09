@@ -1,12 +1,7 @@
-import { loadSettings } from '@/components/Settings';
 
-const getBaseUrl = (): string => {
-  try {
-    const settings = loadSettings();
-    return `http://${settings.piIp}:${settings.apiPort}`;
-  } catch {}
-  return `http://${window.location.hostname}:8585`;
-};
+
+const getBaseUrl = (): string =>
+  `http://${window.location.hostname}:8585`;
 
 export interface SystemStatus {
   cpu: number;
