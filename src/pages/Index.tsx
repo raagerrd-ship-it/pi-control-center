@@ -1,18 +1,18 @@
 import { useState, useCallback, useEffect, useMemo } from 'react';
-import { RefreshCw } from 'lucide-react';
 import { SystemMonitor } from '@/components/SystemMonitor';
 import { PullToRefresh } from '@/components/PullToRefresh';
-import { ServiceCard } from '@/components/ServiceCard';
+import { CoreCard } from '@/components/CoreCard';
 import { ActivityLog } from '@/components/ActivityLog';
 import { Settings, loadSettings, type DashboardSettings } from '@/components/Settings';
 import { useSystemStatus } from '@/hooks/useSystemStatus';
 import { useServiceUpdate } from '@/hooks/useServiceUpdate';
 import { useActivityLog } from '@/hooks/useActivityLog';
-import { Button } from '@/components/ui/button';
 import {
   triggerUpdate, fetchUpdateStatus, fetchVersions, fetchAvailableServices,
   type UpdateResult, type VersionMap, type ServiceDefinition,
 } from '@/lib/api';
+
+const CORES = [1, 2, 3];
 
 const Index = () => {
   const [settings, setSettings] = useState<DashboardSettings>(loadSettings);
@@ -24,7 +24,6 @@ const Index = () => {
   const [versions, setVersions] = useState<VersionMap | null>(null);
   const [checkingVersions, setCheckingVersions] = useState(false);
 
-  // Build name map for logging
   const serviceNames = useMemo(() => {
     const map: Record<string, string> = {};
     availableServices.forEach(s => { map[s.key] = s.name; });
@@ -33,12 +32,10 @@ const Index = () => {
 
   const { updates, startUpdate, installs, startInstall, uninstalls, startUninstall, actions, runServiceAction } = useServiceUpdate(serviceNames);
 
-  // Fetch available services on mount
   useEffect(() => {
     fetchAvailableServices().then(setAvailableServices).catch(() => {});
   }, []);
 
-  // Derive used ports and cores from status
   const usedPorts = useMemo(() => {
     if (!status?.services) return [];
     return Object.values(status.services)
@@ -46,16 +43,23 @@ const Index = () => {
       .map(s => s.port!);
   }, [status]);
 
-  const usedCores = useMemo(() => {
-    if (!status?.services) return [0]; // Core 0 always reserved
-    const cores = [0];
-    Object.values(status.services).forEach(s => {
-      if (s.installed && s.cpuCore >= 0 && !cores.includes(s.cpuCore)) {
-        cores.push(s.cpuCore);
+  // Map: core index → service key installed on that core
+  const coreServiceMap = useMemo(() => {
+    const map: Record<number, string> = {};
+    if (!status?.services) return map;
+    Object.entries(status.services).forEach(([key, svc]) => {
+      if (svc.installed && svc.cpuCore >= 1) {
+        map[svc.cpuCore] = key;
       }
     });
-    return cores;
+    return map;
   }, [status]);
+
+  // Services not installed on any core
+  const uninstalledServices = useMemo(() => {
+    const installedKeys = new Set(Object.values(coreServiceMap));
+    return availableServices.filter(s => !installedKeys.has(s.key));
+  }, [availableServices, coreServiceMap]);
 
   const handleCheckVersions = useCallback(async () => {
     setCheckingVersions(true);
@@ -70,28 +74,19 @@ const Index = () => {
   const handleDashboardUpdate = useCallback(async () => {
     addEntry('DASHBOARD', 'Uppdatering startad', 'info');
     setDashboardUpdate({ app: 'dashboard', status: 'updating' });
-    try {
-      await triggerUpdate('dashboard');
-    } catch {}
+    try { await triggerUpdate('dashboard'); } catch {}
     let retries = 0;
-    const maxRetries = 60;
     const poll = async () => {
       try {
         const result = await fetchUpdateStatus('dashboard');
         setDashboardUpdate(result);
-        if (result.status === 'updating') {
-          retries = 0;
-          setTimeout(poll, 3000);
-        } else if (result.status === 'success') {
-          addEntry('DASHBOARD', 'Uppdaterad', 'success');
-        } else if (result.status === 'error') {
-          addEntry('DASHBOARD', 'Uppdatering misslyckades', 'error');
-        }
+        if (result.status === 'updating') { retries = 0; setTimeout(poll, 3000); }
+        else if (result.status === 'success') { addEntry('DASHBOARD', 'Uppdaterad', 'success'); }
+        else if (result.status === 'error') { addEntry('DASHBOARD', 'Uppdatering misslyckades', 'error'); }
       } catch {
         retries++;
-        if (retries < maxRetries) {
-          setTimeout(poll, 3000);
-        } else {
+        if (retries < 60) { setTimeout(poll, 3000); }
+        else {
           addEntry('DASHBOARD', 'Tappade anslutning under uppdatering', 'error');
           setDashboardUpdate({ app: 'dashboard', status: 'error', message: 'Lost connection to API' });
         }
@@ -110,20 +105,14 @@ const Index = () => {
         <header className="flex items-center justify-between mb-6">
           <div>
             <h1 className="font-mono text-lg font-bold tracking-tight">Pi Dashboard</h1>
-            <p className="font-mono text-xs text-muted-foreground">
-              {window.location.hostname}
-            </p>
+            <p className="font-mono text-xs text-muted-foreground">{window.location.hostname}</p>
           </div>
-          <div className="flex items-center gap-1">
-            <Settings onSave={setSettings} />
-          </div>
+          <Settings onSave={setSettings} />
         </header>
 
         <section className="mb-6">
           <SystemMonitor
-            status={status}
-            error={error}
-            loading={loading}
+            status={status} error={error} loading={loading}
             dashboardVersion={dashboardVersion}
             dashboardUpdate={dashboardUpdate}
             isUpdatingDashboard={isUpdatingDashboard}
@@ -138,28 +127,33 @@ const Index = () => {
           <h2 className="font-mono text-xs uppercase tracking-wider text-muted-foreground mb-3">
             Tjänster
           </h2>
-          <div className="grid gap-3 grid-cols-1 sm:grid-cols-2">
-            {availableServices.map(svc => {
-              const svcStatus = status?.services?.[svc.key];
+          <div className="grid gap-3 grid-cols-1 sm:grid-cols-3">
+            {CORES.map(coreIdx => {
+              const serviceKey = coreServiceMap[coreIdx];
+              const def = availableServices.find(s => s.key === serviceKey);
+              const svcStatus = serviceKey ? status?.services?.[serviceKey] : undefined;
+
+              const service = def && svcStatus ? {
+                definition: def,
+                online: svcStatus.online,
+                installed: svcStatus.installed,
+                version: svcStatus.version ?? '—',
+                cpu: svcStatus.cpu,
+                ramMb: svcStatus.ramMb,
+                port: svcStatus.port,
+                versionInfo: versions?.[serviceKey],
+                updateStatus: updates[serviceKey],
+                installStatus: installs[serviceKey],
+                actionStatus: actions[serviceKey],
+              } : undefined;
+
               return (
-                <ServiceCard
-                  key={svc.key}
-                  name={svc.name}
-                  appKey={svc.key}
-                  port={svcStatus?.port}
-                  piIp={window.location.hostname}
-                  online={svcStatus?.online ?? false}
-                  installed={svcStatus?.installed ?? false}
-                  version={svcStatus?.version ?? '—'}
-                  cpu={svcStatus?.cpu ?? 0}
-                  ramMb={svcStatus?.ramMb ?? 0}
-                  cpuCore={svcStatus?.cpuCore ?? -1}
-                  versionInfo={versions?.[svc.key]}
-                  updateStatus={updates[svc.key]}
-                  installStatus={installs[svc.key]}
-                  actionStatus={actions[svc.key]}
+                <CoreCard
+                  key={coreIdx}
+                  coreIndex={coreIdx}
+                  service={service}
+                  availableServices={uninstalledServices}
                   usedPorts={usedPorts}
-                  usedCores={usedCores}
                   status={status}
                   onUpdate={startUpdate}
                   onInstall={startInstall}
