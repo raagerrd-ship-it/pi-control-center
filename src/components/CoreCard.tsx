@@ -149,11 +149,7 @@ export const CoreCard = memo(function CoreCard({
               />
             )}
           </div>
-        ) : (
-          <p className="font-mono text-[11px] text-muted-foreground/50 text-center py-2">
-            Alla tjänster installerade
-          </p>
-        )}
+        ) : null}
       </div>
     );
   }
