@@ -29,10 +29,10 @@ export function useServiceUpdate(serviceNames: Record<string, string>) {
     const poll = async () => {
       try {
         const result = await fetchUpdateStatus(app);
-        if (retryCount > 0) {
-          addEntryRef.current(label(app), 'Återansluten — fortsätter spåra uppdatering', 'info');
-          retryCount = 0;
+        if (retryCount > 2) {
+          addEntryRef.current(label(app), 'Åter kontakt — fortsätter spåra uppdatering', 'success');
         }
+        retryCount = 0;
         setUpdates(prev => ({ ...prev, [app]: result }));
         if (result.status === 'updating') {
           pollTimers.current[timerKey] = window.setTimeout(poll, 3000);
@@ -43,8 +43,10 @@ export function useServiceUpdate(serviceNames: Record<string, string>) {
         }
       } catch {
         retryCount++;
-        if (retryCount === 1 || retryCount % 5 === 0) {
-          addEntryRef.current(label(app), `Tappade anslutning — försöker spåra uppdatering (försök ${retryCount})`, 'error');
+        if (retryCount === 3) {
+          addEntryRef.current(label(app), 'Pi upptagen — inväntar status...', 'info');
+        } else if (retryCount % 20 === 0) {
+          addEntryRef.current(label(app), `Fortfarande ingen status (försök ${retryCount})`, 'info');
         }
         pollTimers.current[timerKey] = window.setTimeout(poll, 5000);
       }
@@ -82,10 +84,10 @@ export function useServiceUpdate(serviceNames: Record<string, string>) {
     const poll = async () => {
       try {
         const result = await fetchInstallStatus(app);
-        if (retryCount > 0) {
-          addEntryRef.current(label(app), 'Återansluten — fortsätter spåra installation', 'info');
-          retryCount = 0;
+        if (retryCount > 2) {
+          addEntryRef.current(label(app), 'Åter kontakt — fortsätter spåra installation', 'success');
         }
+        retryCount = 0;
         setInstalls(prev => ({ ...prev, [app]: result }));
         if (result.status === 'installing') {
           const msg = result.progress || 'Installerar...';
@@ -107,8 +109,10 @@ export function useServiceUpdate(serviceNames: Record<string, string>) {
         }
       } catch {
         retryCount++;
-        if (retryCount === 1 || retryCount % 5 === 0) {
-          addEntryRef.current(label(app), `Tappade anslutning — försöker spåra installation (försök ${retryCount})`, 'error');
+        if (retryCount === 3) {
+          addEntryRef.current(label(app), 'Pi upptagen — inväntar status...', 'info');
+        } else if (retryCount % 20 === 0) {
+          addEntryRef.current(label(app), `Fortfarande ingen status (försök ${retryCount})`, 'info');
         }
         pollTimers.current[timerKey] = window.setTimeout(poll, 5000);
       }
