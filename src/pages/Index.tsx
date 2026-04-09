@@ -153,6 +153,7 @@ const Index = () => {
                   coreIndex={coreIdx}
                   service={service}
                   availableServices={uninstalledServices}
+                  allInstalls={installs}
                   usedPorts={usedPorts}
                   status={status}
                   onUpdate={startUpdate}
