@@ -9,7 +9,7 @@ import { useServiceUpdate } from '@/hooks/useServiceUpdate';
 import { useActivityLog } from '@/hooks/useActivityLog';
 import {
   triggerUpdate, fetchUpdateStatus, fetchVersions, fetchAvailableServices,
-  type UpdateResult, type VersionMap, type ServiceDefinition,
+  type UpdateResult, type VersionMap, type ServiceDefinition, fetchLogs,
 } from '@/lib/api';
 
 const CORES = [1, 2, 3];
@@ -82,7 +82,16 @@ const Index = () => {
         setDashboardUpdate(result);
         if (result.status === 'updating') { retries = 0; setTimeout(poll, 3000); }
         else if (result.status === 'success') { addEntry('DASHBOARD', 'Uppdaterad', 'success'); }
-        else if (result.status === 'error') { addEntry('DASHBOARD', 'Uppdatering misslyckades', 'error'); }
+        else if (result.status === 'error') {
+          addEntry('DASHBOARD', `Uppdatering misslyckades: ${result.message || 'okänt fel'}`, 'error');
+          try {
+            const log = await fetchLogs('dashboard', 'update');
+            if (log && log !== 'Tom logg' && log !== 'Inga loggar tillgängliga') {
+              const lastLines = log.split('\n').filter(Boolean).slice(-5).join(' | ');
+              if (lastLines) addEntry('DASHBOARD', `Logg: ${lastLines}`, 'error');
+            }
+          } catch {}
+        }
       } catch {
         retries++;
         if (retries < 60) { setTimeout(poll, 3000); }
