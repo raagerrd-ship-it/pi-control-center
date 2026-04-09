@@ -5,7 +5,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { ActivityLogProvider } from "@/hooks/useActivityLog";
 import Index from "./pages/Index.tsx";
 import NotFound from "./pages/NotFound.tsx";
-import LotusControl from "./pages/LotusControl.tsx";
+
 
 const App = () => (
   <ActivityLogProvider>
