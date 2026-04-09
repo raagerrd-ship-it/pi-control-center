@@ -26,29 +26,34 @@ fi
 
 cd "$DASHBOARD_DIR"
 
-echo "[1/6] Pulling latest code..."
+echo "[1/7] Pulling latest code..."
 git checkout -- . 2>/dev/null
 git pull
 sed -i 's/\r$//' "$DASHBOARD_DIR/public/pi-scripts/"*.sh
 chmod +x "$DASHBOARD_DIR/public/pi-scripts/"*.sh
 
-echo "[2/6] Installing dependencies..."
+echo "[2/7] Installing dependencies..."
 nice -n 15 ionice -c 3 npm install --no-audit --no-fund
 
-echo "[3/6] Updating browserslist..."
+echo "[3/7] Updating browserslist..."
 npx -y update-browserslist-db@latest 2>/dev/null || true
 
-echo "[4/6] Building (this may take a few minutes)..."
+echo "[4/7] Building (this may take a few minutes)..."
 nice -n 15 ionice -c 3 npm run build
 
-echo "[5/6] Deploying to Nginx..."
+echo "[5/7] Deploying to Nginx..."
 sudo mkdir -p "$NGINX_DIR"
 sudo cp -r dist/* "$NGINX_DIR/"
+
+echo "[6/7] Deploying services registry..."
+if [ -f "$DASHBOARD_DIR/public/services.json" ]; then
+  sudo cp "$DASHBOARD_DIR/public/services.json" "$NGINX_DIR/"
+fi
 if [ -f "$API_SCRIPT" ]; then
   sudo install -m 755 "$API_SCRIPT" "$SYSTEM_API_SCRIPT"
 fi
 
-echo "[6/6] Cleaning up..."
+echo "[7/7] Cleaning up..."
 rm -rf node_modules
 npm cache clean --force 2>/dev/null || true
 

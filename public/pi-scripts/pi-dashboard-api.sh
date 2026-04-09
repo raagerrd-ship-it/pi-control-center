@@ -1,6 +1,7 @@
 #!/bin/bash
 # Pi Dashboard API — lightweight HTTP server optimized for Pi Zero 2 W
 # Uses /proc for stats (no heavy subprocesses), caches results
+# Dynamic service registry from services.json + assignments.json
 # Usage: ./pi-dashboard-api.sh [port]
 
 REQUEST_MODE="${1:-}"
@@ -18,7 +19,14 @@ USER_ID="$(id -u)"
 USER_RUNTIME_DIR="/run/user/$USER_ID"
 USER_BUS_ADDRESS="unix:path=$USER_RUNTIME_DIR/bus"
 
+REGISTRY_FILE="/var/www/pi-dashboard/services.json"
+ASSIGNMENTS_FILE="/etc/pi-dashboard/assignments.json"
+
 mkdir -p "$STATUS_DIR" "$INSTALL_DIR"
+sudo mkdir -p /etc/pi-dashboard 2>/dev/null || true
+
+# Initialize assignments file if missing
+[ -f "$ASSIGNMENTS_FILE" ] || echo '{}' | sudo tee "$ASSIGNMENTS_FILE" > /dev/null
 
 user_systemctl() {
   XDG_RUNTIME_DIR="$USER_RUNTIME_DIR" \
@@ -26,54 +34,36 @@ user_systemctl() {
   systemctl --user "$@"
 }
 
-# App configs
-declare -A APP_REPOS=(
-  ["lotus-lantern"]="https://github.com/raagerrd-ship-it/lotus-light-link.git"
-  ["cast-away"]="https://github.com/raagerrd-ship-it/hromecast.git"
-  ["sonos-gateway"]="https://github.com/raagerrd-ship-it/sonos-gateway.git"
-)
+# --- Dynamic registry helpers ---
 
-declare -A APP_DIRS=(
-  ["lotus-lantern"]="/opt/lotus-light"
-  ["cast-away"]="$HOME/.local/share/hromecast"
-  ["sonos-gateway"]="$HOME/.local/share/sonos-proxy"
-)
+# Get a field from services.json: registry_get <key> <field>
+registry_get() {
+  jq -r --arg k "$1" --arg f "$2" '.[] | select(.key == $k) | .[$f] // empty' "$REGISTRY_FILE" 2>/dev/null
+}
 
-declare -A APP_INSTALL_DIRS=(
-  ["lotus-lantern"]="/opt/lotus-light"
-  ["cast-away"]="$HOME/.local/share/cast-away"
-  ["sonos-gateway"]="$HOME/.local/share/sonos-proxy"
-)
+# Get all service keys from registry
+registry_keys() {
+  jq -r '.[].key' "$REGISTRY_FILE" 2>/dev/null
+}
 
-declare -A APP_INSTALL_SCRIPTS=(
-  ["lotus-lantern"]="pi/setup-lotus.sh"
-  ["cast-away"]="bridge-pi/install-linux.sh"
-  ["sonos-gateway"]="bridge/install-linux.sh"
-)
+# Get assignment field: assignment_get <key> <field>
+assignment_get() {
+  jq -r --arg k "$1" --arg f "$2" '.[$k][$f] // empty' "$ASSIGNMENTS_FILE" 2>/dev/null
+}
 
-declare -A APP_UPDATE_SCRIPTS=(
-  ["lotus-lantern"]="/opt/lotus-light/pi/dashboard-update.sh"
-  ["cast-away"]="$HOME/.local/share/hromecast/bridge-pi/update.sh"
-  ["sonos-gateway"]="$HOME/.local/share/sonos-proxy/bridge/update.sh"
-)
+# Save assignment: assignment_set <key> <port> <core>
+assignment_set() {
+  local tmp
+  tmp=$(jq --arg k "$1" --argjson p "$2" --argjson c "$3" '.[$k] = {"port": $p, "core": $c}' "$ASSIGNMENTS_FILE")
+  echo "$tmp" | sudo tee "$ASSIGNMENTS_FILE" > /dev/null
+}
 
-declare -A APP_PORTS=(
-  ["lotus-lantern"]="3001"
-  ["cast-away"]="3000"
-  ["sonos-gateway"]="3002"
-)
-
-declare -A APP_SERVICES=(
-  ["lotus-lantern"]="lotus-light"
-  ["cast-away"]="cast-away"
-  ["sonos-gateway"]="sonos-proxy"
-)
-
-declare -A APP_CORES=(
-  ["lotus-lantern"]="1"
-  ["cast-away"]="2"
-  ["sonos-gateway"]="3"
-)
+# Remove assignment: assignment_remove <key>
+assignment_remove() {
+  local tmp
+  tmp=$(jq --arg k "$1" 'del(.[$k])' "$ASSIGNMENTS_FILE")
+  echo "$tmp" | sudo tee "$ASSIGNMENTS_FILE" > /dev/null
+}
 
 get_cpu() {
   read -r _ t1_u t1_n t1_s t1_i t1_w t1_x t1_y _ < /proc/stat
@@ -136,17 +126,13 @@ check_service() {
 
 check_installed() {
   local app=$1
-  local path=$2
-  local service=${APP_SERVICES[$app]}
+  local install_dir=$2
+  local svc=$3
 
   if [ "$app" = "lotus-lantern" ]; then
-    [ -d "$path/.git" ] && [ -f "/etc/systemd/system/${service}.service" ] && echo "true" || echo "false"
-  elif [ "$app" = "cast-away" ]; then
-    [ -d "$path" ] && [ -f "$HOME/.config/systemd/user/${service}.service" ] && echo "true" || echo "false"
-  elif [ "$app" = "sonos-gateway" ]; then
-    [ -d "$path" ] && [ -f "$HOME/.config/systemd/user/${service}.service" ] && echo "true" || echo "false"
+    [ -d "$install_dir/.git" ] && [ -f "/etc/systemd/system/${svc}.service" ] && echo "true" || echo "false"
   else
-    [ -d "$path" ] && [ -n "$(ls -A "$path" 2>/dev/null)" ] && echo "true" || echo "false"
+    [ -d "$install_dir" ] && { [ -f "$HOME/.config/systemd/user/${svc}.service" ] || [ -f "/etc/systemd/system/${svc}.service" ]; } && echo "true" || echo "false"
   fi
 }
 
@@ -163,7 +149,6 @@ get_version() {
 get_service_ram() {
   local val
   val=$(systemctl show "$1.service" --property=MemoryCurrent 2>/dev/null | cut -d= -f2)
-  # Try user-level if system-level returns nothing useful
   if [ -z "$val" ] || [ "$val" = "[not set]" ] || [ "$val" = "infinity" ]; then
     val=$(user_systemctl show "$1.service" --property=MemoryCurrent 2>/dev/null | cut -d= -f2)
   fi
@@ -188,23 +173,27 @@ build_status_json() {
   disk_total=${disk##*,}
   svc_json=""
 
-  for app in lotus-lantern cast-away sonos-gateway; do
-    local port dir install_dir svc online installed ver s_cpu s_ram s_core pid aff
-    port=${APP_PORTS[$app]}
-    dir=${APP_DIRS[$app]}
-    install_dir=${APP_INSTALL_DIRS[$app]:-$dir}
-    svc=${APP_SERVICES[$app]}
-    online=$(check_service "$port")
-    installed=$(check_installed "$app" "$install_dir")
-    ver=$(get_version "$dir")
+  for app in $(registry_keys); do
+    local svc install_dir port core online installed ver s_cpu s_ram s_core pid aff
+    svc=$(registry_get "$app" "service")
+    install_dir=$(eval echo "$(registry_get "$app" "installDir")")
+    port=$(assignment_get "$app" "port")
+    core=$(assignment_get "$app" "core")
+
+    [ -z "$port" ] && port=0
+    [ -z "$core" ] && core=-1
+
+    online="false"
+    [ "$port" -gt 0 ] && online=$(check_service "$port")
+    installed=$(check_installed "$app" "$install_dir" "$svc")
+    ver=$(get_version "$install_dir")
     s_cpu=0
     s_ram=0
-    s_core=${APP_CORES[$app]:-0}
+    s_core=${core}
 
     if [ "$online" = "true" ]; then
       s_ram=$(get_service_ram "$svc")
       pid=$(systemctl show "${svc}.service" --property=MainPID 2>/dev/null | cut -d= -f2)
-      # Try user-level if system-level PID is 0
       if [ -z "$pid" ] || [ "$pid" = "0" ]; then
         pid=$(user_systemctl show "${svc}.service" --property=MainPID 2>/dev/null | cut -d= -f2)
       fi
@@ -221,7 +210,7 @@ build_status_json() {
     fi
 
     [ -n "$svc_json" ] && svc_json="${svc_json},"
-    svc_json="${svc_json}\"${app}\":{\"online\":${online},\"installed\":${installed},\"version\":\"${ver}\",\"cpu\":${s_cpu:-0},\"ramMb\":${s_ram:-0},\"cpuCore\":${s_core}}"
+    svc_json="${svc_json}\"${app}\":{\"online\":${online},\"installed\":${installed},\"version\":\"${ver}\",\"cpu\":${s_cpu:-0},\"ramMb\":${s_ram:-0},\"cpuCore\":${s_core},\"port\":${port}}"
   done
 
   local dash_cpu dash_ram nginx_ram dash_pid
@@ -308,11 +297,12 @@ EOF
 }
 
 install_lotus_lantern() {
-  local repo log_file sf default_core overlay_file needs_reboot node_major
+  local repo log_file sf default_core default_port needs_reboot node_major overlay_file
   repo=$1
   log_file=$2
   sf=$3
   default_core=$4
+  default_port=$5
   needs_reboot="false"
   overlay_file="/boot/config.txt"
   [ -f /boot/firmware/config.txt ] && overlay_file="/boot/firmware/config.txt"
@@ -383,7 +373,7 @@ Restart=always
 RestartSec=5
 Environment=NODE_ENV=production
 Environment=BRIDGE_URL=http://localhost:3000/api/sonos
-Environment=CONFIG_PORT=3001
+Environment=CONFIG_PORT=${default_port}
 Environment=TICK_MS=50
 MemoryMax=128M
 AllowedCPUs=${default_core}
@@ -397,32 +387,7 @@ SyslogIdentifier=lotus-light
 WantedBy=multi-user.target
 EOF
 
-  sudo tee /etc/systemd/system/lotus-update.service > /dev/null <<'EOF'
-[Unit]
-Description=Lotus Light Link — Auto-update from dashboard
-
-[Service]
-Type=oneshot
-ExecStart=/opt/lotus-light/pi/dashboard-update.sh
-StandardOutput=journal
-StandardError=journal
-SyslogIdentifier=lotus-update
-EOF
-
-  sudo tee /etc/systemd/system/lotus-update.timer > /dev/null <<'EOF'
-[Unit]
-Description=Lotus Light Link — Auto-update timer (every 5 min)
-
-[Timer]
-OnBootSec=2min
-OnUnitActiveSec=5min
-Persistent=true
-
-[Install]
-WantedBy=timers.target
-EOF
-
-  if ! sudo systemctl daemon-reload >> "$log_file" 2>&1 || ! sudo systemctl enable lotus-light >> "$log_file" 2>&1 || ! sudo systemctl enable --now lotus-update.timer >> "$log_file" 2>&1; then
+  if ! sudo systemctl daemon-reload >> "$log_file" 2>&1 || ! sudo systemctl enable lotus-light >> "$log_file" 2>&1; then
     return 1
   fi
 
@@ -447,65 +412,105 @@ EOF
 }
 
 do_install() {
-  local app repo dir script sf install_message
+  local app repo install_dir script svc sf install_message req_port req_core
   app=$1
-  repo=${APP_REPOS[$app]}
-  dir=${APP_DIRS[$app]}
-  script=${APP_INSTALL_SCRIPTS[$app]}
+  req_port=$2
+  req_core=$3
+  repo=$(registry_get "$app" "repo")
+  install_dir=$(eval echo "$(registry_get "$app" "installDir")")
+  script=$(registry_get "$app" "installScript")
+  svc=$(registry_get "$app" "service")
   sf="$INSTALL_DIR/${app}.json"
   install_message="Installation klar"
+
+  [ -z "$repo" ] && { echo "{\"app\":\"${app}\",\"status\":\"error\",\"message\":\"Okänd app\"}" > "$sf"; return 1; }
 
   echo "{\"app\":\"${app}\",\"status\":\"installing\",\"progress\":\"Startar installation...\"}" > "$sf"
 
   export XDG_RUNTIME_DIR="$USER_RUNTIME_DIR"
   export DBUS_SESSION_BUS_ADDRESS="$USER_BUS_ADDRESS"
 
-  local default_port=${APP_PORTS[$app]}
-  local default_core=${APP_CORES[$app]}
-
   if [ "$app" = "lotus-lantern" ]; then
-    if ! install_message=$(install_lotus_lantern "$repo" "$INSTALL_DIR/${app}.log" "$sf" "$default_core"); then
+    if ! install_message=$(install_lotus_lantern "$repo" "$INSTALL_DIR/${app}.log" "$sf" "$req_core" "$req_port"); then
       echo "{\"app\":\"${app}\",\"status\":\"error\",\"message\":\"Installationsskript misslyckades\",\"timestamp\":\"$(date -Iseconds)\"}" > "$sf"
       return 1
     fi
   else
-    [ -d "$dir" ] && rm -rf "$dir"
-    mkdir -p "$(dirname "$dir")"
+    [ -d "$install_dir" ] && rm -rf "$install_dir"
+    mkdir -p "$(dirname "$install_dir")"
 
     echo "{\"app\":\"${app}\",\"status\":\"installing\",\"progress\":\"Klonar repo...\"}" > "$sf"
-    if ! nice -n 15 git clone --depth 1 "$repo" "$dir" > "$INSTALL_DIR/${app}.log" 2>&1; then
+    if ! nice -n 15 git clone --depth 1 "$repo" "$install_dir" > "$INSTALL_DIR/${app}.log" 2>&1; then
       echo "{\"app\":\"${app}\",\"status\":\"error\",\"message\":\"Git clone misslyckades\",\"timestamp\":\"$(date -Iseconds)\"}" > "$sf"
       return 1
     fi
 
     echo "{\"app\":\"${app}\",\"status\":\"installing\",\"progress\":\"Kör installationsskript...\"}" > "$sf"
-    if [ ! -f "$dir/$script" ]; then
+    if [ ! -f "$install_dir/$script" ]; then
       echo "{\"app\":\"${app}\",\"status\":\"error\",\"message\":\"Installationsskript saknas\",\"timestamp\":\"$(date -Iseconds)\"}" > "$sf"
       return 1
     fi
 
-    chmod +x "$dir/$script"
-    if [ "$app" = "cast-away" ]; then
-      if ! printf '\n%s\n' "$default_core" | nice -n 15 ionice -c 3 bash "$dir/$script" >> "$INSTALL_DIR/${app}.log" 2>&1; then
-        echo "{\"app\":\"${app}\",\"status\":\"error\",\"message\":\"Installationsskript misslyckades\",\"timestamp\":\"$(date -Iseconds)\"}" > "$sf"
-        return 1
-      fi
-    else
-      if ! printf '%s\n%s\n' "$default_port" "$default_core" | nice -n 15 ionice -c 3 bash "$dir/$script" >> "$INSTALL_DIR/${app}.log" 2>&1; then
-        echo "{\"app\":\"${app}\",\"status\":\"error\",\"message\":\"Installationsskript misslyckades\",\"timestamp\":\"$(date -Iseconds)\"}" > "$sf"
-        return 1
-      fi
+    chmod +x "$install_dir/$script"
+    if ! nice -n 15 ionice -c 3 bash "$install_dir/$script" --port "$req_port" --core "$req_core" >> "$INSTALL_DIR/${app}.log" 2>&1; then
+      echo "{\"app\":\"${app}\",\"status\":\"error\",\"message\":\"Installationsskript misslyckades\",\"timestamp\":\"$(date -Iseconds)\"}" > "$sf"
+      return 1
     fi
   fi
+
+  # Save assignment
+  assignment_set "$app" "$req_port" "$req_core"
 
   rm -f "$CACHE_FILE"
   echo "{\"app\":\"${app}\",\"status\":\"success\",\"message\":\"${install_message}\",\"timestamp\":\"$(date -Iseconds)\"}" > "$sf"
 }
 
+do_uninstall() {
+  local app install_dir svc uninstall_script
+  app=$1
+  install_dir=$(eval echo "$(registry_get "$app" "installDir")")
+  svc=$(registry_get "$app" "service")
+  uninstall_script=$(registry_get "$app" "uninstallScript")
+
+  # Stop service
+  sudo systemctl stop "${svc}.service" 2>/dev/null || user_systemctl stop "${svc}.service" 2>/dev/null || true
+  sudo systemctl disable "${svc}.service" 2>/dev/null || user_systemctl disable "${svc}.service" 2>/dev/null || true
+
+  # Run uninstall script if it exists
+  if [ -n "$uninstall_script" ] && [ -f "$install_dir/$uninstall_script" ]; then
+    chmod +x "$install_dir/$uninstall_script"
+    bash "$install_dir/$uninstall_script" 2>/dev/null || true
+  fi
+
+  # Remove service files
+  sudo rm -f "/etc/systemd/system/${svc}.service" 2>/dev/null || true
+  rm -f "$HOME/.config/systemd/user/${svc}.service" 2>/dev/null || true
+  sudo systemctl daemon-reload 2>/dev/null || true
+  user_systemctl daemon-reload 2>/dev/null || true
+
+  # Remove assignment
+  assignment_remove "$app"
+  rm -f "$CACHE_FILE"
+}
+
 handle_request() {
-  local method path
+  local method path body content_length
   read -r method path _
   path=${path%$'\r'}
+
+  # Read headers and body for POST
+  content_length=0
+  while IFS= read -r header; do
+    header=${header%$'\r'}
+    [ -z "$header" ] && break
+    case "$header" in
+      Content-Length:*|content-length:*) content_length=${header#*: } ;;
+    esac
+  done
+  body=""
+  if [ "$content_length" -gt 0 ] 2>/dev/null; then
+    body=$(head -c "$content_length")
+  fi
 
   local response status_line ct
   response=""
@@ -517,14 +522,24 @@ handle_request() {
       response=$(get_cached_status)
       ;;
 
+    "GET /api/available-services")
+      if [ -f "$REGISTRY_FILE" ]; then
+        response=$(< "$REGISTRY_FILE")
+      else
+        response="[]"
+      fi
+      ;;
+
     POST\ /api/install/*)
-      local app
+      local app req_port req_core
       app=${path#/api/install/}
-      if [ -z "${APP_REPOS[$app]}" ]; then
+      req_port=$(echo "$body" | jq -r '.port // 3000' 2>/dev/null)
+      req_core=$(echo "$body" | jq -r '.core // 1' 2>/dev/null)
+      if [ -z "$(registry_get "$app" "repo")" ]; then
         status_line="HTTP/1.1 404 Not Found"
         response="{\"error\":\"Unknown app: ${app}\"}"
       else
-        do_install "$app" &
+        do_install "$app" "$req_port" "$req_core" &
         response="{\"app\":\"${app}\",\"status\":\"installing\",\"progress\":\"Startar installation...\"}"
       fi
       ;;
@@ -533,6 +548,18 @@ handle_request() {
       local app
       app=${path#/api/install-status/}
       [ -f "$INSTALL_DIR/${app}.json" ] && response=$(< "$INSTALL_DIR/${app}.json") || response="{\"app\":\"${app}\",\"status\":\"idle\"}"
+      ;;
+
+    POST\ /api/uninstall/*)
+      local app
+      app=${path#/api/uninstall/}
+      if [ -z "$(registry_get "$app" "repo")" ]; then
+        status_line="HTTP/1.1 404 Not Found"
+        response="{\"error\":\"Unknown app: ${app}\"}"
+      else
+        do_uninstall "$app"
+        response="{\"app\":\"${app}\",\"status\":\"success\"}"
+      fi
       ;;
 
     "POST /api/update/dashboard")
@@ -559,6 +586,8 @@ handle_request() {
         NODE_OPTIONS="--max-old-space-size=256" nice -n 15 ionice -c 3 npm run build || { echo "{\"app\":\"dashboard\",\"status\":\"error\",\"message\":\"Build failed\",\"timestamp\":\"$(date -Iseconds)\"}" > "$sf"; exit 1; }
         sudo mkdir -p "$ndir"
         sudo cp -r dist/* "$ndir/" || { echo "{\"app\":\"dashboard\",\"status\":\"error\",\"message\":\"Deploy failed\",\"timestamp\":\"$(date -Iseconds)\"}" > "$sf"; exit 1; }
+        # Copy services.json to deployed location
+        [ -f "$ddir/public/services.json" ] && sudo cp "$ddir/public/services.json" "$ndir/" || true
         if [ -f "$ddir/public/pi-scripts/pi-dashboard-api.sh" ]; then
           sudo install -m 755 "$ddir/public/pi-scripts/pi-dashboard-api.sh" /usr/local/bin/pi-dashboard-api.sh || true
         fi
@@ -572,11 +601,11 @@ handle_request() {
     POST\ /api/update/*)
       local app uscript update_json update_log
       app=${path#/api/update/}
-      uscript=${APP_UPDATE_SCRIPTS[$app]}
+      uscript=$(eval echo "$(registry_get "$app" "updateScript")")
       update_json="$STATUS_DIR/${app}.json"
       update_log="$STATUS_DIR/${app}.log"
       mkdir -p "$STATUS_DIR"
-      if [ ! -f "$uscript" ]; then
+      if [ -z "$uscript" ] || [ ! -f "$uscript" ]; then
         echo "Uppdateringsskript saknas: $uscript" > "$update_log"
         echo "{\"app\":\"${app}\",\"status\":\"error\",\"message\":\"Uppdateringsskript saknas\",\"timestamp\":\"$(date -Iseconds)\"}" > "$update_json"
         response=$(< "$update_json")
@@ -612,7 +641,7 @@ handle_request() {
       rest=${path#/api/service/}
       app=${rest%%/*}
       action=${rest#*/}
-      svc=${APP_SERVICES[$app]}
+      svc=$(registry_get "$app" "service")
       if [ -z "$svc" ]; then
         status_line="HTTP/1.1 404 Not Found"
         response="{\"error\":\"Unknown app: ${app}\"}"
@@ -620,7 +649,6 @@ handle_request() {
         local svc_ok="false" svc_err="" log_file now
         log_file="$STATUS_DIR/${app}.log"
         now="$(date -Iseconds)"
-        # Try system-level first, then user-level with explicit user bus env
         if sudo systemctl "$action" "${svc}.service" 2>/tmp/svc-err-$$; then
           svc_ok="true"
         elif user_systemctl "$action" "${svc}.service" 2>/tmp/svc-err-$$; then
@@ -643,7 +671,7 @@ handle_request() {
     GET\ /api/service-log/*)
       local app svc lc tmp_err
       app=${path#/api/service-log/}
-      svc=${APP_SERVICES[$app]}
+      svc=$(registry_get "$app" "service")
       if [ -z "$svc" ]; then
         status_line="HTTP/1.1 404 Not Found"
         response="{\"error\":\"Unknown app: ${app}\"}"
@@ -679,17 +707,17 @@ handle_request() {
     "GET /api/versions")
       local vj
       vj=""
-      for app in lotus-lantern cast-away sonos-gateway; do
-        local dir repo local_v local_hash remote_hash has_update
-        dir=${APP_DIRS[$app]}
-        repo=${APP_REPOS[$app]}
+      for app in $(registry_keys); do
+        local install_dir repo local_v local_hash remote_hash has_update
+        install_dir=$(eval echo "$(registry_get "$app" "installDir")")
+        repo=$(registry_get "$app" "repo")
         local_v=""
         local_hash=""
         remote_hash=""
-        if [ -d "$dir/.git" ]; then
-          local_v=$(git -C "$dir" log -1 --format='%cd' --date=format:'%-d %b' 2>/dev/null)
+        if [ -d "$install_dir/.git" ]; then
+          local_v=$(git -C "$install_dir" log -1 --format='%cd' --date=format:'%-d %b' 2>/dev/null)
           local_v="${local_v,,}"
-          local_hash=$(git -C "$dir" rev-parse --short HEAD 2>/dev/null)
+          local_hash=$(git -C "$install_dir" rev-parse --short HEAD 2>/dev/null)
         fi
         remote_hash=$(git ls-remote --heads "$repo" main 2>/dev/null | cut -c1-7)
         [ -n "$vj" ] && vj="${vj},"
