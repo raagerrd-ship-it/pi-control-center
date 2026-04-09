@@ -111,7 +111,8 @@ export function useServiceUpdate(serviceNames: Record<string, string>) {
           [app]: { app, status: 'error', message: e instanceof Error ? e.message : 'Install failed' },
         }));
       });
-      pollInstallStatus(app);
+      // Delay first poll to let API create the new status file
+      setTimeout(() => pollInstallStatus(app), 4000);
     } catch (e) {
       addEntryRef.current(label(app), 'Installation misslyckades', 'error');
       setInstalls(prev => ({
