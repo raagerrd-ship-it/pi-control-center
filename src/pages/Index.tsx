@@ -76,11 +76,26 @@ const Index = () => {
     setDashboardUpdate({ app: 'dashboard', status: 'updating' });
     try { await triggerUpdate('dashboard'); } catch {}
     let retries = 0;
+    let lastLogLine = '';
     const poll = async () => {
       try {
         const result = await fetchUpdateStatus('dashboard');
         setDashboardUpdate(result);
-        if (result.status === 'updating') { retries = 0; setTimeout(poll, 3000); }
+        if (result.status === 'updating') {
+          retries = 0;
+          // Fetch and show latest log lines during update
+          try {
+            const log = await fetchLogs('dashboard', 'update');
+            if (log && log !== 'Tom logg' && log !== 'Inga loggar tillgängliga') {
+              const latest = log.split('\n').filter(Boolean).slice(-1)[0] || '';
+              if (latest && latest !== lastLogLine) {
+                lastLogLine = latest;
+                addEntry('DASHBOARD', latest, 'info');
+              }
+            }
+          } catch {}
+          setTimeout(poll, 3000);
+        }
         else if (result.status === 'success') { addEntry('DASHBOARD', 'Uppdaterad', 'success'); }
         else if (result.status === 'error') {
           addEntry('DASHBOARD', `Uppdatering misslyckades: ${result.message || 'okänt fel'}`, 'error');
