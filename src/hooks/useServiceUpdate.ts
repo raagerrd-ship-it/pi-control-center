@@ -68,16 +68,29 @@ export function useServiceUpdate(serviceNames: Record<string, string>) {
 
   const pollInstallStatus = useCallback((app: string) => {
     const timerKey = `install:${app}`;
+    let lastProgress = '';
     const poll = async () => {
       try {
         const result = await fetchInstallStatus(app);
         setInstalls(prev => ({ ...prev, [app]: result }));
         if (result.status === 'installing') {
+          // Log progress updates to activity log
+          const msg = result.progress || 'Installerar...';
+          const elapsed = result.elapsed ? ` (${result.elapsed})` : '';
+          const progressMsg = `${msg}${elapsed}`;
+          if (progressMsg !== lastProgress) {
+            lastProgress = progressMsg;
+            addEntryRef.current(label(app), progressMsg, 'info');
+          }
           pollTimers.current[timerKey] = window.setTimeout(poll, 3000);
         } else {
           delete pollTimers.current[timerKey];
-          if (result.status === 'success') addEntryRef.current(label(app), 'Installerad', 'success');
-          if (result.status === 'error') addEntryRef.current(label(app), 'Installation misslyckades', 'error');
+          if (result.status === 'success') {
+            addEntryRef.current(label(app), `Installerad${result.message ? ` — ${result.message}` : ''}`, 'success');
+          }
+          if (result.status === 'error') {
+            addEntryRef.current(label(app), `Installation misslyckades: ${result.message || 'okänt fel'}`, 'error');
+          }
         }
       } catch {
         pollTimers.current[timerKey] = window.setTimeout(poll, 5000);
