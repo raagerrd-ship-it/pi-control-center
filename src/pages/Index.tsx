@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect, useMemo } from 'react';
-import { RefreshCw, CheckCircle2, AlertCircle } from 'lucide-react';
+import { RefreshCw } from 'lucide-react';
 import { SystemMonitor } from '@/components/SystemMonitor';
 import { PullToRefresh } from '@/components/PullToRefresh';
 import { ServiceCard } from '@/components/ServiceCard';
@@ -120,7 +120,18 @@ const Index = () => {
         </header>
 
         <section className="mb-6">
-          <SystemMonitor status={status} error={error} loading={loading} />
+          <SystemMonitor
+            status={status}
+            error={error}
+            loading={loading}
+            dashboardVersion={dashboardVersion}
+            dashboardUpdate={dashboardUpdate}
+            isUpdatingDashboard={isUpdatingDashboard}
+            checkingVersions={checkingVersions}
+            updatesAvailable={updatesAvailable}
+            onCheckVersions={handleCheckVersions}
+            onDashboardUpdate={handleDashboardUpdate}
+          />
         </section>
 
         <section>
@@ -157,78 +168,6 @@ const Index = () => {
                 />
               );
             })}
-          </div>
-        </section>
-
-        {/* Dashboard section */}
-        <section className="mt-6">
-          <div className="flex items-center justify-between mb-3">
-            <h2 className="font-mono text-xs uppercase tracking-wider text-muted-foreground">
-              System
-            </h2>
-            <div className="relative">
-              <Button
-                variant="ghost"
-                size="sm"
-                className={`font-mono text-[11px] gap-1 h-6 px-2 ${updatesAvailable ? 'text-[hsl(var(--status-warning))]' : 'text-muted-foreground hover:text-foreground'}`}
-                disabled={checkingVersions}
-                onClick={handleCheckVersions}
-              >
-                <RefreshCw className={`h-3 w-3 ${checkingVersions ? 'animate-spin' : ''}`} />
-                {checkingVersions ? 'Söker...' : 'Sök uppdateringar'}
-              </Button>
-              {updatesAvailable && (
-                <span className="absolute -top-0.5 -right-0.5 h-2.5 w-2.5 rounded-full bg-[hsl(var(--status-warning))] border-2 border-background" />
-              )}
-            </div>
-          </div>
-          <div className={`rounded-lg border p-3.5 flex flex-col gap-2.5 ${dashboardVersion?.hasUpdate ? 'border-[hsl(var(--status-warning)/0.3)] bg-[hsl(var(--status-warning)/0.05)]' : 'bg-card'}`}>
-            <div className="flex items-center gap-2">
-              <div className="h-2 w-2 rounded-full bg-[hsl(var(--status-online))]" />
-              <h3 className="font-medium text-sm leading-none">Dashboard + Nginx</h3>
-            </div>
-
-            <div className="flex items-center gap-2 font-mono text-[11px] text-muted-foreground">
-              <span className="inline-flex items-center gap-1 rounded bg-secondary px-1.5 py-0.5">
-                <span className="text-foreground text-[10px]">Core 0</span>
-              </span>
-              <span>{status?.dashboardCpu?.toFixed(1) ?? '0.0'}%</span>
-              <span className="text-border">·</span>
-              <span>{status?.dashboardRamMb ?? 7}MB</span>
-            </div>
-
-            <div className={`flex items-center justify-between rounded px-2 py-1 text-[10px] font-mono ${dashboardVersion?.hasUpdate ? 'bg-[hsl(var(--status-warning)/0.08)] border border-[hsl(var(--status-warning)/0.25)]' : 'bg-secondary/30'}`}>
-              <span className="text-muted-foreground">Version {dashboardVersion?.local || '—'}</span>
-              {dashboardVersion?.hasUpdate ? (
-                <span className="text-[hsl(var(--status-warning))]">Ny version</span>
-              ) : (
-                <span className="text-muted-foreground/50">✓</span>
-              )}
-            </div>
-
-            {dashboardUpdate?.status === 'success' && (
-              <span className="flex items-center gap-1 text-[11px] text-[hsl(var(--status-online))] font-mono">
-                <CheckCircle2 className="h-3 w-3" /> Klar
-              </span>
-            )}
-            {dashboardUpdate?.status === 'error' && (
-              <span className="flex items-center gap-1 text-[11px] text-destructive font-mono" title={dashboardUpdate.message}>
-                <AlertCircle className="h-3 w-3" /> Misslyckades
-              </span>
-            )}
-
-            <div className="flex items-center gap-1">
-              <Button
-                variant={dashboardVersion?.hasUpdate ? 'default' : 'secondary'}
-                size="sm"
-                className="font-mono text-[11px] gap-1 h-7 px-2 flex-1"
-                disabled={isUpdatingDashboard}
-                onClick={handleDashboardUpdate}
-              >
-                <RefreshCw className={`h-3 w-3 ${isUpdatingDashboard ? 'animate-spin' : ''}`} />
-                {isUpdatingDashboard ? 'Uppdaterar...' : 'Uppdatera'}
-              </Button>
-            </div>
           </div>
         </section>
 
