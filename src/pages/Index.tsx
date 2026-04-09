@@ -34,6 +34,7 @@ const Index = () => {
 
   useEffect(() => {
     fetchAvailableServices().then(setAvailableServices).catch(() => {});
+    handleCheckVersions();
   }, []);
 
   const usedPorts = useMemo(() => {
