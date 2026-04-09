@@ -66,6 +66,11 @@ export interface UninstallResult {
   message?: string;
 }
 
+export async function fetchPing(): Promise<boolean> {
+  const res = await fetch(`${getBaseUrl()}/api/ping`, { signal: AbortSignal.timeout(2000) });
+  return res.ok;
+}
+
 export async function fetchSystemStatus(): Promise<SystemStatus> {
   const res = await fetch(`${getBaseUrl()}/api/status`, { signal: AbortSignal.timeout(4000) });
   if (!res.ok) throw new Error('Failed to fetch status');
