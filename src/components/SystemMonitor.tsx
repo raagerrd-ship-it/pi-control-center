@@ -32,6 +32,7 @@ interface SystemMonitorProps {
   status: SystemStatus | null;
   error: string | null;
   loading: boolean;
+  connection: ConnectionState;
   dashboardVersion?: VersionInfo;
   dashboardUpdate: UpdateResult | null;
   isUpdatingDashboard: boolean;
@@ -42,7 +43,7 @@ interface SystemMonitorProps {
 }
 
 export function SystemMonitor({
-  status, error, loading,
+  status, error, loading, connection,
   dashboardVersion, dashboardUpdate, isUpdatingDashboard,
   checkingVersions, updatesAvailable,
   onCheckVersions, onDashboardUpdate,
@@ -56,6 +57,7 @@ export function SystemMonitor({
   }
 
   const noData = error || !status;
+  const busy = connection === 'busy';
 
   const cpuVal = noData ? '— %' : `${status.cpu}%`;
   const tempVal = noData ? '— °C' : `${status.temp}°C`;
