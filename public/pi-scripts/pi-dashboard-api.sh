@@ -301,7 +301,6 @@ PY
 cd "$PI_DIR"
 NODE_OPTIONS="--max-old-space-size=256" npm install --no-audit --no-fund
 NODE_OPTIONS="--max-old-space-size=256" npm run build
-npm prune --production 2>/dev/null || true
 systemctl restart "$SERVICE"
 EOF
 
