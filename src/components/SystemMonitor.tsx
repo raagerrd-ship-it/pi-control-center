@@ -97,7 +97,7 @@ export function SystemMonitor({
 
         <div className="flex items-center gap-2">
           <span className="font-mono text-[10px] text-muted-foreground">
-            Version {dashboardVersion?.local || '—'}
+            Version {dashboardVersion?.local || (status?.commit ? status.commit.slice(0, 7) : '—')}
           </span>
           {dashboardUpdate?.status === 'success' && (
             <span className="flex items-center gap-1 text-[11px] text-[hsl(var(--status-online))] font-mono">
