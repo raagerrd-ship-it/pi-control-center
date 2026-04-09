@@ -91,5 +91,5 @@ export function useSystemStatus() {
     };
   }, [poll]);
 
-  return { status, error, loading, refresh: poll };
+  return { status, error, loading, connection, refresh: poll };
 }
