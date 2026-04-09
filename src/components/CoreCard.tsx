@@ -277,7 +277,7 @@ export const CoreCard = memo(function CoreCard({
         <AlertDialog>
           <AlertDialogTrigger asChild>
             <Button variant="secondary" size="sm" className="font-mono text-[11px] gap-1 h-8 px-2 w-full text-destructive hover:text-destructive">
-              <Trash2 className="h-3 w-3" /> Avinstallera
+              <Trash2 className="h-3 w-3" /> Avinst.
             </Button>
           </AlertDialogTrigger>
           <AlertDialogContent>
