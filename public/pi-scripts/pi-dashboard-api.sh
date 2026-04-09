@@ -276,13 +276,7 @@ do_install() {
   export XDG_RUNTIME_DIR="$USER_RUNTIME_DIR"
   export DBUS_SESSION_BUS_ADDRESS="$USER_BUS_ADDRESS"
 
-  if [ "$app" = "lotus-lantern" ]; then
-    if ! install_message=$(install_lotus_lantern "$repo" "$INSTALL_DIR/${app}.log" "$sf" "$req_core" "$req_port" "$start_time"); then
-      echo "{\"app\":\"${app}\",\"status\":\"error\",\"message\":\"Installationsskript misslyckades\",\"timestamp\":\"$(date -Iseconds)\"}" > "$sf"
-      return 1
-    fi
-  else
-    progress "$sf" "$app" "Förbereder katalog..." "$start_time"
+  progress "$sf" "$app" "Förbereder katalog..." "$start_time"
     [ -d "$install_dir" ] && rm -rf "$install_dir"
     mkdir -p "$(dirname "$install_dir")"
 
@@ -307,7 +301,6 @@ do_install() {
     fi
 
     progress "$sf" "$app" "Sparar konfiguration..." "$start_time"
-  fi
 
   # Save assignment
   assignment_set "$app" "$req_port" "$req_core"
