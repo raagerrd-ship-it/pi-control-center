@@ -19,17 +19,11 @@ export interface ServiceConfig {
 }
 
 export interface DashboardSettings {
-  piIp: string;
-  apiPort: number;
   deviceLabel: string;
   services: ServiceConfig[];
 }
 
-const DEFAULT_HOST = window.location.hostname;
-
 const DEFAULT_SETTINGS: DashboardSettings = {
-  piIp: DEFAULT_HOST,
-  apiPort: 8585,
   deviceLabel: 'Pi Zero 2',
   services: [
     { key: 'lotus-lantern', name: 'Lotus Lantern Control', port: 3001 },
