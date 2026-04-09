@@ -12,24 +12,12 @@ import {
   DialogDescription,
 } from '@/components/ui/dialog';
 
-export interface ServiceConfig {
-  key: string;
-  name: string;
-  port: number;
-}
-
 export interface DashboardSettings {
   deviceLabel: string;
-  services: ServiceConfig[];
 }
 
 const DEFAULT_SETTINGS: DashboardSettings = {
   deviceLabel: 'Pi Zero 2',
-  services: [
-    { key: 'lotus-lantern', name: 'Lotus Lantern Control', port: 3001 },
-    { key: 'cast-away', name: 'Cast Away Web', port: 3000 },
-    { key: 'sonos-gateway', name: 'Sonos Gateway', port: 3002 },
-  ],
 };
 
 export function loadSettings(): DashboardSettings {
@@ -37,19 +25,7 @@ export function loadSettings(): DashboardSettings {
     const saved = localStorage.getItem('pi-dashboard-settings');
     if (saved) {
       const parsed = JSON.parse(saved);
-      // Migrate old per-service format: strip host/apiPort/deviceLabel from services
-      if (parsed.services) {
-        parsed.services = parsed.services.map((svc: any) => ({
-          key: svc.key,
-          name: svc.name,
-          port: svc.port,
-        }));
-      }
-      // Migrate deviceLabel from old format
-      if (!parsed.deviceLabel) {
-        parsed.deviceLabel = 'Pi Zero 2';
-      }
-      return { ...DEFAULT_SETTINGS, ...parsed };
+      return { deviceLabel: parsed.deviceLabel || DEFAULT_SETTINGS.deviceLabel };
     }
   } catch {}
   return DEFAULT_SETTINGS;
@@ -80,7 +56,7 @@ export function Settings({ onSave }: { onSave: (s: DashboardSettings) => void })
         <DialogHeader>
           <DialogTitle className="font-mono">Inställningar</DialogTitle>
           <DialogDescription className="text-xs text-muted-foreground">
-            Konfigurera anslutning till din Pi.
+            Konfigurera din Pi.
           </DialogDescription>
         </DialogHeader>
         <div className="flex flex-col gap-4">
