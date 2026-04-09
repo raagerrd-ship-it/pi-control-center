@@ -14,10 +14,12 @@ import {
 
 export interface DashboardSettings {
   deviceLabel: string;
+  apiHost: string;
 }
 
 const DEFAULT_SETTINGS: DashboardSettings = {
   deviceLabel: 'Pi Zero 2',
+  apiHost: '',
 };
 
 export function loadSettings(): DashboardSettings {
@@ -25,7 +27,10 @@ export function loadSettings(): DashboardSettings {
     const saved = localStorage.getItem('pi-dashboard-settings');
     if (saved) {
       const parsed = JSON.parse(saved);
-      return { deviceLabel: parsed.deviceLabel || DEFAULT_SETTINGS.deviceLabel };
+      return {
+        deviceLabel: parsed.deviceLabel || DEFAULT_SETTINGS.deviceLabel,
+        apiHost: typeof parsed.apiHost === 'string' ? parsed.apiHost : DEFAULT_SETTINGS.apiHost,
+      };
     }
   } catch {}
   return DEFAULT_SETTINGS;
@@ -69,6 +74,20 @@ export function Settings({ onSave }: { onSave: (s: DashboardSettings) => void })
               onChange={e => setSettings(s => ({ ...s, deviceLabel: e.target.value }))}
             />
           </div>
+
+          <div>
+            <Label className="text-xs text-muted-foreground font-mono">Pi-adress</Label>
+            <Input
+              className="font-mono text-sm mt-1"
+              placeholder="t.ex. 192.168.1.150 eller http://192.168.1.150:8585"
+              value={settings.apiHost}
+              onChange={e => setSettings(s => ({ ...s, apiHost: e.target.value }))}
+            />
+            <p className="mt-1 font-mono text-[11px] text-muted-foreground">
+              Lämna tomt för att använda samma host som sidan körs på.
+            </p>
+          </div>
+
           <Button onClick={save} className="font-mono text-sm">Spara</Button>
         </div>
       </DialogContent>
