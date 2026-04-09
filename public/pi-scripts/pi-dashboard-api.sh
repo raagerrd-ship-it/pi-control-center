@@ -571,21 +571,35 @@ handle_request() {
       ;;
 
     POST\ /api/update/*)
-      local app uscript
+      local app uscript update_json update_log
       app=${path#/api/update/}
       uscript=${APP_UPDATE_SCRIPTS[$app]}
-      echo '{"status":"updating"}' > "$STATUS_DIR/${app}.json"
+      update_json="$STATUS_DIR/${app}.json"
+      update_log="$STATUS_DIR/${app}.log"
+      mkdir -p "$STATUS_DIR"
       if [ ! -f "$uscript" ]; then
-        echo "Uppdateringsskript saknas: $uscript" > "$STATUS_DIR/${app}.log"
-        echo "{\"app\":\"${app}\",\"status\":\"error\",\"message\":\"Uppdateringsskript saknas\",\"timestamp\":\"$(date -Iseconds)\"}" > "$STATUS_DIR/${app}.json"
-      elif nice -n 15 ionice -c 3 bash "$uscript" > "$STATUS_DIR/${app}.log" 2>&1; then
-        echo "{\"app\":\"${app}\",\"status\":\"success\",\"timestamp\":\"$(date -Iseconds)\"}" > "$STATUS_DIR/${app}.json"
+        echo "Uppdateringsskript saknas: $uscript" > "$update_log"
+        echo "{\"app\":\"${app}\",\"status\":\"error\",\"message\":\"Uppdateringsskript saknas\",\"timestamp\":\"$(date -Iseconds)\"}" > "$update_json"
+        response=$(< "$update_json")
       else
-        local tail_err
-        tail_err=$(tail -5 "$STATUS_DIR/${app}.log" 2>/dev/null | tr '\n' ' ' | sed 's/"/\\"/g' | cut -c1-200)
-        echo "{\"app\":\"${app}\",\"status\":\"error\",\"message\":\"${tail_err:-Update failed}\",\"timestamp\":\"$(date -Iseconds)\"}" > "$STATUS_DIR/${app}.json"
+        echo "{\"app\":\"${app}\",\"status\":\"updating\",\"timestamp\":\"$(date -Iseconds)\"}" > "$update_json"
+        : > "$update_log"
+        response=$(< "$update_json")
+        (
+          if [ "$app" = "lotus-lantern" ]; then
+            sudo -n "$uscript"
+          else
+            nice -n 15 ionice -c 3 bash "$uscript"
+          fi
+          exit_code=$?
+          if [ "$exit_code" -eq 0 ]; then
+            echo "{\"app\":\"${app}\",\"status\":\"success\",\"timestamp\":\"$(date -Iseconds)\"}" > "$update_json"
+          else
+            tail_err=$(tail -5 "$update_log" 2>/dev/null | tr '\n' ' ' | sed 's/"/\\"/g' | cut -c1-200)
+            echo "{\"app\":\"${app}\",\"status\":\"error\",\"message\":\"${tail_err:-Update failed}\",\"timestamp\":\"$(date -Iseconds)\"}" > "$update_json"
+          fi
+        ) > "$update_log" 2>&1 &
       fi
-      response=$(< "$STATUS_DIR/${app}.json")
       ;;
 
     GET\ /api/update-status/*)
