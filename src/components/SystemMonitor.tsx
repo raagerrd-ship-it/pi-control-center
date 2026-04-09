@@ -71,6 +71,16 @@ export function SystemMonitor({
 
   return (
     <div className={`rounded-lg border p-4 flex flex-col gap-4 ${dashboardVersion?.hasUpdate ? 'border-[hsl(var(--status-warning)/0.3)] bg-[hsl(var(--status-warning)/0.05)]' : 'bg-card'}`}>
+      {/* Connection banner */}
+      {noData && (
+        <div className={`flex items-center gap-2 rounded px-2.5 py-1.5 font-mono text-[11px] ${busy ? 'bg-[hsl(var(--status-warning)/0.1)] text-[hsl(var(--status-warning))]' : 'bg-destructive/10 text-destructive'}`}>
+          {busy ? (
+            <><Loader2 className="h-3 w-3 animate-spin" /> Pi upptagen — väntar på svar</>
+          ) : (
+            <><AlertCircle className="h-3 w-3" /> Ingen anslutning till Pi</>
+          )}
+        </div>
+      )}
       {/* System gauges */}
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5">
         <Gauge icon={<Cpu className="h-3.5 w-3.5" />} label="CPU" value={cpuVal} percent={noData ? undefined : status.cpu} warning={!noData && status.cpu > 85} />
