@@ -67,13 +67,14 @@ export const CoreCard = memo(function CoreCard({
 
   // Empty core — show add service UI
   if (!service || !service.installed) {
-    const installing = service?.installStatus?.status === 'installing';
-    const installSuccess = service?.installStatus?.status === 'success';
-    const installError = service?.installStatus?.status === 'error';
+    const activeInstall = selectedService ? allInstalls[selectedService] : undefined;
+    const installing = activeInstall?.status === 'installing';
+    const installSuccess = activeInstall?.status === 'success';
+    const installError = activeInstall?.status === 'error';
 
     // If we're in the middle of installing, show progress
     if (installing || installSuccess || installError) {
-      const name = service?.definition.name ?? 'Tjänst';
+      const name = availableServices.find(s => s.key === selectedService)?.name ?? 'Tjänst';
       return (
         <div className="rounded-lg border border-border/50 bg-card p-3.5 flex flex-col gap-2.5">
           <div className="flex items-center justify-between">
@@ -84,10 +85,10 @@ export const CoreCard = memo(function CoreCard({
             <div className="flex flex-col gap-1">
               <div className="flex items-center gap-1.5 text-[hsl(var(--status-warning))]">
                 <Loader2 className="h-3 w-3 animate-spin" />
-                <span className="font-mono text-[11px]">{service?.installStatus?.progress || 'Installerar...'}</span>
+                <span className="font-mono text-[11px]">{activeInstall?.progress || 'Installerar...'}</span>
               </div>
-              {service?.installStatus?.elapsed && (
-                <span className="font-mono text-[10px] text-muted-foreground pl-4.5">⏱ {service.installStatus.elapsed}</span>
+              {activeInstall?.elapsed && (
+                <span className="font-mono text-[10px] text-muted-foreground pl-4.5">⏱ {activeInstall.elapsed}</span>
               )}
               <Progress value={undefined} className="h-1 bg-secondary animate-pulse" />
             </div>
@@ -98,7 +99,7 @@ export const CoreCard = memo(function CoreCard({
             </span>
           )}
           {installError && (
-            <span className="flex items-center gap-1 text-[11px] text-destructive font-mono" title={service?.installStatus?.message}>
+            <span className="flex items-center gap-1 text-[11px] text-destructive font-mono" title={activeInstall?.message}>
               <AlertCircle className="h-3 w-3" /> Installation misslyckades
             </span>
           )}
