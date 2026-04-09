@@ -25,9 +25,14 @@ export function useServiceUpdate(serviceNames: Record<string, string>) {
 
   const pollUpdateStatus = useCallback((app: string) => {
     const timerKey = `update:${app}`;
+    let retryCount = 0;
     const poll = async () => {
       try {
         const result = await fetchUpdateStatus(app);
+        if (retryCount > 0) {
+          addEntryRef.current(label(app), 'Återansluten — fortsätter spåra uppdatering', 'info');
+          retryCount = 0;
+        }
         setUpdates(prev => ({ ...prev, [app]: result }));
         if (result.status === 'updating') {
           pollTimers.current[timerKey] = window.setTimeout(poll, 3000);
@@ -37,6 +42,10 @@ export function useServiceUpdate(serviceNames: Record<string, string>) {
           if (result.status === 'error') addEntryRef.current(label(app), 'Uppdatering misslyckades', 'error');
         }
       } catch {
+        retryCount++;
+        if (retryCount === 1 || retryCount % 5 === 0) {
+          addEntryRef.current(label(app), `Tappade anslutning — försöker spåra uppdatering (försök ${retryCount})`, 'error');
+        }
         pollTimers.current[timerKey] = window.setTimeout(poll, 5000);
       }
     };
@@ -69,12 +78,16 @@ export function useServiceUpdate(serviceNames: Record<string, string>) {
   const pollInstallStatus = useCallback((app: string) => {
     const timerKey = `install:${app}`;
     let lastProgress = '';
+    let retryCount = 0;
     const poll = async () => {
       try {
         const result = await fetchInstallStatus(app);
+        if (retryCount > 0) {
+          addEntryRef.current(label(app), 'Återansluten — fortsätter spåra installation', 'info');
+          retryCount = 0;
+        }
         setInstalls(prev => ({ ...prev, [app]: result }));
         if (result.status === 'installing') {
-          // Log progress updates to activity log
           const msg = result.progress || 'Installerar...';
           const elapsed = result.elapsed ? ` (${result.elapsed})` : '';
           const progressMsg = `${msg}${elapsed}`;
@@ -93,6 +106,10 @@ export function useServiceUpdate(serviceNames: Record<string, string>) {
           }
         }
       } catch {
+        retryCount++;
+        if (retryCount === 1 || retryCount % 5 === 0) {
+          addEntryRef.current(label(app), `Tappade anslutning — försöker spåra installation (försök ${retryCount})`, 'error');
+        }
         pollTimers.current[timerKey] = window.setTimeout(poll, 5000);
       }
     };
