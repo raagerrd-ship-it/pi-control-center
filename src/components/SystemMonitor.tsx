@@ -55,27 +55,26 @@ export function SystemMonitor({
     );
   }
 
-  if (error || !status) {
-    return (
-      <div className="rounded-lg border border-destructive/30 bg-card p-4">
-        <p className="font-mono text-sm text-destructive">⚠ {error === 'Failed to fetch' ? 'Kunde inte ansluta' : error || 'Ingen data'}</p>
-        <p className="font-mono text-xs text-muted-foreground mt-1">Kontrollera IP och port i inställningar</p>
-      </div>
-    );
-  }
+  const noData = error || !status;
 
-  const ramPercent = Math.round((status.ramUsed / status.ramTotal) * 100);
-  const diskPercent = Math.round((status.diskUsed / status.diskTotal) * 100);
+  const cpuVal = noData ? '— %' : `${status.cpu}%`;
+  const tempVal = noData ? '— °C' : `${status.temp}°C`;
+  const ramVal = noData ? '— / — MB' : `${status.ramUsed}/${status.ramTotal} MB`;
+  const diskVal = noData ? '— / — GB' : `${status.diskUsed}/${status.diskTotal} GB`;
+  const uptimeVal = noData ? '—' : status.uptime;
+
+  const ramPercent = noData ? 0 : Math.round((status.ramUsed / status.ramTotal) * 100);
+  const diskPercent = noData ? 0 : Math.round((status.diskUsed / status.diskTotal) * 100);
 
   return (
     <div className={`rounded-lg border p-4 flex flex-col gap-4 ${dashboardVersion?.hasUpdate ? 'border-[hsl(var(--status-warning)/0.3)] bg-[hsl(var(--status-warning)/0.05)]' : 'bg-card'}`}>
       {/* System gauges */}
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5">
-        <Gauge icon={<Cpu className="h-3.5 w-3.5" />} label="CPU" value={`${status.cpu}%`} percent={status.cpu} warning={status.cpu > 85} />
-        <Gauge icon={<Thermometer className="h-3.5 w-3.5" />} label="Temp" value={`${status.temp}°C`} percent={Math.min(status.temp, 85)} warning={status.temp > 70} />
-        <Gauge icon={<MemoryStick className="h-3.5 w-3.5" />} label="RAM" value={`${status.ramUsed}/${status.ramTotal} MB`} percent={ramPercent} warning={ramPercent > 85} />
-        <Gauge icon={<HardDrive className="h-3.5 w-3.5" />} label="Disk" value={`${status.diskUsed}/${status.diskTotal} GB`} percent={diskPercent} warning={diskPercent > 90} />
-        <Gauge icon={<Clock className="h-3.5 w-3.5" />} label="Drifttid" value={status.uptime} />
+        <Gauge icon={<Cpu className="h-3.5 w-3.5" />} label="CPU" value={cpuVal} percent={noData ? undefined : status.cpu} warning={!noData && status.cpu > 85} />
+        <Gauge icon={<Thermometer className="h-3.5 w-3.5" />} label="Temp" value={tempVal} percent={noData ? undefined : Math.min(status.temp, 85)} warning={!noData && status.temp > 70} />
+        <Gauge icon={<MemoryStick className="h-3.5 w-3.5" />} label="RAM" value={ramVal} percent={noData ? undefined : ramPercent} warning={!noData && ramPercent > 85} />
+        <Gauge icon={<HardDrive className="h-3.5 w-3.5" />} label="Disk" value={diskVal} percent={noData ? undefined : diskPercent} warning={!noData && diskPercent > 90} />
+        <Gauge icon={<Clock className="h-3.5 w-3.5" />} label="Drifttid" value={uptimeVal} />
       </div>
 
       {/* Separator */}
@@ -85,14 +84,14 @@ export function SystemMonitor({
       <div className="flex flex-col gap-2">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <div className="h-2 w-2 rounded-full bg-[hsl(var(--status-online))]" />
+            <div className={`h-2 w-2 rounded-full ${noData ? 'bg-muted-foreground/30' : 'bg-[hsl(var(--status-online))]'}`} />
             <span className="font-medium text-sm leading-none">Dashboard + Nginx</span>
             <span className="font-mono text-[11px] text-muted-foreground inline-flex items-center gap-1 rounded bg-secondary px-1.5 py-0.5">
               <span className="text-foreground text-[10px]">Core 0</span>
             </span>
-            <span className="font-mono text-[11px] text-muted-foreground">{status.dashboardCpu?.toFixed(1) ?? '0.0'}%</span>
+            <span className="font-mono text-[11px] text-muted-foreground">{noData ? '—' : `${status.dashboardCpu?.toFixed(1) ?? '0.0'}%`}</span>
             <span className="font-mono text-[11px] text-border">·</span>
-            <span className="font-mono text-[11px] text-muted-foreground">{status.dashboardRamMb ?? 7}MB</span>
+            <span className="font-mono text-[11px] text-muted-foreground">{noData ? '—' : `${status.dashboardRamMb ?? 7}MB`}</span>
           </div>
           <div className="relative">
             <Button
