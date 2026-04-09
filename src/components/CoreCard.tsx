@@ -64,17 +64,25 @@ export const CoreCard = memo(function CoreCard({
   onServiceAction,
 }: CoreCardProps) {
   const [selectedService, setSelectedService] = useState<string>('');
+  const [installingService, setInstallingService] = useState<string>('');
+
+  // Wrap onInstall to track which service is being installed on this core
+  const handleInstall = (app: string, port: number, core: number) => {
+    setInstallingService(app);
+    onInstall(app, port, core);
+  };
 
   // Empty core — show add service UI
   if (!service || !service.installed) {
-    const activeInstall = selectedService ? allInstalls[selectedService] : undefined;
+    const trackingKey = installingService || selectedService;
+    const activeInstall = trackingKey ? allInstalls[trackingKey] : undefined;
     const installing = activeInstall?.status === 'installing';
     const installSuccess = activeInstall?.status === 'success';
     const installError = activeInstall?.status === 'error';
 
     // If we're in the middle of installing, show progress
     if (installing || installSuccess || installError) {
-      const name = availableServices.find(s => s.key === selectedService)?.name ?? 'Tjänst';
+      const name = availableServices.find(s => s.key === trackingKey)?.name ?? trackingKey;
       return (
         <div className="rounded-lg border border-border/50 bg-card p-3.5 flex flex-col gap-2.5">
           <div className="flex items-center justify-between">
