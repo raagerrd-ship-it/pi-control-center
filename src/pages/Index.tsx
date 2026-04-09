@@ -34,21 +34,35 @@ const Index = () => {
     setDashboardUpdate({ app: 'dashboard', status: 'updating' });
     try {
       await triggerUpdate('dashboard');
-      const poll = async () => {
+    } catch {
+      // API may restart during update, that's expected
+    }
+    let retries = 0;
+    const maxRetries = 60; // ~3 min of polling
+    const poll = async () => {
+      try {
         const result = await fetchUpdateStatus('dashboard');
         setDashboardUpdate(result);
         if (result.status === 'updating') {
+          retries = 0;
           setTimeout(poll, 3000);
         }
-      };
-      setTimeout(poll, 3000);
-    } catch (e) {
-      setDashboardUpdate({
-        app: 'dashboard',
-        status: 'error',
-        message: e instanceof Error ? e.message : 'Update failed',
-      });
-    }
+        // success or error — stop polling
+      } catch {
+        retries++;
+        if (retries < maxRetries) {
+          // API might be restarting, keep trying
+          setTimeout(poll, 3000);
+        } else {
+          setDashboardUpdate({
+            app: 'dashboard',
+            status: 'error',
+            message: 'Lost connection to API',
+          });
+        }
+      }
+    };
+    setTimeout(poll, 3000);
   }, []);
 
   const isUpdatingDashboard = dashboardUpdate?.status === 'updating';
