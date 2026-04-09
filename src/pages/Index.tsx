@@ -76,7 +76,7 @@ const Index = () => {
         <div>
           <h1 className="font-mono text-lg font-bold tracking-tight">Pi Dashboard</h1>
           <p className="font-mono text-xs text-muted-foreground">
-            {settings.piIp}
+            {window.location.hostname}
           </p>
         </div>
         <div className="flex items-center gap-1">
@@ -101,7 +101,7 @@ const Index = () => {
                 name={svc.name}
                 appKey={svc.key}
                 port={svc.port}
-                piIp={settings.piIp}
+                piIp={window.location.hostname}
                 online={svcStatus?.online ?? false}
                 installed={svcStatus?.installed ?? false}
                 version={svcStatus?.version ?? '—'}
@@ -197,7 +197,7 @@ const Index = () => {
       <ConnectionLog logs={logs} />
 
       <footer className="mt-8 pb-4 text-center font-mono text-[10px] text-muted-foreground/40">
-        {settings.deviceLabel || 'Pi Zero 2'} · {settings.piIp}
+        {settings.deviceLabel || 'Pi Zero 2'} · {window.location.hostname}
       </footer>
      </div>
     </PullToRefresh>
