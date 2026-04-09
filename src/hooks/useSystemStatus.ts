@@ -44,6 +44,9 @@ export function useSystemStatus() {
         wasConnected.current = false;
       } else if (loadingRef.current) {
         addEntryRef.current('SYSTEM', 'Kunde inte ansluta: ' + msg, 'error');
+      } else {
+        const delay = Math.min(BASE_INTERVAL * Math.pow(2, failCount.current), MAX_INTERVAL);
+        addEntryRef.current('SYSTEM', `Återansluter om ${Math.round(delay / 1000)}s... (försök ${failCount.current})`, 'info');
       }
     } finally {
       setLoading(false);
