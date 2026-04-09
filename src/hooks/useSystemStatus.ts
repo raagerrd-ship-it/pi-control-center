@@ -1,14 +1,17 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { fetchSystemStatus, type SystemStatus } from '@/lib/api';
+import { fetchSystemStatus, fetchPing, type SystemStatus } from '@/lib/api';
 import { useActivityLog } from '@/hooks/useActivityLog';
 
 const BASE_INTERVAL = 5000;
 const MAX_INTERVAL = 60000;
 
+export type ConnectionState = 'connected' | 'busy' | 'offline';
+
 export function useSystemStatus() {
   const [status, setStatus] = useState<SystemStatus | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [connection, setConnection] = useState<ConnectionState>('offline');
   const intervalRef = useRef<number | null>(null);
   const wasConnected = useRef(false);
   const failCount = useRef(0);
@@ -30,6 +33,7 @@ export function useSystemStatus() {
       const data = await fetchSystemStatus();
       setStatus(data);
       setError(null);
+      setConnection('connected');
       failCount.current = 0;
       if (!wasConnected.current) {
         addEntryRef.current('SYSTEM', 'Ansluten till Pi', 'success');
@@ -39,14 +43,20 @@ export function useSystemStatus() {
       const msg = e instanceof Error ? e.message : 'Anslutning misslyckades';
       setError(msg);
       failCount.current++;
+      // Ping to distinguish busy vs offline
+      let reachable = false;
+      try { reachable = await fetchPing(); } catch {}
+      setConnection(reachable ? 'busy' : 'offline');
       if (wasConnected.current) {
-        addEntryRef.current('SYSTEM', 'Tappade anslutning: ' + msg, 'error');
+        const reason = reachable ? 'Pi upptagen — status-anrop timeout' : 'Tappade anslutning: ' + msg;
+        addEntryRef.current('SYSTEM', reason, reachable ? 'info' : 'error');
         wasConnected.current = false;
       } else if (loadingRef.current) {
         addEntryRef.current('SYSTEM', 'Kunde inte ansluta: ' + msg, 'error');
       } else {
         const delay = Math.min(BASE_INTERVAL * Math.pow(2, failCount.current), MAX_INTERVAL);
-        addEntryRef.current('SYSTEM', `Återansluter om ${Math.round(delay / 1000)}s... (försök ${failCount.current})`, 'info');
+        const state = reachable ? 'Pi upptagen' : 'Offline';
+        addEntryRef.current('SYSTEM', `${state} — återansluter om ${Math.round(delay / 1000)}s (försök ${failCount.current})`, reachable ? 'info' : 'error');
       }
     } finally {
       setLoading(false);
