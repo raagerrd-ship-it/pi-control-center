@@ -287,6 +287,9 @@ do_install() {
     fi
     sudo chown -R "$(whoami):$(whoami)" "$install_dir"
 
+    # Fix CRLF line endings in all shell scripts
+    find "$install_dir" -name '*.sh' -exec sed -i 's/\r$//' {} +
+
     progress "$sf" "$app" "Verifierar installationsskript..." "$start_time"
     if [ ! -f "$install_dir/$script" ]; then
       echo "{\"app\":\"${app}\",\"status\":\"error\",\"message\":\"Installationsskript saknas\",\"timestamp\":\"$(date -Iseconds)\"}" > "$sf"
