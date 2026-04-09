@@ -137,6 +137,7 @@ export const CoreCard = memo(function CoreCard({
                 usedPorts={usedPorts}
                 status={status}
                 onInstall={onInstall}
+                disabled={installing}
               />
             )}
           </div>
