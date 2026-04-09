@@ -252,34 +252,32 @@ export const CoreCard = memo(function CoreCard({
       )}
 
       {/* Actions */}
-      <div className="flex items-center gap-1 mt-auto flex-wrap">
+      <div className="grid grid-cols-2 gap-1 mt-auto">
         {!online ? (
-          <Button variant="secondary" size="sm" className="font-mono text-[11px] gap-1 h-7 px-2 flex-1" disabled={isPending} onClick={() => onServiceAction(def.key, 'start')}>
+          <Button variant="secondary" size="sm" className="font-mono text-[11px] gap-1 h-8 px-2 w-full" disabled={isPending} onClick={() => onServiceAction(def.key, 'start')}>
             <Play className="h-3 w-3" /> Starta
           </Button>
         ) : (
-          <Button variant="secondary" size="sm" className="font-mono text-[11px] gap-1 h-7 px-2 flex-1" disabled={isPending} onClick={() => onServiceAction(def.key, 'stop')}>
+          <Button variant="secondary" size="sm" className="font-mono text-[11px] gap-1 h-8 px-2 w-full" disabled={isPending} onClick={() => onServiceAction(def.key, 'stop')}>
             <Square className="h-3 w-3" /> Stoppa
           </Button>
         )}
-        <Button variant="secondary" size="sm" className="font-mono text-[11px] gap-1 h-7 px-2" disabled={isPending || !online} onClick={() => onServiceAction(def.key, 'restart')}>
+        <Button variant="secondary" size="sm" className="font-mono text-[11px] gap-1 h-8 px-2 w-full" disabled={isPending || !online} onClick={() => onServiceAction(def.key, 'restart')}>
           <RotateCcw className="h-3 w-3" /> Omstart
         </Button>
-        {hasUpdate && (
-          <Button variant="default" size="sm" className="font-mono text-[11px] gap-1 h-7 px-2" disabled={isUpdating} onClick={() => onUpdate(def.key)}>
-            <RefreshCw className={`h-3 w-3 ${isUpdating ? 'animate-spin' : ''}`} />
-            {isUpdating ? '...' : 'Uppdatera'}
-          </Button>
-        )}
-        {online && port && (
-          <a href={`http://${piIp}:${port}`} target="_blank" rel="noopener noreferrer" className="inline-flex items-center justify-center gap-1 h-7 px-2 rounded-md bg-secondary font-mono text-[11px] text-muted-foreground hover:text-foreground transition-colors">
+        {port ? (
+          <a href={`http://${piIp}:${port}`} target="_blank" rel="noopener noreferrer" className="inline-flex items-center justify-center gap-1 h-8 px-2 rounded-md bg-secondary font-mono text-[11px] text-secondary-foreground hover:bg-secondary/80 transition-colors w-full">
             <ExternalLink className="h-3 w-3" /> Öppna
           </a>
+        ) : (
+          <div className="h-8 rounded-md bg-secondary/30 flex items-center justify-center font-mono text-[11px] text-muted-foreground/50">
+            <ExternalLink className="h-3 w-3 mr-1" /> Öppna
+          </div>
         )}
         <AlertDialog>
           <AlertDialogTrigger asChild>
-            <Button variant="ghost" size="sm" className="font-mono text-[11px] gap-1 h-7 px-2 text-destructive hover:text-destructive">
-              <Trash2 className="h-3 w-3" />
+            <Button variant="secondary" size="sm" className="font-mono text-[11px] gap-1 h-8 px-2 w-full text-destructive hover:text-destructive">
+              <Trash2 className="h-3 w-3" /> Avinstallera
             </Button>
           </AlertDialogTrigger>
           <AlertDialogContent>
