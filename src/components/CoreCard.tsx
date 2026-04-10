@@ -226,12 +226,14 @@ export const CoreCard = memo(function CoreCard({
             <Loader2 className="h-3 w-3 animate-spin" /> Uppdaterar...
           </span>
         ) : hasUpdate ? (
-          <button
+          <Button
+            variant="ghost"
+            size="sm"
             onClick={() => onUpdate(def.key)}
-            className="text-[hsl(var(--status-warning))] hover:underline font-semibold"
+            className="h-6 px-2 text-[10px] font-mono font-semibold text-[hsl(var(--status-warning))] hover:text-[hsl(var(--status-warning))] hover:bg-[hsl(var(--status-warning)/0.15)]"
           >
-            Ny version
-          </button>
+            <RefreshCw className="h-3 w-3 mr-1" /> Uppdatera
+          </Button>
         ) : (
           <span className="text-muted-foreground/50">✓</span>
         )}
