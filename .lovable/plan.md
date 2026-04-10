@@ -1,219 +1,101 @@
 
 
-## Implementeringsplan: Dynamiskt tjänsteregister + gemensam logg
+## Plan: Snabbare installation och uppdatering av tjänster
 
-Denna plan omvandlar dashboarden från hårdkodade tjänster till ett dynamiskt register via `services.json`, lägger till installationsdialog med port/core-val, avinstallation, och ersätter alla per-tjänst-loggar med en enda gemensam aktivitetslogg.
+### Problem idag
 
----
+Varje tjänstinstallation kör `git clone` → `npm install` → `npm run build` direkt på Pi Zero 2. Med 512MB RAM tar detta **5-15 minuter per tjänst** och riskerar OOM-krasch. Samma sak vid uppdatering.
 
-### Steg 1: Skapa `public/services.json`
+### Lösning: Förbyggda releases via GitHub
 
-Tjänsteregistret med metadata — ingen port/core (dessa väljs vid installation):
+Istället för att bygga på Pi:n laddar dashboarden ner **färdigbyggda dist-filer** som GitHub Release-artefakter. Installationen blir: ladda ner tarball → packa upp → starta. ~30 sekunder istället för 10+ minuter.
+
+```text
+IDAG:
+  git clone → npm install (5 min) → npm run build (5 min) → serve dist/
+  
+NYTT:
+  curl release.tar.gz → tar xzf → serve dist/
+```
+
+### Steg
+
+**1. Utöka `services.json` med release-URL-mönster**
+
+Lägg till `releaseUrl`-fält som pekar på senaste release:
 
 ```json
-[
-  {
-    "key": "lotus-lantern",
-    "name": "Lotus Lantern Control",
-    "repo": "https://github.com/raagerrd-ship-it/lotus-light-link.git",
-    "installDir": "/opt/lotus-light",
-    "installScript": "pi/setup-lotus.sh",
-    "updateScript": "/opt/lotus-light/pi/dashboard-update.sh",
-    "uninstallScript": "pi/uninstall.sh",
-    "service": "lotus-light"
-  },
-  {
-    "key": "cast-away",
-    "name": "Cast Away Web",
-    "repo": "https://github.com/raagerrd-ship-it/hromecast.git",
-    "installDir": "$HOME/.local/share/cast-away",
-    "installScript": "bridge-pi/install-linux.sh",
-    "updateScript": "$HOME/.local/share/hromecast/bridge-pi/update.sh",
-    "uninstallScript": "bridge-pi/uninstall.sh",
-    "service": "cast-away"
-  },
-  {
-    "key": "sonos-gateway",
-    "name": "Sonos Gateway",
-    "repo": "https://github.com/raagerrd-ship-it/sonos-gateway.git",
-    "installDir": "$HOME/.local/share/sonos-proxy",
-    "installScript": "bridge/install-linux.sh",
-    "updateScript": "$HOME/.local/share/sonos-proxy/bridge/update.sh",
-    "uninstallScript": "bridge/uninstall.sh",
-    "service": "sonos-proxy"
-  }
-]
+{
+  "key": "lotus-lantern",
+  "name": "Lotus Lantern Control",
+  "releaseUrl": "https://api.github.com/repos/raagerrd-ship-it/lotus-light-link/releases/latest",
+  "installDir": "/opt/lotus-light",
+  "service": "lotus-light",
+  "repo": "https://github.com/raagerrd-ship-it/lotus-light-link.git",
+  "installScript": "pi/setup-lotus.sh",
+  ...
+}
 ```
 
----
+**2. Ny snabb-installationsfunktion i `pi-dashboard-api.sh`**
 
-### Steg 2: Uppdatera `pi-dashboard-api.sh`
+`do_install` får en ny snabbväg:
+1. Anropa GitHub Releases API → hämta `browser_download_url` för `dist.tar.gz`
+2. Om release finns: ladda ner, packa upp till `installDir`, skapa systemd-service med `serve`
+3. Om release saknas: fallback till nuvarande `git clone` + `npm install` + `build`
 
-- **Ta bort** alla 7 `declare -A`-block (rad 30–76)
-- **Läs** `services.json` med `jq` vid uppstart och bygg arrayer dynamiskt
-- **Läs/skriv** `/etc/pi-dashboard/assignments.json` för port/core per installerad tjänst
-- **Nytt endpoint**: `GET /api/available-services` — returnerar `services.json`
-- **Nytt endpoint**: `POST /api/uninstall/{app}` — stoppar tjänst, kör `uninstallScript` om finns, tar bort från `assignments.json`
-- **Uppdatera** `do_install` att läsa `port` och `core` från POST body och skicka som `--port X --core Y` till installationsskript, samt spara till `assignments.json`
-- **Uppdatera** `build_status_json` att iterera över dynamisk tjänstlista
-- **Uppdatera** `GET /api/versions` att iterera dynamiskt
-- **Ta bort** `lotus-update.timer` från `install_lotus_lantern` (ingen auto-update)
+Samma logik för `do_update` — kolla om ny release finns, ladda ner och byt ut `dist/`.
 
----
+**3. Skapa systemd-service automatiskt (utan installationsskript)**
 
-### Steg 3: Uppdatera `update-dashboard.sh`
+Dashboarden genererar servicefilen direkt:
 
-Lägg till rad som kopierar `services.json` till API-katalogen vid deploy:
-```bash
-sudo cp "$DASHBOARD_DIR/public/services.json" /var/www/pi-dashboard/
+```ini
+[Service]
+WorkingDirectory=/opt/lotus-light
+ExecStart=/usr/bin/npx serve dist -l {port} -s
+CPUAffinity={core}
 ```
 
----
+Inget behov av att varje tjänst har ett eget installationsskript för rena frontend-appar.
 
-### Steg 4: Skapa gemensam logg-hook (`src/hooks/useActivityLog.ts`)
+**4. Uppdatering = byt dist-mapp**
 
-React context som exponerar `addEntry(source, message, type)`. Lagrar max 100 poster med tidsstämpel. Alla komponenter skriver till samma logg.
-
----
-
-### Steg 5: Skapa `src/components/ActivityLog.tsx`
-
-Ersätter `ConnectionLog.tsx`. Renderar den gemensamma loggen med format:
-```
-12:34:54 [SYSTEM] Ansluten till Pi
-12:48:23 [SONOS GATEWAY] Startad
-```
-Behåller scroll-area med auto-scroll.
-
----
-
-### Steg 6: Uppdatera `src/lib/api.ts`
-
-- Ny typ `ServiceDefinition` (key, name, repo, installDir, installScript, updateScript, uninstallScript, service)
-- Ny `fetchAvailableServices(): Promise<ServiceDefinition[]>`
-- Uppdatera `triggerInstall(app, port, core)` att skicka `{ port, core }` i body
-- Ny `triggerUninstall(app: string)`
-
----
-
-### Steg 7: Skapa `src/components/InstallDialog.tsx`
-
-Dialog som öppnas vid klick på "Installera":
-- **Port** — nummerfält, föreslår nästa lediga (3000+)
-- **CPU Core** — dropdown, Core 0 markerad "Reserverad (Dashboard)", använda cores markerade
-- **RAM-varning** om < 100MB ledigt
-- Validering: blockerar om port redan upptagen
-
----
-
-### Steg 8: Uppdatera `src/components/ServiceCard.tsx`
-
-- Använd `InstallDialog` istället för direkt `onInstall`
-- Lägg till "Avinstallera"-knapp med bekräftelsedialog
-- Visa vald port och core
-- **Ta bort** `LogViewer` och `LogProvider` — all loggning sker centralt
-
----
-
-### Steg 9: Uppdatera `src/hooks/useServiceUpdate.ts`
-
-- Logga alla åtgärder (install, update, start, stop, restart, uninstall) till global logg via `addEntry`
-- Lägg till `startUninstall(app)` funktion
-
----
-
-### Steg 10: Uppdatera `src/hooks/useSystemStatus.ts`
-
-- Flytta anslutningsmeddelanden till global logg med källa `[SYSTEM]`
-- Ta bort lokal `logs`-state
-
----
-
-### Steg 11: Uppdatera `src/pages/Index.tsx`
-
-- Hämta tjänstlistan från `fetchAvailableServices()` istället för `settings.services`
-- Slå ihop med status-data för att rendera kort dynamiskt
-- Byt `ConnectionLog` mot `ActivityLog`
-- Logga dashboard-uppdateringar till global logg
-
----
-
-### Steg 12: Förenkla `src/components/Settings.tsx`
-
-- Ta bort `ServiceConfig`-interface och `services`-arrayen
-- Behåll bara `deviceLabel`
-
----
-
-### Steg 13: Ta bort överflödiga filer
-
-- `src/components/ConnectionLog.tsx`
-- `src/components/LogViewer.tsx`
-
----
-
-### Steg 14: Skapa `public/SERVICE-INTEGRATION.md`
-
-Dokumentation för tjänsteutvecklare med krav:
-
-```markdown
-# Service Integration Guide — Pi Dashboard
-
-## Installation Script Requirements
-
-Your install script will receive two arguments:
-  --port PORT    The port your service should listen on
-  --core CORE    The CPU core (0-3) your service should be pinned to
-
-Example: `bash install-linux.sh --port 3001 --core 1`
-
-Parse them like this:
-  PORT=3000; CORE=0
-  while [[ $# -gt 0 ]]; do
-    case $1 in
-      --port) PORT="$2"; shift 2 ;;
-      --core) CORE="$2"; shift 2 ;;
-      *) shift ;;
-    esac
-  done
-
-Use PORT in your service's Environment= or config file.
-Use CORE in your systemd unit's AllowedCPUs= directive.
-
-## Uninstall Script
-
-Provide an uninstall script that:
-1. Stops and disables the systemd service
-2. Removes the service file
-3. Optionally removes installed files
-
-## Logging
-
-The dashboard handles all user-facing logging centrally.
-Your scripts should write output to stdout/stderr as usual —
-the dashboard captures it automatically.
-No special logging integration is needed.
+```text
+curl ny-release.tar.gz → tar xzf till /tmp → rsync till installDir/dist/ → restart service
 ```
 
----
+Tar ~10 sekunder. Ingen npm install, ingen build.
 
-### Filer som ändras/skapas
+**5. GitHub Action-mall för tjänsterepon**
 
-| Fil | Åtgärd |
-|-----|--------|
-| `public/services.json` | **Ny** |
-| `public/SERVICE-INTEGRATION.md` | **Ny** |
-| `public/pi-scripts/pi-dashboard-api.sh` | Stor omskrivning |
-| `public/pi-scripts/update-dashboard.sh` | Liten ändring |
-| `src/hooks/useActivityLog.ts` | **Ny** |
-| `src/components/ActivityLog.tsx` | **Ny** |
-| `src/components/InstallDialog.tsx` | **Ny** |
-| `src/lib/api.ts` | Nya typer och funktioner |
-| `src/components/ServiceCard.tsx` | Omarbetad |
-| `src/hooks/useServiceUpdate.ts` | Utökad med uninstall + loggning |
-| `src/hooks/useSystemStatus.ts` | Förenklad |
-| `src/pages/Index.tsx` | Dynamisk tjänstlista + ActivityLog |
-| `src/components/Settings.tsx` | Förenklad |
-| `src/components/ConnectionLog.tsx` | **Ta bort** |
-| `src/components/LogViewer.tsx` | **Ta bort** |
+Enkel workflow som bygger och publicerar `dist.tar.gz` vid varje push till main:
+
+```yaml
+- run: npm ci && npm run build
+- run: tar czf dist.tar.gz dist/
+- uses: softprops/action-gh-release@v2
+  with:
+    files: dist.tar.gz
+```
+
+### Vad behöver finnas i varje tjänste-repo
+
+- En GitHub Actions workflow som publicerar `dist.tar.gz` som release
+- Det är allt. Inget installationsskript behövs för rena frontend-appar.
+
+### Filer som ändras
+
+| Fil | Ändring |
+|-----|---------|
+| `public/services.json` | Lägg till `releaseUrl` per tjänst |
+| `public/pi-scripts/pi-dashboard-api.sh` | Ny `do_install_release()`, uppdaterad `do_install()` med release-fallback, ny `do_update_release()` |
+| `public/SERVICE-INTEGRATION.md` | Dokumentera release-baserad installation + GitHub Action-mall |
+
+### Resultat
+
+- Installation: **~30s** istället för 10-15 min
+- Uppdatering: **~10s** istället för 5-10 min
+- Inget behov av Node.js/npm på Pi:n (förutom `serve` som redan finns)
+- Bakåtkompatibelt: om release saknas används gamla flödet
 
