@@ -22,6 +22,8 @@ Add an entry to `public/services.json`:
 {
   "key": "my-service",
   "name": "My Service",
+  "type": "node",
+  "entrypoint": "server/index.js",
   "repo": "https://github.com/user/my-service.git",
   "releaseUrl": "https://api.github.com/repos/user/my-service/releases/latest",
   "installDir": "$HOME/.local/share/my-service",
@@ -36,6 +38,8 @@ Add an entry to `public/services.json`:
 |-------|-------------|
 | `key` | Unique identifier (used in API calls) |
 | `name` | Display name in dashboard UI |
+| `type` | `"node"` or `"static"` (default: `"static"`). Determines how the service is started |
+| `entrypoint` | Path to main JS file, relative to `installDir` (only used when `type` is `"node"`) |
 | `repo` | Git clone URL (used as fallback if no release exists) |
 | `releaseUrl` | GitHub Releases API URL for pre-built downloads (optional) |
 | `installDir` | Where the app is installed (`$HOME` is expanded) |
@@ -43,6 +47,39 @@ Add an entry to `public/services.json`:
 | `updateScript` | Absolute path to update script (fallback, exists after install) |
 | `uninstallScript` | Path relative to repo root, run during uninstall |
 | `service` | systemd service name (without `.service`) |
+
+### Service Types
+
+**`"static"`** (default) — Pure frontend apps. The dashboard runs:
+```
+npx serve dist -l {port} -s
+```
+
+**`"node"`** — Node.js servers (APIs, bridges, apps with built-in UI). The dashboard runs:
+```
+node {installDir}/{entrypoint}
+```
+The `PORT` environment variable is set automatically. Your app should listen on `process.env.PORT`.
+
+#### Examples
+
+A static frontend:
+```json
+{ "type": "static" }
+```
+→ `ExecStart=/usr/bin/npx serve dist -l 3001 -s`
+
+A Node.js bridge server:
+```json
+{ "type": "node", "entrypoint": "bridge-pi/index.js" }
+```
+→ `ExecStart=/usr/bin/node /home/pi/.local/share/cast-away/bridge-pi/index.js`
+
+A Node.js app that serves its own UI:
+```json
+{ "type": "node", "entrypoint": "pi/dist/index.js" }
+```
+→ `ExecStart=/usr/bin/node /opt/lotus-light/pi/dist/index.js`
 
 ## Release-Based Installation (Recommended)
 
