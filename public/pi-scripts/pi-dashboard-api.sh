@@ -268,6 +268,63 @@ progress() {
   echo "{\"app\":\"${app}\",\"status\":\"installing\",\"progress\":\"${msg}\",\"elapsed\":\"${time_str}\"}" > "$sf"
 }
 
+do_install_release() {
+  local app=$1 req_port=$2 req_core=$3 sf=$4 start_time=$5
+  local release_url install_dir svc download_url
+
+  release_url=$(registry_get "$app" "releaseUrl")
+  install_dir=$(eval echo "$(registry_get "$app" "installDir")")
+  svc=$(registry_get "$app" "service")
+
+  [ -z "$release_url" ] && return 1
+
+  progress "$sf" "$app" "Hämtar release-info från GitHub..." "$start_time"
+  download_url=$(curl -sf "$release_url" 2>/dev/null | jq -r '.assets[] | select(.name == "dist.tar.gz") | .browser_download_url' 2>/dev/null)
+
+  [ -z "$download_url" ] || [ "$download_url" = "null" ] && return 1
+
+  progress "$sf" "$app" "Förbereder katalog..." "$start_time"
+  [ -d "$install_dir" ] && sudo rm -rf "$install_dir"
+  sudo mkdir -p "$install_dir"
+  sudo chown "$(whoami):$(whoami)" "$install_dir"
+
+  progress "$sf" "$app" "Laddar ner förbyggd release..." "$start_time"
+  if ! curl -sfL "$download_url" -o "/tmp/pi-dashboard/${app}-dist.tar.gz" >> "$INSTALL_DIR/${app}.log" 2>&1; then
+    return 1
+  fi
+
+  progress "$sf" "$app" "Packar upp..." "$start_time"
+  tar xzf "/tmp/pi-dashboard/${app}-dist.tar.gz" -C "$install_dir" >> "$INSTALL_DIR/${app}.log" 2>&1
+  rm -f "/tmp/pi-dashboard/${app}-dist.tar.gz"
+
+  progress "$sf" "$app" "Skapar systemd-service..." "$start_time"
+  local svc_file="$HOME/.config/systemd/user/${svc}.service"
+  mkdir -p "$HOME/.config/systemd/user"
+  cat > "$svc_file" <<UNIT
+[Unit]
+Description=${app} service
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=${install_dir}
+ExecStart=/usr/bin/npx serve dist -l ${req_port} -s
+Environment=PORT=${req_port}
+CPUAffinity=${req_core}
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target
+UNIT
+
+  user_systemctl daemon-reload
+  user_systemctl enable "${svc}.service"
+  user_systemctl start "${svc}.service"
+
+  return 0
+}
+
 do_install() {
   local app repo install_dir script svc sf install_message req_port req_core start_time
   app=$1
@@ -278,7 +335,6 @@ do_install() {
   script=$(registry_get "$app" "installScript")
   svc=$(registry_get "$app" "service")
   sf="$INSTALL_DIR/${app}.json"
-  install_message="Installation klar"
   start_time=$(date +%s)
 
   [ -z "$repo" ] && { echo "{\"app\":\"${app}\",\"status\":\"error\",\"message\":\"Okänd app\"}" > "$sf"; return 1; }
@@ -288,7 +344,14 @@ do_install() {
   export XDG_RUNTIME_DIR="$USER_RUNTIME_DIR"
   export DBUS_SESSION_BUS_ADDRESS="$USER_BUS_ADDRESS"
 
-  progress "$sf" "$app" "Förbereder katalog..." "$start_time"
+  # Try release-based install first
+  if do_install_release "$app" "$req_port" "$req_core" "$sf" "$start_time"; then
+    install_message="Installation klar (release)"
+  else
+    # Fallback to legacy git clone + build
+    install_message="Installation klar"
+
+    progress "$sf" "$app" "Förbereder katalog..." "$start_time"
     [ -d "$install_dir" ] && sudo rm -rf "$install_dir"
     sudo mkdir -p "$(dirname "$install_dir")"
 
@@ -315,8 +378,9 @@ do_install() {
       echo "{\"app\":\"${app}\",\"status\":\"error\",\"message\":\"Installationsskript misslyckades\",\"timestamp\":\"$(date -Iseconds)\"}" > "$sf"
       return 1
     fi
+  fi
 
-    progress "$sf" "$app" "Sparar konfiguration..." "$start_time"
+  progress "$sf" "$app" "Sparar konfiguration..." "$start_time"
 
   # Save assignment
   assignment_set "$app" "$req_port" "$req_core"
@@ -480,25 +544,57 @@ handle_request() {
       update_json="$STATUS_DIR/${app}.json"
       update_log="$STATUS_DIR/${app}.log"
       mkdir -p "$STATUS_DIR"
-      if [ -z "$uscript" ] || [ ! -f "$uscript" ]; then
-        echo "Uppdateringsskript saknas: $uscript" > "$update_log"
-        echo "{\"app\":\"${app}\",\"status\":\"error\",\"message\":\"Uppdateringsskript saknas\",\"timestamp\":\"$(date -Iseconds)\"}" > "$update_json"
-        response=$(< "$update_json")
-      else
-        echo "{\"app\":\"${app}\",\"status\":\"updating\",\"timestamp\":\"$(date -Iseconds)\"}" > "$update_json"
-        : > "$update_log"
-        response=$(< "$update_json")
-        (
-          nice -n 15 ionice -c 3 bash "$uscript"
-          exit_code=$?
-          if [ "$exit_code" -eq 0 ]; then
-            echo "{\"app\":\"${app}\",\"status\":\"success\",\"timestamp\":\"$(date -Iseconds)\"}" > "$update_json"
-          else
-            tail_err=$(tail -5 "$update_log" 2>/dev/null | tr '\n' ' ' | sed 's/"/\\"/g' | cut -c1-200)
-            echo "{\"app\":\"${app}\",\"status\":\"error\",\"message\":\"${tail_err:-Update failed}\",\"timestamp\":\"$(date -Iseconds)\"}" > "$update_json"
+
+      echo "{\"app\":\"${app}\",\"status\":\"updating\",\"timestamp\":\"$(date -Iseconds)\"}" > "$update_json"
+      : > "$update_log"
+      response=$(< "$update_json")
+
+      (
+        local release_url install_dir svc download_url
+        release_url=$(registry_get "$app" "releaseUrl")
+        install_dir=$(eval echo "$(registry_get "$app" "installDir")")
+        svc=$(registry_get "$app" "service")
+
+        updated=false
+
+        # Try release-based update first
+        if [ -n "$release_url" ]; then
+          download_url=$(curl -sf "$release_url" 2>/dev/null | jq -r '.assets[] | select(.name == "dist.tar.gz") | .browser_download_url' 2>/dev/null)
+          if [ -n "$download_url" ] && [ "$download_url" != "null" ]; then
+            echo "Laddar ner ny release..." >> "$update_log"
+            if curl -sfL "$download_url" -o "/tmp/pi-dashboard/${app}-dist.tar.gz" 2>> "$update_log"; then
+              echo "Packar upp..." >> "$update_log"
+              rm -rf "$install_dir/dist"
+              tar xzf "/tmp/pi-dashboard/${app}-dist.tar.gz" -C "$install_dir" 2>> "$update_log"
+              rm -f "/tmp/pi-dashboard/${app}-dist.tar.gz"
+
+              export XDG_RUNTIME_DIR="$USER_RUNTIME_DIR"
+              export DBUS_SESSION_BUS_ADDRESS="$USER_BUS_ADDRESS"
+              user_systemctl restart "${svc}.service" 2>> "$update_log" || sudo systemctl restart "${svc}.service" 2>> "$update_log" || true
+
+              updated=true
+              echo "{\"app\":\"${app}\",\"status\":\"success\",\"timestamp\":\"$(date -Iseconds)\"}" > "$update_json"
+            fi
           fi
-        ) > "$update_log" 2>&1 &
-      fi
+        fi
+
+        # Fallback to legacy update script
+        if [ "$updated" = "false" ]; then
+          if [ -z "$uscript" ] || [ ! -f "$uscript" ]; then
+            echo "Uppdateringsskript saknas: $uscript" >> "$update_log"
+            echo "{\"app\":\"${app}\",\"status\":\"error\",\"message\":\"Uppdateringsskript saknas\",\"timestamp\":\"$(date -Iseconds)\"}" > "$update_json"
+          else
+            nice -n 15 ionice -c 3 bash "$uscript" >> "$update_log" 2>&1
+            exit_code=$?
+            if [ "$exit_code" -eq 0 ]; then
+              echo "{\"app\":\"${app}\",\"status\":\"success\",\"timestamp\":\"$(date -Iseconds)\"}" > "$update_json"
+            else
+              tail_err=$(tail -5 "$update_log" 2>/dev/null | tr '\n' ' ' | sed 's/"/\\"/g' | cut -c1-200)
+              echo "{\"app\":\"${app}\",\"status\":\"error\",\"message\":\"${tail_err:-Update failed}\",\"timestamp\":\"$(date -Iseconds)\"}" > "$update_json"
+            fi
+          fi
+        fi
+      ) &
       ;;
 
     GET\ /api/update-status/*)
