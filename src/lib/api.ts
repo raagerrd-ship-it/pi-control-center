@@ -56,6 +56,8 @@ export type VersionMap = Record<string, VersionInfo>;
 export interface ServiceDefinition {
   key: string;
   name: string;
+  type?: 'static' | 'node';
+  entrypoint?: string;
   repo: string;
   releaseUrl?: string;
   installDir: string;

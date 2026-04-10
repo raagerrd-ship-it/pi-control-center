@@ -299,7 +299,17 @@ do_install_release() {
 
   progress "$sf" "$app" "Skapar systemd-service..." "$start_time"
   local svc_file="$HOME/.config/systemd/user/${svc}.service"
+  local app_type entrypoint exec_start
+  app_type=$(registry_get "$app" "type")
+  entrypoint=$(registry_get "$app" "entrypoint")
   mkdir -p "$HOME/.config/systemd/user"
+
+  if [ "$app_type" = "node" ] && [ -n "$entrypoint" ]; then
+    exec_start="/usr/bin/node ${install_dir}/${entrypoint}"
+  else
+    exec_start="/usr/bin/npx serve dist -l ${req_port} -s"
+  fi
+
   cat > "$svc_file" <<UNIT
 [Unit]
 Description=${app} service
@@ -308,7 +318,7 @@ After=network.target
 [Service]
 Type=simple
 WorkingDirectory=${install_dir}
-ExecStart=/usr/bin/npx serve dist -l ${req_port} -s
+ExecStart=${exec_start}
 Environment=PORT=${req_port}
 CPUAffinity=${req_core}
 Restart=on-failure

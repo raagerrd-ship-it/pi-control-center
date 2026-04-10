@@ -2,6 +2,8 @@
   {
     "key": "lotus-lantern",
     "name": "Lotus Lantern Control",
+    "type": "node",
+    "entrypoint": "pi/dist/index.js",
     "repo": "https://github.com/raagerrd-ship-it/lotus-light-link.git",
     "releaseUrl": "https://api.github.com/repos/raagerrd-ship-it/lotus-light-link/releases/latest",
     "installDir": "/opt/lotus-light",
@@ -13,6 +15,8 @@
   {
     "key": "cast-away",
     "name": "Cast Away Web",
+    "type": "node",
+    "entrypoint": "bridge-pi/index.js",
     "repo": "https://github.com/raagerrd-ship-it/hromecast.git",
     "releaseUrl": "https://api.github.com/repos/raagerrd-ship-it/hromecast/releases/latest",
     "installDir": "$HOME/.local/share/cast-away",
@@ -24,6 +28,8 @@
   {
     "key": "sonos-gateway",
     "name": "Sonos Gateway",
+    "type": "node",
+    "entrypoint": "bridge/index.js",
     "repo": "https://github.com/raagerrd-ship-it/sonos-gateway.git",
     "releaseUrl": "https://api.github.com/repos/raagerrd-ship-it/sonos-gateway/releases/latest",
     "installDir": "$HOME/.local/share/sonos-proxy",
