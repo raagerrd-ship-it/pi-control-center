@@ -57,6 +57,7 @@ export interface ServiceDefinition {
   key: string;
   name: string;
   repo: string;
+  releaseUrl?: string;
   installDir: string;
   installScript: string;
   updateScript: string;
