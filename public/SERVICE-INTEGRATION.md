@@ -89,7 +89,7 @@ The fastest way to deploy services on Pi Zero 2 W. No build step on the Pi.
 
 1. Your CI builds the project and publishes `dist.tar.gz` as a GitHub Release asset
 2. The dashboard downloads and unpacks it to `installDir`
-3. A systemd service is created automatically using `npx serve`
+3. A systemd service is created automatically — using `npx serve` for static apps or `node {entrypoint}` for Node.js apps
 
 Installation takes **~30 seconds** instead of 10-15 minutes.
 
