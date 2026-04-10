@@ -1,36 +1,8 @@
-const SETTINGS_KEY = 'pi-dashboard-settings';
 const API_PORT = '8585';
 
-const getConfiguredApiHost = (): string => {
-  try {
-    const raw = localStorage.getItem(SETTINGS_KEY);
-    if (!raw) return window.location.hostname;
-
-    const parsed = JSON.parse(raw);
-    return typeof parsed.apiHost === 'string' && parsed.apiHost.trim()
-      ? parsed.apiHost.trim()
-      : window.location.hostname;
-  } catch {
-    return window.location.hostname;
-  }
-};
 
 const getBaseUrl = (): string => {
-  try {
-    const configuredHost = getConfiguredApiHost();
-    const normalized = /^https?:\/\//i.test(configuredHost)
-      ? configuredHost
-      : `http://${configuredHost}`;
-    const url = new URL(normalized);
-
-    if (!url.port) {
-      url.port = API_PORT;
-    }
-
-    return url.origin;
-  } catch {
-    return `http://${window.location.hostname}:${API_PORT}`;
-  }
+  return `http://${window.location.hostname}:${API_PORT}`;
 };
 
 export interface SystemStatus {
