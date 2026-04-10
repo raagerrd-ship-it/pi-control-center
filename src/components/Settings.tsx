@@ -14,12 +14,10 @@ import {
 
 export interface DashboardSettings {
   deviceLabel: string;
-  apiHost: string;
 }
 
 const DEFAULT_SETTINGS: DashboardSettings = {
   deviceLabel: 'Pi Zero 2',
-  apiHost: '',
 };
 
 export function loadSettings(): DashboardSettings {
@@ -29,7 +27,6 @@ export function loadSettings(): DashboardSettings {
       const parsed = JSON.parse(saved);
       return {
         deviceLabel: parsed.deviceLabel || DEFAULT_SETTINGS.deviceLabel,
-        apiHost: typeof parsed.apiHost === 'string' ? parsed.apiHost : DEFAULT_SETTINGS.apiHost,
       };
     }
   } catch {}
