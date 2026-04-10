@@ -84,7 +84,6 @@ const Index = () => {
         setDashboardUpdate(result);
         if (result.status === 'updating') {
           retries = 0;
-          // Fetch and show latest log lines during update
           try {
             const log = await fetchLogs('dashboard', 'update');
             if (log && log !== 'Tom logg' && log !== 'Inga loggar tillgängliga') {
@@ -119,6 +118,13 @@ const Index = () => {
     };
     setTimeout(poll, 3000);
   }, [addEntry]);
+
+  const handleServiceAction = useCallback(async (app: string, action: 'start' | 'stop' | 'restart') => {
+    await runServiceAction(app, action);
+    setTimeout(() => {
+      void refresh();
+    }, 800);
+  }, [refresh, runServiceAction]);
 
   const isUpdatingDashboard = dashboardUpdate?.status === 'updating';
   const dashboardVersion = versions?.dashboard;
@@ -185,7 +191,7 @@ const Index = () => {
                   onUpdate={startUpdate}
                   onInstall={startInstall}
                   onUninstall={startUninstall}
-                  onServiceAction={runServiceAction}
+                  onServiceAction={handleServiceAction}
                 />
               );
             })}
