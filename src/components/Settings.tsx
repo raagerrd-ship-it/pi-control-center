@@ -72,18 +72,8 @@ export function Settings({ onSave }: { onSave: (s: DashboardSettings) => void })
             />
           </div>
 
-          <div>
-            <Label className="text-xs text-muted-foreground font-mono">Pi-adress</Label>
-            <Input
-              className="font-mono text-sm mt-1"
-              placeholder="t.ex. 192.168.1.150 eller http://192.168.1.150:8585"
-              value={settings.apiHost}
-              onChange={e => setSettings(s => ({ ...s, apiHost: e.target.value }))}
-            />
-            <p className="mt-1 font-mono text-[11px] text-muted-foreground">
-              Lämna tomt för att använda samma host som sidan körs på.
-            </p>
-          </div>
+
+
 
           <Button onClick={save} className="font-mono text-sm">Spara</Button>
         </div>
