@@ -33,6 +33,7 @@ sed -i 's/\r$//' "$DASHBOARD_DIR/public/pi-scripts/"*.sh
 chmod +x "$DASHBOARD_DIR/public/pi-scripts/"*.sh
 
 echo "[2/7] Installing dependencies..."
+rm -rf node_modules package-lock.json
 nice -n 15 ionice -c 3 npm install --no-audit --no-fund
 
 echo "[3/7] Updating browserslist..."
