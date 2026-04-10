@@ -134,6 +134,15 @@ check_service() {
   fi
 }
 
+service_is_active() {
+  local svc=$1
+  if systemctl is-active --quiet "${svc}.service" 2>/dev/null || user_systemctl is-active --quiet "${svc}.service" 2>/dev/null; then
+    echo "true"
+  else
+    echo "false"
+  fi
+}
+
 check_installed() {
   local app=$1
   local install_dir=$2
@@ -180,7 +189,7 @@ build_status_json() {
   svc_json=""
 
   for app in $(registry_keys); do
-    local svc install_dir port core online installed ver s_cpu s_ram s_core pid aff
+    local svc install_dir port core online installed ver s_cpu s_ram s_core pid aff running
     svc=$(registry_get "$app" "service")
     install_dir=$(eval echo "$(registry_get "$app" "installDir")")
     port=$(assignment_get "$app" "port")
@@ -189,8 +198,11 @@ build_status_json() {
     [ -z "$port" ] && port=0
     [ -z "$core" ] && core=-1
 
-    online="false"
-    [ "$port" -gt 0 ] && online=$(check_service "$port")
+    running=$(service_is_active "$svc")
+    online="$running"
+    if [ "$online" != "true" ] && [ "$port" -gt 0 ]; then
+      online=$(check_service "$port")
+    fi
     installed=$(check_installed "$app" "$install_dir" "$svc")
     ver=$(get_version "$install_dir")
     s_cpu=0
