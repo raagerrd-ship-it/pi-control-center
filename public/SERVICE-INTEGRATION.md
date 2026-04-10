@@ -107,6 +107,8 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -137,6 +139,10 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -144,7 +150,7 @@ jobs:
           node-version: 20
       - run: npm ci
       - run: npm run build
-      - run: npm ci --omit=dev
+      - run: npm install --omit=dev --package-lock=false
       - run: tar czf dist.tar.gz bridge-pi/ node_modules/
       # Adjust the paths above to match your project structure:
       #   tar czf dist.tar.gz pi/dist/ node_modules/
@@ -157,7 +163,10 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 ```
 
-> **Tip**: Run `npm ci --omit=dev` before packaging to exclude dev dependencies and reduce tarball size.
+> **Important notes**:
+> - Add `permissions: contents: write` to the job so `softprops/action-gh-release` can create/update releases.
+> - If your subdirectory has no `package-lock.json`, use `npm install --omit=dev --package-lock=false` instead of `npm ci --omit=dev` (which requires a lockfile).
+> - Set `FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true` as a job-level env var to avoid deprecation warnings from older GitHub Actions.
 
 ### Release-based updates
 
