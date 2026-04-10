@@ -1,9 +1,9 @@
 [
   {
-    "key": "lotus-lantern",
-    "name": "Lotus Lantern Control",
+    "key": "lotus-light",
+    "name": "Lotus Light Link",
     "type": "node",
-    "entrypoint": "pi/dist/index.js",
+    "entrypoint": "pi/start-lotus.js",
     "repo": "https://github.com/raagerrd-ship-it/lotus-light-link.git",
     "releaseUrl": "https://api.github.com/repos/raagerrd-ship-it/lotus-light-link/releases/latest",
     "installDir": "/opt/lotus-light",
