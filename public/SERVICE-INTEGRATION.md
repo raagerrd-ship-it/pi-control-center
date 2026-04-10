@@ -22,6 +22,8 @@ Add an entry to `public/services.json`:
 {
   "key": "my-service",
   "name": "My Service",
+  "type": "node",
+  "entrypoint": "server/index.js",
   "repo": "https://github.com/user/my-service.git",
   "releaseUrl": "https://api.github.com/repos/user/my-service/releases/latest",
   "installDir": "$HOME/.local/share/my-service",
@@ -36,6 +38,8 @@ Add an entry to `public/services.json`:
 |-------|-------------|
 | `key` | Unique identifier (used in API calls) |
 | `name` | Display name in dashboard UI |
+| `type` | `"node"` or `"static"` (default: `"static"`). Determines how the service is started |
+| `entrypoint` | Path to main JS file, relative to `installDir` (only used when `type` is `"node"`) |
 | `repo` | Git clone URL (used as fallback if no release exists) |
 | `releaseUrl` | GitHub Releases API URL for pre-built downloads (optional) |
 | `installDir` | Where the app is installed (`$HOME` is expanded) |
@@ -43,6 +47,39 @@ Add an entry to `public/services.json`:
 | `updateScript` | Absolute path to update script (fallback, exists after install) |
 | `uninstallScript` | Path relative to repo root, run during uninstall |
 | `service` | systemd service name (without `.service`) |
+
+### Service Types
+
+**`"static"`** (default) — Pure frontend apps. The dashboard runs:
+```
+npx serve dist -l {port} -s
+```
+
+**`"node"`** — Node.js servers (APIs, bridges, apps with built-in UI). The dashboard runs:
+```
+node {installDir}/{entrypoint}
+```
+The `PORT` environment variable is set automatically. Your app should listen on `process.env.PORT`.
+
+#### Examples
+
+A static frontend:
+```json
+{ "type": "static" }
+```
+→ `ExecStart=/usr/bin/npx serve dist -l 3001 -s`
+
+A Node.js bridge server:
+```json
+{ "type": "node", "entrypoint": "bridge-pi/index.js" }
+```
+→ `ExecStart=/usr/bin/node /home/pi/.local/share/cast-away/bridge-pi/index.js`
+
+A Node.js app that serves its own UI:
+```json
+{ "type": "node", "entrypoint": "pi/dist/index.js" }
+```
+→ `ExecStart=/usr/bin/node /opt/lotus-light/pi/dist/index.js`
 
 ## Release-Based Installation (Recommended)
 
@@ -52,13 +89,13 @@ The fastest way to deploy services on Pi Zero 2 W. No build step on the Pi.
 
 1. Your CI builds the project and publishes `dist.tar.gz` as a GitHub Release asset
 2. The dashboard downloads and unpacks it to `installDir`
-3. A systemd service is created automatically using `npx serve`
+3. A systemd service is created automatically — using `npx serve` for static apps or `node {entrypoint}` for Node.js apps
 
 Installation takes **~30 seconds** instead of 10-15 minutes.
 
-### GitHub Actions Workflow
+### GitHub Actions Workflow — Static App
 
-Add this to your service repo as `.github/workflows/release.yml`:
+For pure frontends (`type: "static"`):
 
 ```yaml
 name: Build and Release
@@ -86,12 +123,48 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 ```
 
+### GitHub Actions Workflow — Node.js App
+
+For Node.js servers (`type: "node"`), include `node_modules` in the tarball so the Pi doesn't need to run `npm install`:
+
+```yaml
+name: Build and Release
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: npm ci
+      - run: npm run build
+      - run: npm ci --omit=dev
+      - run: tar czf dist.tar.gz bridge-pi/ node_modules/
+      # Adjust the paths above to match your project structure:
+      #   tar czf dist.tar.gz pi/dist/ node_modules/
+      #   tar czf dist.tar.gz server/ node_modules/
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: latest
+          files: dist.tar.gz
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+```
+
+> **Tip**: Run `npm ci --omit=dev` before packaging to exclude dev dependencies and reduce tarball size.
+
 ### Release-based updates
 
 Updates also use releases when available:
 
 1. Dashboard fetches latest release from `releaseUrl`
-2. Downloads `dist.tar.gz`, replaces `dist/` folder
+2. Downloads `dist.tar.gz`, replaces files in `installDir`
 3. Restarts the service
 
 Update takes **~10 seconds**.
@@ -99,7 +172,8 @@ Update takes **~10 seconds**.
 ### What your repo needs
 
 - A GitHub Actions workflow that publishes `dist.tar.gz` as a release asset
-- That's it. No install script needed for pure frontend apps.
+- For `"node"` apps: include `node_modules/` in the tarball
+- That's it. No install script needed for release-based installs.
 
 ## Legacy Installation (Fallback)
 
