@@ -93,9 +93,9 @@ The fastest way to deploy services on Pi Zero 2 W. No build step on the Pi.
 
 Installation takes **~30 seconds** instead of 10-15 minutes.
 
-### GitHub Actions Workflow
+### GitHub Actions Workflow — Static App
 
-Add this to your service repo as `.github/workflows/release.yml`:
+For pure frontends (`type: "static"`):
 
 ```yaml
 name: Build and Release
@@ -123,12 +123,48 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 ```
 
+### GitHub Actions Workflow — Node.js App
+
+For Node.js servers (`type: "node"`), include `node_modules` in the tarball so the Pi doesn't need to run `npm install`:
+
+```yaml
+name: Build and Release
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: npm ci
+      - run: npm run build
+      - run: npm ci --omit=dev
+      - run: tar czf dist.tar.gz bridge-pi/ node_modules/
+      # Adjust the paths above to match your project structure:
+      #   tar czf dist.tar.gz pi/dist/ node_modules/
+      #   tar czf dist.tar.gz server/ node_modules/
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: latest
+          files: dist.tar.gz
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+```
+
+> **Tip**: Run `npm ci --omit=dev` before packaging to exclude dev dependencies and reduce tarball size.
+
 ### Release-based updates
 
 Updates also use releases when available:
 
 1. Dashboard fetches latest release from `releaseUrl`
-2. Downloads `dist.tar.gz`, replaces `dist/` folder
+2. Downloads `dist.tar.gz`, replaces files in `installDir`
 3. Restarts the service
 
 Update takes **~10 seconds**.
@@ -136,7 +172,8 @@ Update takes **~10 seconds**.
 ### What your repo needs
 
 - A GitHub Actions workflow that publishes `dist.tar.gz` as a release asset
-- That's it. No install script needed for pure frontend apps.
+- For `"node"` apps: include `node_modules/` in the tarball
+- That's it. No install script needed for release-based installs.
 
 ## Legacy Installation (Fallback)
 
