@@ -189,6 +189,7 @@ const Index = () => {
                   usedPorts={usedPorts}
                   status={status}
                   onUpdate={startUpdate}
+                  onCheckVersion={handleCheckVersions}
                   onInstall={startInstall}
                   onUninstall={startUninstall}
                   onServiceAction={handleServiceAction}

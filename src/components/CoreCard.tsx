@@ -46,6 +46,7 @@ interface CoreCardProps {
   usedPorts: number[];
   status: SystemStatus | null;
   onUpdate: (app: string) => void;
+  onCheckVersion: (app: string) => void;
   onInstall: (app: string, port: number, core: number) => void;
   onUninstall: (app: string) => void;
   onServiceAction: (app: string, action: 'start' | 'stop' | 'restart') => void;
@@ -59,6 +60,7 @@ export const CoreCard = memo(function CoreCard({
   usedPorts,
   status,
   onUpdate,
+  onCheckVersion,
   onInstall,
   onUninstall,
   onServiceAction,
@@ -237,7 +239,15 @@ export const CoreCard = memo(function CoreCard({
               <RefreshCw className="h-3 w-3" />
             </Button>
           ) : (
-            <span className="text-muted-foreground/50">✓</span>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => onCheckVersion(def.key)}
+              className="h-5 w-5 p-0 text-muted-foreground/50 hover:text-foreground hover:bg-secondary"
+              title="Kolla version"
+            >
+              <RefreshCw className="h-2.5 w-2.5" />
+            </Button>
           )}
         </div>
       </div>
