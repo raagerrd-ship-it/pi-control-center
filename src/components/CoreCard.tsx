@@ -220,23 +220,26 @@ export const CoreCard = memo(function CoreCard({
 
       {/* Version bar */}
       <div className={`flex items-center justify-between rounded px-2 py-1 text-[10px] font-mono ${hasUpdate ? 'bg-[hsl(var(--status-warning)/0.08)] border border-[hsl(var(--status-warning)/0.25)]' : 'bg-secondary/30'}`}>
-        <span className="text-muted-foreground">Version {version || '—'}</span>
-        {isUpdating ? (
-          <span className="flex items-center gap-1 text-[hsl(var(--status-warning))]">
-            <Loader2 className="h-3 w-3 animate-spin" /> Uppdaterar...
-          </span>
-        ) : hasUpdate ? (
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => onUpdate(def.key)}
-            className="h-6 px-2 text-[10px] font-mono font-semibold text-[hsl(var(--status-warning))] hover:text-[hsl(var(--status-warning))] hover:bg-[hsl(var(--status-warning)/0.15)]"
-          >
-            <RefreshCw className="h-3 w-3 mr-1" /> Uppdatera
-          </Button>
-        ) : (
-          <span className="text-muted-foreground/50">✓</span>
-        )}
+        <span className="text-muted-foreground truncate">Version {version || '—'}</span>
+        <div className="flex items-center gap-1 shrink-0">
+          {isUpdating ? (
+            <span className="flex items-center gap-1 text-[hsl(var(--status-warning))]">
+              <Loader2 className="h-3 w-3 animate-spin" /> Uppdaterar...
+            </span>
+          ) : hasUpdate ? (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => onUpdate(def.key)}
+              className="h-5 w-5 p-0 text-[hsl(var(--status-warning))] hover:text-[hsl(var(--status-warning))] hover:bg-[hsl(var(--status-warning)/0.15)]"
+              title="Uppdatera"
+            >
+              <RefreshCw className="h-3 w-3" />
+            </Button>
+          ) : (
+            <span className="text-muted-foreground/50">✓</span>
+          )}
+        </div>
       </div>
 
       {/* Update feedback */}
