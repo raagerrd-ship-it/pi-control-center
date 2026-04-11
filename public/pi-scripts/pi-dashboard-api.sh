@@ -152,13 +152,24 @@ check_installed() {
 }
 
 get_version() {
+  # 1) Git commit date
   if [ -d "$1/.git" ]; then
     local raw
     raw=$(git -C "$1" log -1 --format='%cd' --date=format:'%-d %b' 2>/dev/null)
-    echo "${raw,,}"
-  else
-    echo ""
+    if [ -n "$raw" ]; then echo "${raw,,}"; return; fi
   fi
+  # 2) VERSION file
+  if [ -f "$1/VERSION" ]; then
+    cat "$1/VERSION" 2>/dev/null
+    return
+  fi
+  # 3) package.json version
+  if [ -f "$1/package.json" ]; then
+    local pv
+    pv=$(grep -o '"version"[[:space:]]*:[[:space:]]*"[^"]*"' "$1/package.json" 2>/dev/null | head -1 | cut -d'"' -f4)
+    if [ -n "$pv" ]; then echo "$pv"; return; fi
+  fi
+  echo ""
 }
 
 get_service_ram() {
