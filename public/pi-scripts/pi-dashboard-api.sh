@@ -152,21 +152,35 @@ check_installed() {
 }
 
 get_version() {
-  # 1) Git commit date
-  if [ -d "$1/.git" ]; then
+  local install_dir="$1" port="$2"
+  # 1) Ask the service's own API if it's running
+  if [ -n "$port" ] && [ "$port" -gt 0 ] 2>/dev/null; then
+    local api_ver
+    api_ver=$(curl -sf --max-time 1 "http://127.0.0.1:${port}/api/version" 2>/dev/null)
+    if [ -n "$api_ver" ]; then
+      # Try to extract "version" field from JSON
+      local parsed
+      parsed=$(echo "$api_ver" | grep -o '"version"[[:space:]]*:[[:space:]]*"[^"]*"' | head -1 | cut -d'"' -f4)
+      if [ -n "$parsed" ]; then echo "$parsed"; return; fi
+      # If not JSON, use raw response
+      echo "$api_ver"; return
+    fi
+  fi
+  # 2) Git commit date
+  if [ -d "$install_dir/.git" ]; then
     local raw
-    raw=$(git -C "$1" log -1 --format='%cd' --date=format:'%-d %b' 2>/dev/null)
+    raw=$(git -C "$install_dir" log -1 --format='%cd' --date=format:'%-d %b' 2>/dev/null)
     if [ -n "$raw" ]; then echo "${raw,,}"; return; fi
   fi
-  # 2) VERSION file
-  if [ -f "$1/VERSION" ]; then
-    cat "$1/VERSION" 2>/dev/null
+  # 3) VERSION file
+  if [ -f "$install_dir/VERSION" ]; then
+    cat "$install_dir/VERSION" 2>/dev/null
     return
   fi
-  # 3) package.json version
-  if [ -f "$1/package.json" ]; then
+  # 4) package.json version
+  if [ -f "$install_dir/package.json" ]; then
     local pv
-    pv=$(grep -o '"version"[[:space:]]*:[[:space:]]*"[^"]*"' "$1/package.json" 2>/dev/null | head -1 | cut -d'"' -f4)
+    pv=$(grep -o '"version"[[:space:]]*:[[:space:]]*"[^"]*"' "$install_dir/package.json" 2>/dev/null | head -1 | cut -d'"' -f4)
     if [ -n "$pv" ]; then echo "$pv"; return; fi
   fi
   echo ""
