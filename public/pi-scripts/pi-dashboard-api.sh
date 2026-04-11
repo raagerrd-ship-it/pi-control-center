@@ -229,7 +229,7 @@ build_status_json() {
       online=$(check_service "$port")
     fi
     installed=$(check_installed "$app" "$install_dir" "$svc")
-    ver=$(get_version "$install_dir")
+    ver=$(get_version "$install_dir" "$port")
     s_cpu=0
     s_ram=0
     s_core=${core}
