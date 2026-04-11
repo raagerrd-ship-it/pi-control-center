@@ -82,12 +82,14 @@ export function SystemMonitor({
         </div>
       )}
       {/* System gauges */}
-      <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5">
+      <div className="grid grid-cols-2 gap-3">
         <Gauge icon={<Cpu className="h-3.5 w-3.5" />} label="CPU" value={cpuVal} percent={noData ? undefined : status.cpu} warning={!noData && status.cpu > 85} />
         <Gauge icon={<Thermometer className="h-3.5 w-3.5" />} label="Temp" value={tempVal} percent={noData ? undefined : Math.min(status.temp, 85)} warning={!noData && status.temp > 70} />
         <Gauge icon={<MemoryStick className="h-3.5 w-3.5" />} label="RAM" value={ramVal} percent={noData ? undefined : ramPercent} warning={!noData && ramPercent > 85} />
         <Gauge icon={<HardDrive className="h-3.5 w-3.5" />} label="Disk" value={diskVal} percent={noData ? undefined : diskPercent} warning={!noData && diskPercent > 90} />
-        <Gauge icon={<Clock className="h-3.5 w-3.5" />} label="Drifttid" value={uptimeVal} />
+        <div className="col-span-2">
+          <Gauge icon={<Clock className="h-3.5 w-3.5" />} label="Drifttid" value={uptimeVal} />
+        </div>
       </div>
 
       {/* Separator */}
@@ -95,17 +97,11 @@ export function SystemMonitor({
 
       {/* Dashboard row */}
       <div className="flex flex-col gap-2">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <div className={`h-2 w-2 rounded-full ${noData ? 'bg-muted-foreground/30' : 'bg-[hsl(var(--status-online))]'}`} />
-            <span className="font-medium text-sm leading-none">Dashboard + Nginx</span>
-            <span className="font-mono text-[11px] text-muted-foreground inline-flex items-center gap-1 rounded bg-secondary px-1.5 py-0.5">
-              <span className="text-foreground text-[10px]">Core 0</span>
-            </span>
-            <span className="font-mono text-[11px] text-muted-foreground">{noData ? '—' : `${status.dashboardCpu?.toFixed(1) ?? '0.0'}%`}</span>
-            <span className="font-mono text-[11px] text-border">·</span>
-            <span className="font-mono text-[11px] text-muted-foreground">{noData ? '—' : `${status.dashboardRamMb ?? 7}MB`}</span>
-          </div>
+        <div className="flex items-center gap-2 flex-wrap">
+          <div className={`h-2 w-2 rounded-full shrink-0 ${noData ? 'bg-muted-foreground/30' : 'bg-[hsl(var(--status-online))]'}`} />
+          <span className="font-medium text-sm leading-none">Dashboard + Nginx</span>
+          <span className="font-mono text-[10px] text-muted-foreground inline-flex items-center rounded bg-secondary px-1.5 py-0.5">Core 0</span>
+          <span className="font-mono text-[11px] text-muted-foreground">{noData ? '—' : `${status.dashboardCpu?.toFixed(1) ?? '0.0'}%`} · {noData ? '—' : `${status.dashboardRamMb ?? 7}MB`}</span>
         </div>
 
         <div className="flex items-center gap-2">

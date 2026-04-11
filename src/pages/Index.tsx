@@ -132,7 +132,7 @@ const Index = () => {
 
   return (
     <PullToRefresh onRefresh={refresh}>
-      <div className="bg-background p-4 sm:p-6 max-w-2xl mx-auto">
+      <div className="bg-background p-3 sm:p-6 max-w-2xl mx-auto overflow-hidden">
         <header className="flex items-center justify-between mb-6">
           <div>
             <h1 className="font-mono text-lg font-bold tracking-tight">Pi Dashboard</h1>
