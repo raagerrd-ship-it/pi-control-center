@@ -1048,7 +1048,7 @@ if [ "$REQUEST_MODE" = "--handle-request" ]; then
   exit 0
 fi
 
-echo "Pi Dashboard API listening on port $PORT"
+echo "Pi Control Center API listening on port $PORT"
 
 # Start health polling in background
 health_poll_loop &
