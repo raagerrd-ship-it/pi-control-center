@@ -1,7 +1,7 @@
 #!/bin/bash
 # Pi Control Center — Update script (Pi Zero 2 W optimized)
 # Pulls latest code, rebuilds, and deploys to Nginx
-# Usage: bash ~/pi-control-center/public/pi-scripts/update-dashboard.sh
+# Usage: bash ~/pi-control-center/public/pi-scripts/update-control-center.sh
 
 set -euo pipefail
 
