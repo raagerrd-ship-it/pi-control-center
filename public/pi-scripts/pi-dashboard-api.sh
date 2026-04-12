@@ -1,5 +1,5 @@
 #!/bin/bash
-# Pi Dashboard API — lightweight HTTP server optimized for Pi Zero 2 W
+# Pi Control Center API — lightweight HTTP server optimized for Pi Zero 2 W
 # Uses /proc for stats (no heavy subprocesses), caches results
 # Dynamic service registry from services.json + assignments.json
 # Usage: ./pi-dashboard-api.sh [port]
