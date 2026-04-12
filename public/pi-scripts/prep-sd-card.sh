@@ -49,7 +49,7 @@ sudo chmod +x "$ROOTFS/opt/first-boot-setup.sh"
 
 # Inject repo URL
 if [ "$REPO_URL" != "https://github.com/raagerrd-ship-it/pi-control-center.git" ]; then
-  sudo sed -i "s|PI_DASHBOARD_REPO:-https://github.com/raagerrd-ship-it/pi-control-center.git|PI_DASHBOARD_REPO:-${REPO_URL}|" "$ROOTFS/opt/first-boot-setup.sh"
+  sudo sed -i "s|PI_REPO:-https://github.com/raagerrd-ship-it/pi-control-center.git|PI_REPO:-${REPO_URL}|" "$ROOTFS/opt/first-boot-setup.sh"
 fi
 
 # Copy & enable systemd service
