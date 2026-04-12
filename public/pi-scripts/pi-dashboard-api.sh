@@ -389,8 +389,10 @@ do_install_release() {
 
   if [ "$has_comp" = "true" ]; then
     # Component-based: create separate services for engine and ui
+    # Engine port = UI port + 50 (e.g. UI=3002 → Engine=3052)
+    local engine_port=$((req_port + 50))
     for comp in engine ui; do
-      local comp_type comp_entry comp_svc comp_always_on comp_exec
+      local comp_type comp_entry comp_svc comp_always_on comp_exec comp_port
       comp_type=$(registry_get_component "$app" "$comp" "type")
       comp_entry=$(registry_get_component "$app" "$comp" "entrypoint")
       comp_svc=$(registry_get_component "$app" "$comp" "service")
@@ -398,10 +400,17 @@ do_install_release() {
 
       [ -z "$comp_svc" ] && continue
 
+      # Engine gets offset port, UI gets the user-selected port
+      if [ "$comp" = "engine" ]; then
+        comp_port=$engine_port
+      else
+        comp_port=$req_port
+      fi
+
       if [ "$comp_type" = "node" ] && [ -n "$comp_entry" ]; then
         comp_exec="/usr/bin/node ${install_dir}/${comp_entry}"
       else
-        comp_exec="/usr/bin/npx serve ${comp_entry:-dist} -l ${req_port} -s"
+        comp_exec="/usr/bin/npx serve ${comp_entry:-dist} -l ${comp_port} -s"
       fi
 
       local restart_policy="on-failure"
@@ -417,7 +426,9 @@ After=network.target
 Type=simple
 WorkingDirectory=${install_dir}
 ExecStart=${comp_exec}
-Environment=PORT=${req_port}
+Environment=PORT=${comp_port}
+Environment=ENGINE_PORT=${engine_port}
+Environment=UI_PORT=${req_port}
 CPUAffinity=${req_core}
 AllowedCPUs=${req_core}
 MemoryMax=128M
