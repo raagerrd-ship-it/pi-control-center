@@ -18,7 +18,8 @@
 8. [Uppdateringsflöde](#8-uppdateringsflöde)
 9. [Avinstallation](#9-avinstallation)
 10. [Miljövariabler](#10-miljövariabler)
-11. [Checklista](#11-checklista)
+11. [Health Endpoint — Standard för motorer](#11-health-endpoint--standard-för-motorer)
+12. [Checklista](#12-checklista)
 
 ---
 
@@ -536,7 +537,133 @@ const ENGINE_URL = `http://${window.location.hostname}:${enginePort}`;
 
 ---
 
-## 11. Checklista
+## 11. Health Endpoint — Standard för motorer
+
+Varje motor **bör** exponera en hälsokontroll-endpoint som Pi Control Center kan använda för att övervaka tjänstens tillstånd.
+
+### Endpoint
+
+```
+GET /api/health
+```
+
+### Responsformat
+
+```json
+{
+  "status": "ok",
+  "service": "my-service-engine",
+  "version": "1.2.0",
+  "uptime": 84372,
+  "memory": {
+    "rss": 42,
+    "heapUsed": 28,
+    "heapTotal": 48
+  },
+  "timestamp": "2026-04-12T14:30:00.000Z"
+}
+```
+
+### Fältspecifikation
+
+| Fält | Typ | Krävs | Beskrivning |
+|------|-----|-------|-------------|
+| `status` | `string` | ✅ | `"ok"` om allt fungerar, `"degraded"` om delvis, `"error"` vid problem |
+| `service` | `string` | ✅ | Tjänstens `service`-namn från `services.json` |
+| `version` | `string` | ✅ | Semantisk version (t.ex. `"1.2.0"`) |
+| `uptime` | `number` | ✅ | Sekunder sedan processen startade |
+| `memory` | `object` | ⭐ | Minnesanvändning i MB |
+| `memory.rss` | `number` | ⭐ | Resident Set Size i MB (totalt fysiskt minne) |
+| `memory.heapUsed` | `number` | ⭐ | Använt heap-minne i MB |
+| `memory.heapTotal` | `number` | ⭐ | Totalt allokerat heap i MB |
+| `timestamp` | `string` | ⭐ | ISO 8601 tidsstämpel |
+
+✅ = krävs · ⭐ = starkt rekommenderat
+
+### Statusvärden
+
+| Status | Betydelse | Pi Control Center visar |
+|--------|-----------|------------------------|
+| `"ok"` | Allt fungerar normalt | 🟢 Grön indikator |
+| `"degraded"` | Fungerar men med begränsningar | 🟡 Gul indikator |
+| `"error"` | Kritiskt fel, behöver åtgärd | 🔴 Röd indikator |
+
+### Referensimplementation (Node.js)
+
+```javascript
+const startTime = Date.now();
+const pkg = require('./package.json');
+
+app.get('/api/health', (req, res) => {
+  const mem = process.memoryUsage();
+  
+  res.json({
+    status: 'ok',
+    service: 'my-service-engine',
+    version: pkg.version,
+    uptime: Math.floor((Date.now() - startTime) / 1000),
+    memory: {
+      rss: Math.round(mem.rss / 1024 / 1024),
+      heapUsed: Math.round(mem.heapUsed / 1024 / 1024),
+      heapTotal: Math.round(mem.heapTotal / 1024 / 1024)
+    },
+    timestamp: new Date().toISOString()
+  });
+});
+```
+
+### Referensimplementation med felhantering
+
+Om motorn har beroenden (databas, extern tjänst etc.) kan du rapportera degraderat tillstånd:
+
+```javascript
+app.get('/api/health', async (req, res) => {
+  const mem = process.memoryUsage();
+  const rssMB = Math.round(mem.rss / 1024 / 1024);
+  
+  // Kontrollera beroenden
+  let status = 'ok';
+  if (rssMB > 100) status = 'degraded';  // Närmar sig 128MB-gränsen
+  
+  try {
+    await checkDatabaseConnection();  // Valfri beroendecheck
+  } catch {
+    status = 'error';
+  }
+
+  res.json({
+    status,
+    service: 'my-service-engine',
+    version: pkg.version,
+    uptime: Math.floor((Date.now() - startTime) / 1000),
+    memory: {
+      rss: rssMB,
+      heapUsed: Math.round(mem.heapUsed / 1024 / 1024),
+      heapTotal: Math.round(mem.heapTotal / 1024 / 1024)
+    },
+    timestamp: new Date().toISOString()
+  });
+});
+```
+
+### Hur Pi Control Center använder health-endpointen
+
+Pi Control Center pollar `/api/health` var **30:e sekund** för varje aktiv motor. Informationen används för att:
+
+1. **Visa status i dashboarden** — grön/gul/röd indikator per motor
+2. **Visa minnesanvändning** — varnar om RSS närmar sig 128MB-gränsen
+3. **Detektera hängda processer** — om health inte svarar inom 5 sekunder markeras motorn som "ej svarar"
+4. **Visa version** — visar installerad version och jämför med senaste release
+
+### Timeout och felhantering
+
+- **Timeout:** 5 sekunder — om motorn inte svarar inom denna tid markeras den som offline
+- **HTTP-statuskod:** Svara alltid med `200 OK`, även vid `"error"` status. Pi Control Center tolkar JSON-fältet `status`, inte HTTP-koden
+- **Om endpointen saknas:** Pi Control Center faller tillbaka på `systemctl is-active` för statuscheck
+
+---
+
+## 12. Checklista
 
 Innan din tjänst kan installeras via Pi Control Center, verifiera:
 
