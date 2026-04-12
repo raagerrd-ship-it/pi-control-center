@@ -1,8 +1,8 @@
 [Unit]
-Description=Pi Dashboard First Boot Setup
+Description=Pi Control Center First Boot Setup
 After=network-online.target
 Wants=network-online.target
-ConditionPathExists=!/opt/.pi-dashboard-installed
+ConditionPathExists=!/opt/.pi-control-center-installed
 
 [Service]
 Type=oneshot
