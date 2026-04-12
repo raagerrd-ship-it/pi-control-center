@@ -944,6 +944,49 @@ handle_request() {
       fi
       ;;
 
+    "GET /api/version/"*)
+      local vapp=${method_path#GET /api/version/}
+      vapp="${vapp%%[?#]*}"
+      vapp="${vapp//[^a-zA-Z0-9_-]/}"
+      local v_install_dir v_repo v_local v_local_hash v_remote_hash v_has_update
+      if [ "$vapp" = "dashboard" ]; then
+        v_local=""
+        v_local_hash=""
+        v_remote_hash=""
+        local ddir="$HOME/pi-control-center"
+        [ ! -d "$ddir" ] && ddir="$HOME/pi-dashboard"
+        if [ -d "$ddir/.git" ]; then
+          v_local=$(git -C "$ddir" log -1 --format='%cd' --date=format:'%-d %b' 2>/dev/null)
+          v_local="${v_local,,}"
+          v_local_hash=$(git -C "$ddir" rev-parse --short HEAD 2>/dev/null)
+        fi
+        v_remote_hash=$(git ls-remote --heads "$(git -C "$ddir" remote get-url origin 2>/dev/null)" main 2>/dev/null | cut -c1-7)
+        v_has_update="false"
+        [ -n "$v_local_hash" ] && [ -n "$v_remote_hash" ] && [ "$v_local_hash" != "$v_remote_hash" ] && v_has_update="true"
+        response="{\"local\":\"${v_local}\",\"remote\":\"\",\"hasUpdate\":${v_has_update}}"
+      else
+        v_install_dir=$(eval echo "$(registry_get "$vapp" "installDir")" 2>/dev/null)
+        v_repo=$(registry_get "$vapp" "repo" 2>/dev/null)
+        if [ -z "$v_install_dir" ]; then
+          status_line="HTTP/1.1 404 Not Found"
+          response="{\"error\":\"unknown service: ${vapp}\"}"
+        else
+          v_local=""
+          v_local_hash=""
+          v_remote_hash=""
+          if [ -d "$v_install_dir/.git" ]; then
+            v_local=$(git -C "$v_install_dir" log -1 --format='%cd' --date=format:'%-d %b' 2>/dev/null)
+            v_local="${v_local,,}"
+            v_local_hash=$(git -C "$v_install_dir" rev-parse --short HEAD 2>/dev/null)
+          fi
+          v_remote_hash=$(git ls-remote --heads "$v_repo" main 2>/dev/null | cut -c1-7)
+          v_has_update="false"
+          [ -n "$v_local_hash" ] && [ -n "$v_remote_hash" ] && [ "$v_local_hash" != "$v_remote_hash" ] && v_has_update="true"
+          response="{\"local\":\"${v_local}\",\"remote\":\"\",\"hasUpdate\":${v_has_update}}"
+        fi
+      fi
+      ;;
+
     "GET /api/versions")
       local vj
       vj=""
@@ -970,12 +1013,14 @@ handle_request() {
       d_local=""
       d_hash=""
       d_remote_hash=""
-      if [ -d "$HOME/pi-dashboard/.git" ]; then
-        d_local=$(git -C "$HOME/pi-dashboard" log -1 --format='%cd' --date=format:'%-d %b' 2>/dev/null)
+      local ddir2="$HOME/pi-control-center"
+      [ ! -d "$ddir2" ] && ddir2="$HOME/pi-dashboard"
+      if [ -d "$ddir2/.git" ]; then
+        d_local=$(git -C "$ddir2" log -1 --format='%cd' --date=format:'%-d %b' 2>/dev/null)
         d_local="${d_local,,}"
-        d_hash=$(git -C "$HOME/pi-dashboard" rev-parse --short HEAD 2>/dev/null)
+        d_hash=$(git -C "$ddir2" rev-parse --short HEAD 2>/dev/null)
       fi
-      d_remote_hash=$(git ls-remote --heads "$(git -C "$HOME/pi-dashboard" remote get-url origin 2>/dev/null)" main 2>/dev/null | cut -c1-7)
+      d_remote_hash=$(git ls-remote --heads "$(git -C "$ddir2" remote get-url origin 2>/dev/null)" main 2>/dev/null | cut -c1-7)
       d_update="false"
       [ -n "$d_hash" ] && [ -n "$d_remote_hash" ] && [ "$d_hash" != "$d_remote_hash" ] && d_update="true"
       vj="${vj},\"dashboard\":{\"local\":\"${d_local}\",\"remote\":\"\",\"hasUpdate\":${d_update}}"
