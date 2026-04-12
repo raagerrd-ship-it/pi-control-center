@@ -178,6 +178,7 @@ const Index = () => {
                 installStatus: installs[serviceKey],
                 actionStatus: actions[serviceKey],
                 components: svcStatus.components,
+                health: svcStatus.health,
               } : undefined;
 
               return (

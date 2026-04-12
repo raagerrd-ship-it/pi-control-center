@@ -14,6 +14,12 @@ export interface ComponentStatus {
   port?: number;
 }
 
+export interface HealthStatus {
+  status: 'ok' | 'degraded' | 'error' | 'unreachable' | 'offline' | 'unknown';
+  uptime?: number;
+  memoryRss?: number;
+}
+
 export interface ServiceStatus {
   online: boolean;
   version: string;
@@ -22,6 +28,8 @@ export interface ServiceStatus {
   ramMb: number;
   cpuCore: number;
   port?: number;
+  /** Health check data from engine's /api/health */
+  health?: HealthStatus;
   /** Present when the service uses engine/ui components */
   components?: {
     engine?: ComponentStatus;
