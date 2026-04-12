@@ -381,10 +381,10 @@ build_status_json() {
 
   local dash_cpu dash_ram nginx_ram dash_pid
   dash_cpu=0
-  dash_ram=$(get_service_ram "pi-dashboard-api")
+  dash_ram=$(get_service_ram "pi-control-center-api")
   nginx_ram=$(get_service_ram "nginx")
   dash_ram=$((dash_ram + nginx_ram))
-  dash_pid=$(systemctl show "pi-dashboard-api.service" --property=MainPID 2>/dev/null | cut -d= -f2)
+  dash_pid=$(systemctl show "pi-control-center-api.service" --property=MainPID 2>/dev/null | cut -d= -f2)
   [ -n "$dash_pid" ] && [ "$dash_pid" != "0" ] && dash_cpu=$(ps -p "$dash_pid" -o %cpu= 2>/dev/null | tr -d ' ' || echo "0")
 
   echo "{\"cpu\":${cpu:-0},\"temp\":${temp:-0},\"ramUsed\":${ram_used:-0},\"ramTotal\":${ram_total:-0},\"diskUsed\":${disk_used:-0},\"diskTotal\":${disk_total:-0},\"uptime\":\"${uptime_str}\",\"dashboardCpu\":${dash_cpu:-0},\"dashboardRamMb\":${dash_ram:-0},\"commit\":\"${DASHBOARD_COMMIT_SHORT}\",\"branch\":\"${DASHBOARD_BRANCH}\",\"services\":{${svc_json}}}"
@@ -437,13 +437,13 @@ do_install_release() {
   sudo chown "$(whoami):$(whoami)" "$install_dir"
 
   progress "$sf" "$app" "Laddar ner förbyggd release..." "$start_time"
-  if ! curl -sfL "$download_url" -o "/tmp/pi-dashboard/${app}-dist.tar.gz" >> "$INSTALL_DIR/${app}.log" 2>&1; then
+  if ! curl -sfL "$download_url" -o "/tmp/pi-control-center/${app}-dist.tar.gz" >> "$INSTALL_DIR/${app}.log" 2>&1; then
     return 1
   fi
 
   progress "$sf" "$app" "Packar upp..." "$start_time"
-  tar xzf "/tmp/pi-dashboard/${app}-dist.tar.gz" -C "$install_dir" >> "$INSTALL_DIR/${app}.log" 2>&1
-  rm -f "/tmp/pi-dashboard/${app}-dist.tar.gz"
+  tar xzf "/tmp/pi-control-center/${app}-dist.tar.gz" -C "$install_dir" >> "$INSTALL_DIR/${app}.log" 2>&1
+  rm -f "/tmp/pi-control-center/${app}-dist.tar.gz"
 
   progress "$sf" "$app" "Skapar systemd-service..." "$start_time"
 
@@ -771,8 +771,8 @@ handle_request() {
         sudo mkdir -p "$ndir"
         sudo cp -r dist/* "$ndir/" || { echo "{\"app\":\"dashboard\",\"status\":\"error\",\"message\":\"Deploy failed\",\"timestamp\":\"$(date -Iseconds)\"}" > "$sf"; exit 1; }
         [ -f "$ddir/public/services.json" ] && sudo cp "$ddir/public/services.json" "$ndir/" || true
-        if [ -f "$ddir/public/pi-scripts/pi-dashboard-api.sh" ]; then
-          sudo install -m 755 "$ddir/public/pi-scripts/pi-dashboard-api.sh" /usr/local/bin/pi-dashboard-api.sh || true
+        if [ -f "$ddir/public/pi-scripts/pi-control-center-api.sh" ]; then
+          sudo install -m 755 "$ddir/public/pi-scripts/pi-control-center-api.sh" /usr/local/bin/pi-control-center-api.sh || true
         fi
         rm -rf node_modules
         npm cache clean --force >/dev/null 2>&1 || true
@@ -806,10 +806,10 @@ handle_request() {
           download_url=$(curl -sf "$release_url" 2>/dev/null | jq -r '.assets[] | select(.name == "dist.tar.gz") | .browser_download_url' 2>/dev/null)
           if [ -n "$download_url" ] && [ "$download_url" != "null" ]; then
             echo "Laddar ner ny release..." >> "$update_log"
-            if curl -sfL "$download_url" -o "/tmp/pi-dashboard/${app}-dist.tar.gz" 2>> "$update_log"; then
+            if curl -sfL "$download_url" -o "/tmp/pi-control-center/${app}-dist.tar.gz" 2>> "$update_log"; then
               echo "Packar upp..." >> "$update_log"
               rm -rf "$install_dir/dist"
-              tar xzf "/tmp/pi-dashboard/${app}-dist.tar.gz" -C "$install_dir" 2>> "$update_log"
+              tar xzf "/tmp/pi-control-center/${app}-dist.tar.gz" -C "$install_dir" 2>> "$update_log"
               rm -f "/tmp/pi-control-center/${app}-dist.tar.gz"
 
               export XDG_RUNTIME_DIR="$USER_RUNTIME_DIR"
@@ -950,7 +950,7 @@ handle_request() {
         v_local_hash=""
         v_remote_hash=""
         local ddir="$HOME/pi-control-center"
-        [ ! -d "$ddir" ] && ddir="$HOME/pi-dashboard"
+        [ ! -d "$ddir" ] && ddir="$HOME/pi-control-center"
         if [ -d "$ddir/.git" ]; then
           v_local=$(git -C "$ddir" log -1 --format='%cd' --date=format:'%-d %b' 2>/dev/null)
           v_local="${v_local,,}"

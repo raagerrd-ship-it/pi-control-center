@@ -129,7 +129,7 @@ sudo nginx -t && sudo systemctl restart nginx
 
 # 7. Set up API service with watchdog + CPU pinning + scoped sudoers
 echo "[7/7] Setting up API service + permissions..."
-chmod +x "$DASHBOARD_DIR/public/pi-scripts/pi-dashboard-api.sh"
+chmod +x "$DASHBOARD_DIR/public/pi-scripts/pi-control-center-api.sh"
 
 sudo tee /etc/systemd/system/pi-control-center-api.service > /dev/null << EOF
 [Unit]
@@ -139,7 +139,7 @@ After=network.target
 [Service]
 Type=simple
 User=$USER
-ExecStart=$DASHBOARD_DIR/public/pi-scripts/pi-dashboard-api.sh $API_PORT
+ExecStart=$DASHBOARD_DIR/public/pi-scripts/pi-control-center-api.sh $API_PORT
 Restart=always
 RestartSec=10
 WatchdogSec=60

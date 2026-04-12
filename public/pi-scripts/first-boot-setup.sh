@@ -240,7 +240,7 @@ sudo nginx -t && sudo systemctl restart nginx
 
 # 8. API service with watchdog and hard CPU pinning
 echo "[8/9] Setting up API service..."
-chmod +x "$DASHBOARD_DIR/public/pi-scripts/pi-dashboard-api.sh"
+chmod +x "$DASHBOARD_DIR/public/pi-scripts/pi-control-center-api.sh"
 
 sudo tee /etc/systemd/system/pi-control-center-api.service > /dev/null << EOF
 [Unit]
@@ -250,7 +250,7 @@ After=network.target
 [Service]
 Type=simple
 User=$PI_USER
-ExecStart=$DASHBOARD_DIR/public/pi-scripts/pi-dashboard-api.sh $API_PORT
+ExecStart=$DASHBOARD_DIR/public/pi-scripts/pi-control-center-api.sh $API_PORT
 Restart=always
 RestartSec=10
 WatchdogSec=60

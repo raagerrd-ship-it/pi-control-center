@@ -7,8 +7,8 @@ set -euo pipefail
 
 DASHBOARD_DIR="$HOME/pi-control-center"
 NGINX_DIR="/var/www/pi-control-center"
-API_SCRIPT="$DASHBOARD_DIR/public/pi-scripts/pi-dashboard-api.sh"
-SYSTEM_API_SCRIPT="/usr/local/bin/pi-dashboard-api.sh"
+API_SCRIPT="$DASHBOARD_DIR/public/pi-scripts/pi-control-center-api.sh"
+SYSTEM_API_SCRIPT="/usr/local/bin/pi-control-center-api.sh"
 
 export NODE_OPTIONS="--max-old-space-size=256"
 
