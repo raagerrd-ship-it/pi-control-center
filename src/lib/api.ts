@@ -152,6 +152,12 @@ export async function fetchVersions(): Promise<VersionMap> {
   return res.json();
 }
 
+export async function fetchVersion(app: string): Promise<VersionInfo> {
+  const res = await fetch(`${getBaseUrl()}/api/version/${app}`, { signal: AbortSignal.timeout(15000) });
+  if (!res.ok) throw new Error('Failed to fetch version');
+  return res.json();
+}
+
 export async function triggerUpdate(app: string): Promise<UpdateResult> {
   const res = await fetch(`${getBaseUrl()}/api/update/${app}`, {
     method: 'POST',
