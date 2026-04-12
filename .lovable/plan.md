@@ -1,105 +1,32 @@
 
 
-## Pi Control Center — Tjänsteisolering och Backend/Frontend-separation
+## Plan: Skapa komplett SERVICE-INTEGRATION.md
 
-### Problem idag
+Skriva om `public/SERVICE-INTEGRATION.md` till en utförlig, komplett integrationsguide som täcker hela livscykeln för en tjänst i Pi Control Center — från arkitekturfilosofi till GitHub Actions-workflow.
 
-1. **Ingen strikt CPU-isolering** — `CPUAffinity` i systemd är en *önskan*, inte ett hårdt krav. Processer kan fortfarande sprida sig.
-2. **Tjänster kan påverka systemet** — installskript kör med sudo och kan ändra hostname, /etc/hosts etc.
-3. **Monolitiska tjänster** — om du uppdaterar eller startar om en tjänst tappar du både backend-logik och UI samtidigt.
+### Huvudinnehåll
 
-### Lösning
+1. **Filosofi** — Pi Control Center = OS, tjänster = program. Motorn är det stabila hjärtat, UI:t är en fjärrkontroll
+2. **Motor/UI-separation** — varför, hur, portkonvention (UI=vald port, Motor=+50)
+3. **services.json-format** — båda formaten (legacy + components) med fullständiga exempel
+4. **Sandboxing & isolering** — AllowedCPUs, MemoryMax, ProtectSystem etc.
+5. **Release-baserad installation** — GitHub Actions-workflows för static och node
+6. **Installskript** — vad de får/inte får göra, flaggor (--port, --core)
+7. **Avinstallationsskript** — mall för legacy och component-baserade
+8. **Uppdateringsflöde** — hur dashboard hanterar uppdateringar
+9. **Checklista** — krav för att en tjänst ska vara kompatibel
 
-#### 1. Strikt CPU-isolering via cgroups
-
-Använd `AllowedCPUs=` i systemd (cgroups v2) istället för enbart `CPUAffinity`. Detta är en hård begränsning — processen *kan inte* köra på andra kärnor.
-
-```text
-[Service]
-CPUAffinity=2          # önskan (scheduling hint)
-AllowedCPUs=2          # hård gräns (cgroup)
-MemoryMax=128M         # minnestak per tjänst
-```
-
-Ändring i `pi-dashboard-api.sh` → `do_install_release()` och legacy-installationen, där systemd-unit-filen genereras.
-
-#### 2. Sandboxad installation — begränsa vad tjänster får göra
-
-Lägg till systemd-sandboxing i genererade service-filer:
-
-```text
-ProtectSystem=strict          # /usr, /boot, /etc skrivskyddade
-ProtectHome=read-only         # $HOME skrivskyddat (utom WorkingDirectory)
-ReadWritePaths={installDir}   # bara sin egen katalog
-PrivateTmp=true               # isolerat /tmp
-NoNewPrivileges=true          # kan inte eskalera rättigheter
-```
-
-Tjänstens installskript körs fortfarande med fulla rättigheter under installation, men **den körande tjänsten** kan inte ändra hostname, /etc/hosts eller andra systemfiler.
-
-#### 3. Backend/Frontend-separation i services.json
-
-Utöka `services.json` med stöd för tjänster som har separata backend- och frontend-komponenter:
-
-```json
-{
-  "key": "lotus-light",
-  "name": "Lotus Light Link",
-  "components": {
-    "engine": {
-      "type": "node",
-      "entrypoint": "pi/start-lotus.js",
-      "service": "lotus-light-engine",
-      "alwaysOn": true
-    },
-    "ui": {
-      "type": "static",
-      "entrypoint": "dist/",
-      "service": "lotus-light-ui",
-      "alwaysOn": false
-    }
-  },
-  "repo": "...",
-  "installDir": "/opt/lotus-light"
-}
-```
-
-- **engine** — kör alltid, startar om automatiskt, uppdateras separat
-- **ui** — kan stoppas/startas/uppdateras utan att motorn påverkas
-- Bakåtkompatibelt: tjänster utan `components` behandlas som idag (en enda process)
-
-#### 4. UI-ändringar i dashboarden
-
-Varje tjänstekort visar **två rader** om tjänsten har components:
-
-```text
-┌─────────────────────────────┐
-│  Lotus Light Link           │
-│  ● Motor    v1.2  [↻] [⏹]  │
-│  ○ UI       v1.2  [↻] [▶]  │
-│  CPU: 2.1%   RAM: 45MB      │
-└─────────────────────────────┘
-```
-
-- Motorn och UI:t kan startas/stoppas/uppdateras oberoende
-- "Uppdatera" på motorn gör en mjuk omstart (graceful restart)
-
-### Filer som ändras
+### Fil som ändras
 
 | Fil | Ändring |
 |-----|---------|
-| `public/services.json` | Nytt `components`-format (bakåtkompatibelt) |
-| `public/SERVICE-INTEGRATION.md` | Dokumentation för backend/frontend-mönstret + isoleringsregler |
-| `public/pi-scripts/pi-dashboard-api.sh` | Generera sandboxade systemd-units med `AllowedCPUs`, `ProtectSystem`, stöd för dubbla services per tjänst |
-| `src/lib/api.ts` | Utöka `SystemStatus.services` med component-info (engine/ui status) |
-| `src/components/CoreCard.tsx` | Visa motor + UI separat med individuella kontroller |
-| `src/pages/Index.tsx` | Hantera per-component actions |
+| `public/SERVICE-INTEGRATION.md` | Omskriven från grunden — utförlig guide (~400 rader) |
 
-### Prioriteringsordning
+### Tekniska detaljer
 
-1. **CPU-isolering + sandboxing** i systemd-generering (backend-skript)
-2. **Backend/frontend-separation** i services.json + API
-3. **UI-uppdateringar** i dashboarden
-
-Vill du att jag kör igenom detta?
+- Portkonvention: om användaren väljer port 3002 → UI lyssnar på 3002, Motor på 3052
+- Miljövariabler som sätts automatiskt: `PORT`, `ENGINE_PORT`, `UI_PORT`
+- Systemd-unit genereras av `pi-dashboard-api.sh`, inte av tjänsten själv
+- Tjänster kör som user-services via `systemctl --user`
+- Motorn har `Restart=always` (alwaysOn), UI har `Restart=on-failure`
 
