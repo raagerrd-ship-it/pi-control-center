@@ -49,7 +49,7 @@ interface CoreCardProps {
   usedPorts: number[];
   status: SystemStatus | null;
   onUpdate: (app: string) => void;
-  onCheckVersion: (app: string) => void;
+  onCheckVersion: (app: string) => Promise<void>;
   onInstall: (app: string, port: number, core: number) => void;
   onUninstall: (app: string) => void;
   onServiceAction: (app: string, action: 'start' | 'stop' | 'restart', component?: 'engine' | 'ui') => void;
@@ -122,6 +122,7 @@ export const CoreCard = memo(function CoreCard({
 }: CoreCardProps) {
   const [selectedService, setSelectedService] = useState<string>('');
   const [installingService, setInstallingService] = useState<string>('');
+  const [checkingVersion, setCheckingVersion] = useState(false);
 
   const handleInstall = (app: string, port: number, core: number) => {
     setInstallingService(app);
@@ -350,11 +351,15 @@ export const CoreCard = memo(function CoreCard({
             <Button
               variant="ghost"
               size="sm"
-              onClick={() => onCheckVersion(def.key)}
+              disabled={checkingVersion}
+              onClick={async () => {
+                setCheckingVersion(true);
+                try { await onCheckVersion(def.key); } catch {} finally { setCheckingVersion(false); }
+              }}
               className="h-5 w-5 p-0 text-muted-foreground/50 hover:text-foreground hover:bg-secondary"
               title="Kolla version"
             >
-              <RefreshCw className="h-2.5 w-2.5" />
+              <RefreshCw className={`h-2.5 w-2.5 ${checkingVersion ? 'animate-spin' : ''}`} />
             </Button>
           )}
         </div>
