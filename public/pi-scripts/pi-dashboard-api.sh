@@ -22,7 +22,9 @@ USER_BUS_ADDRESS="unix:path=$USER_RUNTIME_DIR/bus"
 REGISTRY_FILE="/var/www/pi-dashboard/services.json"
 ASSIGNMENTS_FILE="/etc/pi-dashboard/assignments.json"
 
-mkdir -p "$STATUS_DIR" "$INSTALL_DIR"
+HEALTH_DIR="$STATUS_DIR/health"
+
+mkdir -p "$STATUS_DIR" "$INSTALL_DIR" "$HEALTH_DIR"
 sudo mkdir -p /etc/pi-dashboard 2>/dev/null || true
 
 # Read git info once at startup
@@ -85,6 +87,58 @@ assignment_remove() {
   local tmp
   tmp=$(jq --arg k "$1" 'del(.[$k])' "$ASSIGNMENTS_FILE")
   echo "$tmp" | sudo tee "$ASSIGNMENTS_FILE" > /dev/null
+}
+
+# --- Health polling ---
+# Polls /api/health on each active engine and caches the result as JSON files.
+# Called in the background every 30 seconds.
+
+poll_engine_health() {
+  local app=$1 port=$2 health_file="$HEALTH_DIR/${app}.json"
+  local resp
+  resp=$(curl -sf --max-time 5 "http://127.0.0.1:${port}/api/health" 2>/dev/null)
+  if [ -n "$resp" ]; then
+    echo "$resp" > "$health_file"
+  else
+    echo '{"status":"unreachable"}' > "$health_file"
+  fi
+}
+
+health_poll_loop() {
+  while true; do
+    for app in $(registry_keys); do
+      local has_comp port engine_port engine_svc engine_active
+      has_comp=$(registry_has_components "$app")
+      port=$(assignment_get "$app" "port")
+      [ -z "$port" ] || [ "$port" = "0" ] && continue
+
+      if [ "$has_comp" = "true" ]; then
+        engine_svc=$(registry_get_component "$app" "engine" "service")
+        [ -z "$engine_svc" ] && continue
+        engine_active=$(service_is_active "$engine_svc")
+        [ "$engine_active" != "true" ] && { echo '{"status":"offline"}' > "$HEALTH_DIR/${app}.json"; continue; }
+        engine_port=$((port + 50))
+        poll_engine_health "$app" "$engine_port"
+      else
+        # Legacy services: try health endpoint on their main port
+        local svc_active
+        svc_active=$(service_is_active "$(registry_get "$app" "service")")
+        [ "$svc_active" != "true" ] && { echo '{"status":"offline"}' > "$HEALTH_DIR/${app}.json"; continue; }
+        poll_engine_health "$app" "$port"
+      fi
+    done
+    sleep 30
+  done
+}
+
+get_health() {
+  local app=$1
+  local hf="$HEALTH_DIR/${app}.json"
+  if [ -f "$hf" ]; then
+    cat "$hf"
+  else
+    echo '{"status":"unknown"}'
+  fi
 }
 
 get_cpu() {
@@ -279,8 +333,16 @@ build_status_json() {
       total_cpu=$(echo "$engine_cpu + $ui_cpu" | bc 2>/dev/null || echo "0")
       total_ram=$((engine_ram + ui_ram))
 
+      # Read cached health data for engine
+      local health_json
+      health_json=$(get_health "$app")
+      local health_status health_uptime health_mem_rss
+      health_status=$(echo "$health_json" | jq -r '.status // "unknown"' 2>/dev/null)
+      health_uptime=$(echo "$health_json" | jq -r '.uptime // 0' 2>/dev/null)
+      health_mem_rss=$(echo "$health_json" | jq -r '.memory.rss // 0' 2>/dev/null)
+
       [ -n "$svc_json" ] && svc_json="${svc_json},"
-      svc_json="${svc_json}\"${app}\":{\"online\":${online},\"installed\":${installed},\"version\":\"${ver}\",\"cpu\":${total_cpu:-0},\"ramMb\":${total_ram:-0},\"cpuCore\":${core},\"port\":${port},\"components\":{\"engine\":{\"online\":${engine_online},\"version\":\"${engine_ver}\",\"cpu\":${engine_cpu:-0},\"ramMb\":${engine_ram:-0},\"service\":\"${engine_svc}\",\"port\":${engine_port}},\"ui\":{\"online\":${ui_online},\"version\":\"${ui_ver}\",\"cpu\":${ui_cpu:-0},\"ramMb\":${ui_ram:-0},\"service\":\"${ui_svc}\",\"port\":${port}}}}"
+      svc_json="${svc_json}\"${app}\":{\"online\":${online},\"installed\":${installed},\"version\":\"${ver}\",\"cpu\":${total_cpu:-0},\"ramMb\":${total_ram:-0},\"cpuCore\":${core},\"port\":${port},\"health\":{\"status\":\"${health_status}\",\"uptime\":${health_uptime:-0},\"memoryRss\":${health_mem_rss:-0}},\"components\":{\"engine\":{\"online\":${engine_online},\"version\":\"${engine_ver}\",\"cpu\":${engine_cpu:-0},\"ramMb\":${engine_ram:-0},\"service\":\"${engine_svc}\",\"port\":${engine_port}},\"ui\":{\"online\":${ui_online},\"version\":\"${ui_ver}\",\"cpu\":${ui_cpu:-0},\"ramMb\":${ui_ram:-0},\"service\":\"${ui_svc}\",\"port\":${port}}}}"
     else
       # Legacy single-service
       running=$(service_is_active "$svc")
@@ -928,6 +990,12 @@ if [ "$REQUEST_MODE" = "--handle-request" ]; then
 fi
 
 echo "Pi Dashboard API listening on port $PORT"
+
+# Start health polling in background
+health_poll_loop &
+HEALTH_PID=$!
+trap "kill $HEALTH_PID 2>/dev/null; exit" EXIT INT TERM
+
 while true; do
   socat TCP-LISTEN:${PORT},reuseaddr,fork EXEC:"${SCRIPT_PATH} --handle-request ${PORT}" 2>/dev/null || sleep 1
 done
