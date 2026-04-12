@@ -50,12 +50,12 @@
   {
     "key": "sonos-buddy",
     "name": "Sonos Buddy",
-    "repo": "https://github.com/raagerrd-ship-it/sonos-buddy.git",
-    "releaseUrl": "https://api.github.com/repos/raagerrd-ship-it/sonos-buddy/releases/latest",
+    "repo": "https://github.com/raagerrd-ship-it/sonos-gateway.git",
+    "releaseUrl": "https://api.github.com/repos/raagerrd-ship-it/sonos-gateway/releases/latest",
     "installDir": "/opt/sonos-buddy",
-    "installScript": "pi/setup.sh",
-    "updateScript": "/opt/sonos-buddy/pi/update.sh",
-    "uninstallScript": "pi/uninstall.sh",
+    "installScript": "scripts/install.sh",
+    "updateScript": "/opt/sonos-buddy/scripts/update.sh",
+    "uninstallScript": "scripts/uninstall.sh",
     "components": {
       "engine": {
         "type": "node",
