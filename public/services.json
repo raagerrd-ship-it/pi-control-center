@@ -2,15 +2,26 @@
   {
     "key": "lotus-light",
     "name": "Lotus Light Link",
-    "type": "node",
-    "entrypoint": "pi/start-lotus.js",
     "repo": "https://github.com/raagerrd-ship-it/lotus-light-link.git",
     "releaseUrl": "https://api.github.com/repos/raagerrd-ship-it/lotus-light-link/releases/latest",
     "installDir": "/opt/lotus-light",
     "installScript": "pi/setup-lotus.sh",
     "updateScript": "/opt/lotus-light/pi/update-services.sh",
     "uninstallScript": "pi/uninstall-lotus.sh",
-    "service": "lotus-light"
+    "components": {
+      "engine": {
+        "type": "node",
+        "entrypoint": "pi/start-lotus.js",
+        "service": "lotus-light-engine",
+        "alwaysOn": true
+      },
+      "ui": {
+        "type": "static",
+        "entrypoint": "dist/",
+        "service": "lotus-light-ui",
+        "alwaysOn": false
+      }
+    }
   },
   {
     "key": "cast-away",

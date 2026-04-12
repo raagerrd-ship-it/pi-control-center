@@ -5,6 +5,29 @@ const getBaseUrl = (): string => {
   return `http://${window.location.hostname}:${API_PORT}`;
 };
 
+export interface ComponentStatus {
+  online: boolean;
+  version: string;
+  cpu: number;
+  ramMb: number;
+  service: string;
+}
+
+export interface ServiceStatus {
+  online: boolean;
+  version: string;
+  installed: boolean;
+  cpu: number;
+  ramMb: number;
+  cpuCore: number;
+  port?: number;
+  /** Present when the service uses engine/ui components */
+  components?: {
+    engine?: ComponentStatus;
+    ui?: ComponentStatus;
+  };
+}
+
 export interface SystemStatus {
   cpu: number;
   temp: number;
@@ -18,7 +41,7 @@ export interface SystemStatus {
   commit: string;
   branch: string;
   services: {
-    [key: string]: { online: boolean; version: string; installed: boolean; cpu: number; ramMb: number; cpuCore: number; port?: number };
+    [key: string]: ServiceStatus;
   };
 }
 
@@ -53,18 +76,42 @@ export interface VersionInfo {
 
 export type VersionMap = Record<string, VersionInfo>;
 
+export interface ComponentDefinition {
+  type: 'static' | 'node';
+  entrypoint?: string;
+  service: string;
+  alwaysOn?: boolean;
+}
+
 export interface ServiceDefinition {
   key: string;
   name: string;
+  /** Legacy single-service fields */
   type?: 'static' | 'node';
   entrypoint?: string;
+  service?: string;
+  /** New component-based structure */
+  components?: {
+    engine?: ComponentDefinition;
+    ui?: ComponentDefinition;
+  };
   repo: string;
   releaseUrl?: string;
   installDir: string;
   installScript: string;
   updateScript: string;
   uninstallScript: string;
-  service: string;
+}
+
+/** Check if a service definition uses the new components format */
+export function hasComponents(def: ServiceDefinition): boolean {
+  return !!(def.components && (def.components.engine || def.components.ui));
+}
+
+/** Get the primary service name (legacy or engine component) */
+export function getPrimaryService(def: ServiceDefinition): string {
+  if (def.components?.engine) return def.components.engine.service;
+  return def.service || def.key;
 }
 
 export interface UninstallResult {
@@ -128,8 +175,11 @@ export async function fetchInstallStatus(app: string): Promise<InstallResult> {
   return res.json();
 }
 
-export async function serviceAction(app: string, action: 'start' | 'stop' | 'restart'): Promise<ServiceActionResult> {
-  const res = await fetch(`${getBaseUrl()}/api/service/${app}/${action}`, {
+export async function serviceAction(app: string, action: 'start' | 'stop' | 'restart', component?: 'engine' | 'ui'): Promise<ServiceActionResult> {
+  const url = component
+    ? `${getBaseUrl()}/api/service/${app}/${action}?component=${component}`
+    : `${getBaseUrl()}/api/service/${app}/${action}`;
+  const res = await fetch(url, {
     method: 'POST',
     signal: AbortSignal.timeout(15000),
   });
