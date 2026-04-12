@@ -700,7 +700,7 @@ handle_request() {
       ;;
 
     "GET /api/version")
-      response="{\"name\":\"Pi Dashboard\",\"version\":\"1.0.0\",\"commit\":\"${DASHBOARD_COMMIT}\",\"commitShort\":\"${DASHBOARD_COMMIT_SHORT}\",\"branch\":\"${DASHBOARD_BRANCH}\"}"
+      response="{\"name\":\"Pi Control Center\",\"version\":\"1.0.0\",\"commit\":\"${DASHBOARD_COMMIT}\",\"commitShort\":\"${DASHBOARD_COMMIT_SHORT}\",\"branch\":\"${DASHBOARD_BRANCH}\"}"
       ;;
 
     "GET /api/available-services")
@@ -749,8 +749,11 @@ handle_request() {
     "POST /api/update/dashboard")
       local sf ddir ndir dashboard_log remote_ref
       sf="$STATUS_DIR/dashboard.json"
-      ddir="$HOME/pi-dashboard"
-      ndir="/var/www/pi-dashboard"
+      # Try new path first, fallback to old
+      ddir="$HOME/pi-control-center"
+      [ ! -d "$ddir" ] && ddir="$HOME/pi-dashboard"
+      ndir="/var/www/pi-control-center"
+      [ ! -d "$ndir" ] && ndir="/var/www/pi-dashboard"
       dashboard_log="$STATUS_DIR/dashboard.log"
       remote_ref="origin/main"
       mkdir -p "$STATUS_DIR"
@@ -770,7 +773,6 @@ handle_request() {
         NODE_OPTIONS="--max-old-space-size=256" nice -n 15 ionice -c 3 npx vite build || { echo "{\"app\":\"dashboard\",\"status\":\"error\",\"message\":\"Build failed\",\"timestamp\":\"$(date -Iseconds)\"}" > "$sf"; exit 1; }
         sudo mkdir -p "$ndir"
         sudo cp -r dist/* "$ndir/" || { echo "{\"app\":\"dashboard\",\"status\":\"error\",\"message\":\"Deploy failed\",\"timestamp\":\"$(date -Iseconds)\"}" > "$sf"; exit 1; }
-        # Copy services.json to deployed location
         [ -f "$ddir/public/services.json" ] && sudo cp "$ddir/public/services.json" "$ndir/" || true
         if [ -f "$ddir/public/pi-scripts/pi-dashboard-api.sh" ]; then
           sudo install -m 755 "$ddir/public/pi-scripts/pi-dashboard-api.sh" /usr/local/bin/pi-dashboard-api.sh || true
@@ -778,7 +780,8 @@ handle_request() {
         rm -rf node_modules
         npm cache clean --force >/dev/null 2>&1 || true
         echo "{\"app\":\"dashboard\",\"status\":\"success\",\"timestamp\":\"$(date -Iseconds)\"}" > "$sf"
-        sudo systemctl restart pi-dashboard-api >/dev/null 2>&1 || true
+        # Restart API (try new name first, fallback to old)
+        sudo systemctl restart pi-control-center-api >/dev/null 2>&1 || sudo systemctl restart pi-dashboard-api >/dev/null 2>&1 || true
       ) >> "$dashboard_log" 2>&1 &
       ;;
 

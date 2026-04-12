@@ -1,19 +1,19 @@
 #!/bin/bash
-# Pi Dashboard — Installation script optimized for Pi Zero 2 W (512MB RAM)
+# Pi Control Center — Installation script optimized for Pi Zero 2 W (512MB RAM)
 # Run: curl -sL <url>/pi-scripts/install.sh | bash -s -- <repo-url>
 set -e
 
 REPO_URL="${1:-https://github.com/raagerrd-ship-it/pi-control-center.git}"
-DASHBOARD_DIR="$HOME/pi-dashboard"
-NGINX_DIR="/var/www/pi-dashboard"
+DASHBOARD_DIR="$HOME/pi-control-center"
+NGINX_DIR="/var/www/pi-control-center"
 API_PORT=8585
 
 export NODE_OPTIONS="--max-old-space-size=256"
 
-echo "=== Pi Dashboard Installer (Pi Zero 2 W optimized) ==="
+echo "=== Pi Control Center Installer (Pi Zero 2 W optimized) ==="
 
 # 1. Ensure swap exists (critical for npm on 512MB)
-echo "[1/6] Checking swap..."
+echo "[1/7] Checking swap..."
 if [ "$(swapon --show | wc -l)" -lt 2 ]; then
   echo "  Setting up 512MB swap file..."
   sudo dphys-swapfile swapoff 2>/dev/null || true
@@ -29,9 +29,9 @@ if [ "$(swapon --show | wc -l)" -lt 2 ]; then
 fi
 
 # 2. Install dependencies
-echo "[2/6] Installing packages..."
+echo "[2/7] Installing packages..."
 sudo apt-get update -qq
-sudo apt-get install -y -qq nginx socat git
+sudo apt-get install -y -qq nginx socat git jq
 
 if ! command -v node &>/dev/null; then
   echo "  Installing Node.js 20 LTS..."
@@ -40,8 +40,12 @@ if ! command -v node &>/dev/null; then
 fi
 echo "  Node: $(node -v), npm: $(npm -v)"
 
-# 3. Clone dashboard (shallow)
-echo "[3/6] Cloning dashboard..."
+# 3. Enable lingering — user services survive logout
+echo "[3/7] Enabling user service lingering..."
+sudo loginctl enable-linger "$USER"
+
+# 4. Clone (shallow)
+echo "[4/7] Cloning Pi Control Center..."
 if [ -d "$DASHBOARD_DIR" ]; then
   cd "$DASHBOARD_DIR" && git pull --quiet
 else
@@ -49,20 +53,21 @@ else
   cd "$DASHBOARD_DIR"
 fi
 
-# 4. Build with resource limits
-echo "[4/6] Building (this may take a few minutes on Pi Zero 2)..."
+# 5. Build with resource limits
+echo "[5/7] Building (this may take a few minutes on Pi Zero 2)..."
 nice -n 15 ionice -c 3 npm install --no-audit --no-fund
 npx -y update-browserslist-db@latest 2>/dev/null || true
 nice -n 15 ionice -c 3 npm run build
 sudo mkdir -p "$NGINX_DIR"
 sudo cp -r dist/* "$NGINX_DIR/"
+# Copy services.json to deployed location for API registry
+[ -f "$DASHBOARD_DIR/public/services.json" ] && sudo cp "$DASHBOARD_DIR/public/services.json" "$NGINX_DIR/"
 rm -rf node_modules
 npm cache clean --force 2>/dev/null || true
 
-# 5. Configure Nginx (optimized for Pi Zero 2 W)
-echo "[5/6] Configuring Nginx..."
+# 6. Configure Nginx (optimized for low-memory)
+echo "[6/7] Configuring Nginx..."
 
-# Main nginx.conf optimized for low-memory
 sudo tee /etc/nginx/nginx.conf > /dev/null << 'CONF'
 user www-data;
 worker_processes 2;
@@ -99,11 +104,11 @@ http {
 }
 CONF
 
-sudo tee /etc/nginx/sites-available/pi-dashboard > /dev/null << 'SITE'
+sudo tee /etc/nginx/sites-available/pi-control-center > /dev/null << 'SITE'
 server {
     listen 80 default_server;
     listen [::]:80 default_server;
-    root /var/www/pi-dashboard;
+    root /var/www/pi-control-center;
     index index.html;
     server_name _;
 
@@ -118,17 +123,17 @@ server {
 }
 SITE
 
-sudo rm -f /etc/nginx/sites-enabled/default /etc/nginx/conf.d/pi-optimize.conf
-sudo ln -sf /etc/nginx/sites-available/pi-dashboard /etc/nginx/sites-enabled/
+sudo rm -f /etc/nginx/sites-enabled/default /etc/nginx/sites-enabled/pi-dashboard
+sudo ln -sf /etc/nginx/sites-available/pi-control-center /etc/nginx/sites-enabled/
 sudo nginx -t && sudo systemctl restart nginx
 
-# 6. Set up API service + security + CPU pinning
-echo "[6/6] Setting up API service + CPU pinning..."
+# 7. Set up API service with watchdog + CPU pinning + scoped sudoers
+echo "[7/7] Setting up API service + permissions..."
 chmod +x "$DASHBOARD_DIR/public/pi-scripts/pi-dashboard-api.sh"
 
-sudo tee /etc/systemd/system/pi-dashboard-api.service > /dev/null << EOF
+sudo tee /etc/systemd/system/pi-control-center-api.service > /dev/null << EOF
 [Unit]
-Description=Pi Dashboard API
+Description=Pi Control Center API
 After=network.target
 
 [Service]
@@ -137,49 +142,64 @@ User=$USER
 ExecStart=$DASHBOARD_DIR/public/pi-scripts/pi-dashboard-api.sh $API_PORT
 Restart=always
 RestartSec=10
+WatchdogSec=60
 MemoryMax=30M
 Nice=10
 CPUAffinity=0
+AllowedCPUs=0
 
 [Install]
 WantedBy=multi-user.target
 EOF
 
 sudo systemctl daemon-reload
-sudo systemctl enable --now pi-dashboard-api.service
+sudo systemctl enable --now pi-control-center-api.service
+# Disable old service name if it exists
+sudo systemctl disable --now pi-dashboard-api.service 2>/dev/null || true
 
 # Disable any legacy auto-update timers
 for timer in $(systemctl list-timers --all --no-legend 2>/dev/null | awk '/-update\.timer/{print $NF}'); do
   sudo systemctl disable --now "$timer" 2>/dev/null && echo "  Disabled $timer" || true
 done
 
-# Sudoers — allow dashboard API to manage any systemd service
-sudo tee /etc/sudoers.d/pi-dashboard > /dev/null << EOF
-$USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl start *
-$USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl stop *
-$USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl restart *
-$USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl enable *
-$USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl disable *
-$USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl daemon-reload
-EOF
-sudo chmod 440 /etc/sudoers.d/pi-dashboard
-
-# Pin Nginx + API to core 0
+# Pin Nginx to core 0 (hard limit)
 sudo mkdir -p /etc/systemd/system/nginx.service.d
 sudo tee /etc/systemd/system/nginx.service.d/cpu-pin.conf > /dev/null << 'OVER'
 [Service]
 CPUAffinity=0
+AllowedCPUs=0
 OVER
+
+# Scoped sudoers — only specific operations, not wildcard systemctl
+sudo tee /etc/sudoers.d/pi-control-center > /dev/null << EOF
+$USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl start pi-control-center-api.service
+$USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl stop pi-control-center-api.service
+$USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl restart pi-control-center-api.service
+$USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl restart nginx.service
+$USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl daemon-reload
+$USER ALL=(ALL) NOPASSWD: /usr/bin/mkdir -p /etc/pi-dashboard
+$USER ALL=(ALL) NOPASSWD: /usr/bin/tee /etc/pi-dashboard/*
+$USER ALL=(ALL) NOPASSWD: /usr/bin/mkdir -p /var/www/pi-control-center
+$USER ALL=(ALL) NOPASSWD: /usr/bin/cp -r *
+$USER ALL=(ALL) NOPASSWD: /usr/bin/install -m 755 *
+$USER ALL=(ALL) NOPASSWD: /usr/bin/git clone *
+$USER ALL=(ALL) NOPASSWD: /usr/bin/chown *
+$USER ALL=(ALL) NOPASSWD: /usr/bin/rm -rf /opt/*
+$USER ALL=(ALL) NOPASSWD: /usr/bin/mkdir -p /opt/*
+$USER ALL=(ALL) NOPASSWD: /usr/bin/journalctl *
+EOF
+sudo chmod 440 /etc/sudoers.d/pi-control-center
+sudo rm -f /etc/sudoers.d/pi-dashboard
 
 sudo systemctl daemon-reload
 
 echo ""
 echo "=== Done! ==="
-echo "Dashboard:   http://$(hostname -I | awk '{print $1}')"
-echo "API:         port $API_PORT"
-echo "Updates:     all manual via dashboard UI"
-echo "CPU layout:  core 0=system, cores 1-3 assigned per service"
-echo "Swap:        $(free -m | awk '/^Swap:/{print $2}')MB"
-echo "RAM free:    $(free -m | awk '/^Mem:/{print $7}')MB available"
+echo "Pi Control Center:  http://$(hostname -I | awk '{print $1}')"
+echo "API:                port $API_PORT"
+echo "Updates:            all manual via Pi Control Center UI"
+echo "CPU layout:         core 0=system, cores 1-3 assigned per service"
+echo "Swap:               $(free -m | awk '/^Swap:/{print $2}')MB"
+echo "RAM free:           $(free -m | awk '/^Mem:/{print $7}')MB available"
 echo ""
 echo "Idle footprint: ~7MB (Nginx ~5MB + API ~2MB)"

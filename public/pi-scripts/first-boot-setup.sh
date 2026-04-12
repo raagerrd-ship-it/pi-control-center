@@ -1,6 +1,6 @@
 #!/bin/bash
 # ============================================================
-# Pi Dashboard — Auto-Setup
+# Pi Control Center — Auto-Setup
 # ============================================================
 #
 # USAGE (pick one):
@@ -16,15 +16,15 @@
 #    Mount rootfs, copy script + service, boot — see prep-sd-card.sh
 #
 # The script runs ONCE, installs everything, and marks itself done.
-# Progress: /var/log/pi-dashboard-setup.log
+# Progress: /var/log/pi-control-center-setup.log
 # LED: slow blink=network, fast blink=installing, solid=done
 #
 # ============================================================
 
 set -euo pipefail
 
-LOG="/var/log/pi-dashboard-setup.log"
-MARKER="/opt/.pi-dashboard-installed"
+LOG="/var/log/pi-control-center-setup.log"
+MARKER="/opt/.pi-control-center-installed"
 REPO_URL="${PI_DASHBOARD_REPO:-https://github.com/raagerrd-ship-it/pi-control-center.git}"
 API_PORT=8585
 
@@ -36,19 +36,17 @@ elif [ -d "/home/pi" ]; then
 else
   PI_USER="$(ls /home/ | head -1)"
 fi
-DASHBOARD_DIR="/home/$PI_USER/pi-dashboard"
-NGINX_DIR="/var/www/pi-dashboard"
+DASHBOARD_DIR="/home/$PI_USER/pi-control-center"
+NGINX_DIR="/var/www/pi-control-center"
 LED="/sys/class/leds/ACT/brightness"
 LED_TRIGGER="/sys/class/leds/ACT/trigger"
 
 # --- LED helper functions ---
 led_setup() {
-  # Take control of the green ACT LED (disable default trigger)
   echo none | sudo tee "$LED_TRIGGER" > /dev/null 2>&1 || true
 }
 
 led_blink() {
-  # Blink in background: fast=installing, slow=waiting
   local interval="${1:-0.3}"
   while true; do
     echo 1 | sudo tee "$LED" > /dev/null 2>&1
@@ -59,13 +57,11 @@ led_blink() {
 }
 
 led_solid() {
-  # Steady on = done
   kill "$BLINK_PID" 2>/dev/null || true
   echo 1 | sudo tee "$LED" > /dev/null 2>&1
 }
 
 led_error() {
-  # Triple-flash pattern = error
   kill "$BLINK_PID" 2>/dev/null || true
   while true; do
     for _ in 1 2 3; do
@@ -77,7 +73,6 @@ led_error() {
 }
 
 led_restore() {
-  # Restore default kernel trigger
   [ -n "${BLINK_PID:-}" ] && kill "$BLINK_PID" 2>/dev/null || true
   echo mmc0 | sudo tee "$LED_TRIGGER" > /dev/null 2>&1 || true
 }
@@ -89,7 +84,7 @@ exec > >(tee -a "$LOG") 2>&1
 
 echo ""
 echo "========================================"
-echo " Pi Dashboard — First Boot Setup"
+echo " Pi Control Center — First Boot Setup"
 echo " $(date)"
 echo "========================================"
 echo ""
@@ -106,7 +101,7 @@ led_blink 0.8 &
 BLINK_PID=$!
 
 # Wait for network (WiFi may take a moment)
-echo "[0/8] Waiting for network..."
+echo "[0/9] Waiting for network..."
 for i in $(seq 1 60); do
   if ping -c1 -W2 8.8.8.8 &>/dev/null; then
     echo "  Network ready after ${i}s"
@@ -127,7 +122,7 @@ led_blink 0.15 &
 BLINK_PID=$!
 
 # 1. Swap (critical for 512MB Pi Zero 2)
-echo "[1/8] Setting up swap..."
+echo "[1/9] Setting up swap..."
 if [ "$(swapon --show | wc -l)" -lt 2 ]; then
   if [ -f /etc/dphys-swapfile ]; then
     sudo sed -i 's/^CONF_SWAPSIZE=.*/CONF_SWAPSIZE=512/' /etc/dphys-swapfile
@@ -144,20 +139,24 @@ fi
 echo "  Swap: $(free -m | awk '/^Swap:/{print $2}')MB"
 
 # 2. System packages
-echo "[2/8] Installing system packages..."
+echo "[2/9] Installing system packages..."
 sudo apt-get update -qq
 sudo apt-get install -y -qq nginx socat git jq
 
 # 3. Node.js
-echo "[3/8] Installing Node.js..."
+echo "[3/9] Installing Node.js..."
 if ! command -v node &>/dev/null; then
   curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
   sudo apt-get install -y -qq nodejs
 fi
 echo "  Node: $(node -v), npm: $(npm -v)"
 
-# 4. Clone & build dashboard
-echo "[4/8] Cloning dashboard..."
+# 4. Enable lingering — user services survive logout
+echo "[4/9] Enabling user service lingering..."
+sudo loginctl enable-linger "$PI_USER"
+
+# 5. Clone & build
+echo "[5/9] Cloning Pi Control Center..."
 export NODE_OPTIONS="--max-old-space-size=256"
 
 if [ -d "$DASHBOARD_DIR" ]; then
@@ -167,7 +166,7 @@ else
 fi
 cd "$DASHBOARD_DIR"
 
-echo "[5/8] Building dashboard (this takes ~5-10 min on Pi Zero 2)..."
+echo "[6/9] Building (this takes ~5-10 min on Pi Zero 2)..."
 sudo -u "$PI_USER" NODE_OPTIONS="--max-old-space-size=256" nice -n 15 ionice -c 3 npm install --no-audit --no-fund
 sudo -u "$PI_USER" NODE_OPTIONS="--max-old-space-size=256" nice -n 15 ionice -c 3 npm run build
 sudo mkdir -p "$NGINX_DIR"
@@ -177,8 +176,8 @@ sudo cp -r dist/* "$NGINX_DIR/"
 sudo -u "$PI_USER" rm -rf node_modules
 sudo -u "$PI_USER" npm cache clean --force 2>/dev/null || true
 
-# 6. Nginx config
-echo "[6/8] Configuring Nginx..."
+# 7. Nginx config
+echo "[7/9] Configuring Nginx..."
 
 sudo tee /etc/nginx/nginx.conf > /dev/null << 'CONF'
 user www-data;
@@ -216,11 +215,11 @@ http {
 }
 CONF
 
-sudo tee /etc/nginx/sites-available/pi-dashboard > /dev/null << 'SITE'
+sudo tee /etc/nginx/sites-available/pi-control-center > /dev/null << 'SITE'
 server {
     listen 80 default_server;
     listen [::]:80 default_server;
-    root /var/www/pi-dashboard;
+    root /var/www/pi-control-center;
     index index.html;
     server_name _;
 
@@ -235,17 +234,17 @@ server {
 }
 SITE
 
-sudo rm -f /etc/nginx/sites-enabled/default
-sudo ln -sf /etc/nginx/sites-available/pi-dashboard /etc/nginx/sites-enabled/
+sudo rm -f /etc/nginx/sites-enabled/default /etc/nginx/sites-enabled/pi-dashboard
+sudo ln -sf /etc/nginx/sites-available/pi-control-center /etc/nginx/sites-enabled/
 sudo nginx -t && sudo systemctl restart nginx
 
-# 7. API service
-echo "[7/8] Setting up API service..."
+# 8. API service with watchdog and hard CPU pinning
+echo "[8/9] Setting up API service..."
 chmod +x "$DASHBOARD_DIR/public/pi-scripts/pi-dashboard-api.sh"
 
-sudo tee /etc/systemd/system/pi-dashboard-api.service > /dev/null << EOF
+sudo tee /etc/systemd/system/pi-control-center-api.service > /dev/null << EOF
 [Unit]
-Description=Pi Dashboard API
+Description=Pi Control Center API
 After=network.target
 
 [Service]
@@ -254,35 +253,52 @@ User=$PI_USER
 ExecStart=$DASHBOARD_DIR/public/pi-scripts/pi-dashboard-api.sh $API_PORT
 Restart=always
 RestartSec=10
+WatchdogSec=60
 MemoryMax=30M
 Nice=10
 CPUAffinity=0
+AllowedCPUs=0
 
 [Install]
 WantedBy=multi-user.target
 EOF
 
 sudo systemctl daemon-reload
-sudo systemctl enable --now pi-dashboard-api.service
+sudo systemctl enable --now pi-control-center-api.service
+# Disable old service name if it exists
+sudo systemctl disable --now pi-dashboard-api.service 2>/dev/null || true
 
-# Pin Nginx to core 0
+# Pin Nginx to core 0 (hard limit)
 sudo mkdir -p /etc/systemd/system/nginx.service.d
 sudo tee /etc/systemd/system/nginx.service.d/cpu-pin.conf > /dev/null << 'OVER'
 [Service]
 CPUAffinity=0
+AllowedCPUs=0
 OVER
 
-# 8. Sudoers — allow dashboard API to manage any systemd service
-echo "[8/8] Configuring permissions..."
-sudo tee /etc/sudoers.d/pi-dashboard > /dev/null << EOF
-$PI_USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl start *
-$PI_USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl stop *
-$PI_USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl restart *
-$PI_USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl enable *
-$PI_USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl disable *
+# 9. Scoped sudoers — only allow managing user services and specific system operations
+echo "[9/9] Configuring permissions..."
+sudo tee /etc/sudoers.d/pi-control-center > /dev/null << EOF
+# Pi Control Center — scoped permissions
+$PI_USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl start pi-control-center-api.service
+$PI_USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl stop pi-control-center-api.service
+$PI_USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl restart pi-control-center-api.service
+$PI_USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl restart nginx.service
 $PI_USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl daemon-reload
+$PI_USER ALL=(ALL) NOPASSWD: /usr/bin/mkdir -p /etc/pi-dashboard
+$PI_USER ALL=(ALL) NOPASSWD: /usr/bin/tee /etc/pi-dashboard/*
+$PI_USER ALL=(ALL) NOPASSWD: /usr/bin/mkdir -p /var/www/pi-control-center
+$PI_USER ALL=(ALL) NOPASSWD: /usr/bin/cp -r *
+$PI_USER ALL=(ALL) NOPASSWD: /usr/bin/install -m 755 *
+$PI_USER ALL=(ALL) NOPASSWD: /usr/bin/git clone *
+$PI_USER ALL=(ALL) NOPASSWD: /usr/bin/chown *
+$PI_USER ALL=(ALL) NOPASSWD: /usr/bin/rm -rf /opt/*
+$PI_USER ALL=(ALL) NOPASSWD: /usr/bin/mkdir -p /opt/*
+$PI_USER ALL=(ALL) NOPASSWD: /usr/bin/journalctl *
 EOF
-sudo chmod 440 /etc/sudoers.d/pi-dashboard
+sudo chmod 440 /etc/sudoers.d/pi-control-center
+# Remove old sudoers file
+sudo rm -f /etc/sudoers.d/pi-dashboard
 
 sudo systemctl daemon-reload
 
@@ -298,11 +314,11 @@ echo "========================================"
 echo " ✓ Installation klar!"
 echo "========================================"
 echo ""
-echo " Dashboard:  http://${IP}"
-echo " API:        http://${IP}:${API_PORT}"
+echo " Pi Control Center:  http://${IP}"
+echo " API:                http://${IP}:${API_PORT}"
 echo ""
 echo " CPU-layout:"
-echo "   Core 0 → System + Dashboard + Nginx"
+echo "   Core 0 → System + Pi Control Center + Nginx"
 echo "   Core 1-3 → Tilldelas per tjänst via dashboarden"
 echo ""
 echo " LED-mönster:"
@@ -313,7 +329,7 @@ echo ""
 echo " RAM:  $(free -m | awk '/^Mem:/{print $7}')MB ledigt"
 echo " Swap: $(free -m | awk '/^Swap:/{print $2}')MB"
 echo ""
-echo " Öppna dashboarden på din mobil: http://${IP}"
+echo " Öppna Pi Control Center på din mobil: http://${IP}"
 echo "========================================"
 
 # Keep LED solid for 30s so user sees it, then restore
