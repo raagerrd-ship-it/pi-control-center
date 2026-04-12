@@ -810,7 +810,7 @@ handle_request() {
               echo "Packar upp..." >> "$update_log"
               rm -rf "$install_dir/dist"
               tar xzf "/tmp/pi-dashboard/${app}-dist.tar.gz" -C "$install_dir" 2>> "$update_log"
-              rm -f "/tmp/pi-dashboard/${app}-dist.tar.gz"
+              rm -f "/tmp/pi-control-center/${app}-dist.tar.gz"
 
               export XDG_RUNTIME_DIR="$USER_RUNTIME_DIR"
               export DBUS_SESSION_BUS_ADDRESS="$USER_BUS_ADDRESS"
