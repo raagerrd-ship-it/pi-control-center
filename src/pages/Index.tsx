@@ -213,8 +213,13 @@ const Index = () => {
 
         <ActivityLog />
 
-        <footer className="mt-8 pb-4 text-center font-mono text-[10px] text-muted-foreground/40">
-          {settings.deviceLabel || 'Pi Zero 2'} · {window.location.hostname}
+        <footer className="mt-8 pb-4 text-center font-mono text-[10px] text-muted-foreground/40 space-y-0.5">
+          <div>{settings.deviceLabel || 'Pi Zero 2'} · {window.location.hostname}</div>
+          {status?.commit && (
+            <div>
+              {status.branch || 'main'}@{status.commit.slice(0, 7)}
+            </div>
+          )}
         </footer>
       </div>
     </PullToRefresh>
