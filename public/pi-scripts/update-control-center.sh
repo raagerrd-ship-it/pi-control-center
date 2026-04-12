@@ -1,16 +1,14 @@
 #!/bin/bash
 # Pi Control Center — Update script (Pi Zero 2 W optimized)
 # Pulls latest code, rebuilds, and deploys to Nginx
-# Usage: bash ~/pi-control-center/public/pi-scripts/update-dashboard.sh
+# Usage: bash ~/pi-control-center/public/pi-scripts/update-control-center.sh
 
 set -euo pipefail
 
 DASHBOARD_DIR="$HOME/pi-control-center"
-# Fallback to old location if new doesn't exist
-[ ! -d "$DASHBOARD_DIR" ] && DASHBOARD_DIR="$HOME/pi-dashboard"
 NGINX_DIR="/var/www/pi-control-center"
-API_SCRIPT="$DASHBOARD_DIR/public/pi-scripts/pi-dashboard-api.sh"
-SYSTEM_API_SCRIPT="/usr/local/bin/pi-dashboard-api.sh"
+API_SCRIPT="$DASHBOARD_DIR/public/pi-scripts/pi-control-center-api.sh"
+SYSTEM_API_SCRIPT="/usr/local/bin/pi-control-center-api.sh"
 
 export NODE_OPTIONS="--max-old-space-size=256"
 
@@ -60,8 +58,7 @@ echo "[7/7] Cleaning up..."
 rm -rf node_modules
 npm cache clean --force 2>/dev/null || true
 
-# Restart API (try new name first, fallback to old)
-sudo systemctl restart pi-control-center-api 2>/dev/null || sudo systemctl restart pi-dashboard-api 2>/dev/null || true
+sudo systemctl restart pi-control-center-api 2>/dev/null || true
 
 echo ""
 echo "=== Done! ==="

@@ -10,7 +10,7 @@
 #    curl -sL https://raw.githubusercontent.com/raagerrd-ship-it/pi-control-center/main/public/pi-scripts/first-boot-setup.sh | sudo bash
 #
 #    Or with custom repo:
-#    curl -sL <url>/first-boot-setup.sh | sudo PI_DASHBOARD_REPO=https://github.com/you/repo.git bash
+#    curl -sL <url>/first-boot-setup.sh | sudo PI_REPO=https://github.com/you/repo.git bash
 #
 # B) Pre-baked on SD card (advanced):
 #    Mount rootfs, copy script + service, boot — see prep-sd-card.sh
@@ -25,7 +25,7 @@ set -euo pipefail
 
 LOG="/var/log/pi-control-center-setup.log"
 MARKER="/opt/.pi-control-center-installed"
-REPO_URL="${PI_DASHBOARD_REPO:-https://github.com/raagerrd-ship-it/pi-control-center.git}"
+REPO_URL="${PI_REPO:-https://github.com/raagerrd-ship-it/pi-control-center.git}"
 API_PORT=8585
 
 # Auto-detect user (works via SSH or systemd)
@@ -234,13 +234,13 @@ server {
 }
 SITE
 
-sudo rm -f /etc/nginx/sites-enabled/default /etc/nginx/sites-enabled/pi-dashboard
+sudo rm -f /etc/nginx/sites-enabled/default
 sudo ln -sf /etc/nginx/sites-available/pi-control-center /etc/nginx/sites-enabled/
 sudo nginx -t && sudo systemctl restart nginx
 
 # 8. API service with watchdog and hard CPU pinning
 echo "[8/9] Setting up API service..."
-chmod +x "$DASHBOARD_DIR/public/pi-scripts/pi-dashboard-api.sh"
+chmod +x "$DASHBOARD_DIR/public/pi-scripts/pi-control-center-api.sh"
 
 sudo tee /etc/systemd/system/pi-control-center-api.service > /dev/null << EOF
 [Unit]
@@ -250,7 +250,7 @@ After=network.target
 [Service]
 Type=simple
 User=$PI_USER
-ExecStart=$DASHBOARD_DIR/public/pi-scripts/pi-dashboard-api.sh $API_PORT
+ExecStart=$DASHBOARD_DIR/public/pi-scripts/pi-control-center-api.sh $API_PORT
 Restart=always
 RestartSec=10
 WatchdogSec=60
@@ -265,8 +265,6 @@ EOF
 
 sudo systemctl daemon-reload
 sudo systemctl enable --now pi-control-center-api.service
-# Disable old service name if it exists
-sudo systemctl disable --now pi-dashboard-api.service 2>/dev/null || true
 
 # Pin Nginx to core 0 (hard limit)
 sudo mkdir -p /etc/systemd/system/nginx.service.d
@@ -285,8 +283,8 @@ $PI_USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl stop pi-control-center-api.servi
 $PI_USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl restart pi-control-center-api.service
 $PI_USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl restart nginx.service
 $PI_USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl daemon-reload
-$PI_USER ALL=(ALL) NOPASSWD: /usr/bin/mkdir -p /etc/pi-dashboard
-$PI_USER ALL=(ALL) NOPASSWD: /usr/bin/tee /etc/pi-dashboard/*
+$PI_USER ALL=(ALL) NOPASSWD: /usr/bin/mkdir -p /etc/pi-control-center
+$PI_USER ALL=(ALL) NOPASSWD: /usr/bin/tee /etc/pi-control-center/*
 $PI_USER ALL=(ALL) NOPASSWD: /usr/bin/mkdir -p /var/www/pi-control-center
 $PI_USER ALL=(ALL) NOPASSWD: /usr/bin/cp -r *
 $PI_USER ALL=(ALL) NOPASSWD: /usr/bin/install -m 755 *
@@ -297,8 +295,6 @@ $PI_USER ALL=(ALL) NOPASSWD: /usr/bin/mkdir -p /opt/*
 $PI_USER ALL=(ALL) NOPASSWD: /usr/bin/journalctl *
 EOF
 sudo chmod 440 /etc/sudoers.d/pi-control-center
-# Remove old sudoers file
-sudo rm -f /etc/sudoers.d/pi-dashboard
 
 sudo systemctl daemon-reload
 

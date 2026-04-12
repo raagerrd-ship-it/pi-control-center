@@ -14,7 +14,7 @@ interface ActivityLogContextValue {
   clearLog: () => void;
 }
 
-const STORAGE_KEY = 'pi-dashboard-log';
+const STORAGE_KEY = 'pi-control-center-log';
 const MAX_ENTRIES = 100;
 
 function loadEntries(): ActivityEntry[] {
