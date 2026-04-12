@@ -39,9 +39,14 @@ const Index = () => {
 
   const usedPorts = useMemo(() => {
     if (!status?.services) return [];
-    return Object.values(status.services)
+    const ports: number[] = [];
+    Object.values(status.services)
       .filter(s => s.installed && s.port)
-      .map(s => s.port!);
+      .forEach(s => {
+        ports.push(s.port!);
+        ports.push(s.port! + 50); // engine port
+      });
+    return ports;
   }, [status]);
 
   // Map: core index → service key installed on that core
@@ -135,7 +140,7 @@ const Index = () => {
       <div className="bg-background p-3 sm:p-6 max-w-2xl mx-auto overflow-hidden">
         <header className="flex items-center justify-between mb-6">
           <div>
-            <h1 className="font-mono text-lg font-bold tracking-tight">Pi Dashboard</h1>
+            <h1 className="font-mono text-lg font-bold tracking-tight">Pi Control Center</h1>
             <p className="font-mono text-xs text-muted-foreground">{window.location.hostname}</p>
           </div>
           <Settings onSave={setSettings} />

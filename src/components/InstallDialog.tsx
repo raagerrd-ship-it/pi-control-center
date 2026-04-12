@@ -41,8 +41,9 @@ export function InstallDialog({
   }, [usedPorts]);
 
   const [port, setPort] = useState(suggestedPort);
+  const enginePort = port + 50;
 
-  const portConflict = usedPorts.includes(port);
+  const portConflict = usedPorts.includes(port) || usedPorts.includes(enginePort);
   const ramFree = status ? status.ramTotal - status.ramUsed : 999;
   const lowRam = ramFree < 100;
 
@@ -68,12 +69,12 @@ export function InstallDialog({
         <DialogHeader>
           <DialogTitle className="font-mono text-sm">Installera {appName}</DialogTitle>
           <DialogDescription className="text-xs text-muted-foreground">
-            Installeras på Core {core}. Välj port för tjänsten.
+            Installeras på Core {core}. UI lyssnar på vald port, motorn på port +50.
           </DialogDescription>
         </DialogHeader>
         <div className="flex flex-col gap-4">
           <div>
-            <Label className="text-xs text-muted-foreground font-mono">Port</Label>
+            <Label className="text-xs text-muted-foreground font-mono">UI-port</Label>
             <Input
               type="number"
               min={1024}
@@ -84,9 +85,12 @@ export function InstallDialog({
             />
             {portConflict && (
               <p className="text-[10px] text-destructive font-mono mt-1">
-                Port {port} används redan
+                Port {port} eller {enginePort} används redan
               </p>
             )}
+            <p className="text-[10px] text-muted-foreground font-mono mt-1">
+              Motor: :{enginePort}
+            </p>
           </div>
 
           {lowRam && (
