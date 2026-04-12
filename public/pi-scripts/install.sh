@@ -123,7 +123,7 @@ server {
 }
 SITE
 
-sudo rm -f /etc/nginx/sites-enabled/default /etc/nginx/sites-enabled/pi-dashboard
+sudo rm -f /etc/nginx/sites-enabled/default
 sudo ln -sf /etc/nginx/sites-available/pi-control-center /etc/nginx/sites-enabled/
 sudo nginx -t && sudo systemctl restart nginx
 
@@ -154,8 +154,6 @@ EOF
 
 sudo systemctl daemon-reload
 sudo systemctl enable --now pi-control-center-api.service
-# Disable old service name if it exists
-sudo systemctl disable --now pi-dashboard-api.service 2>/dev/null || true
 
 # Disable any legacy auto-update timers
 for timer in $(systemctl list-timers --all --no-legend 2>/dev/null | awk '/-update\.timer/{print $NF}'); do
@@ -177,8 +175,8 @@ $USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl stop pi-control-center-api.service
 $USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl restart pi-control-center-api.service
 $USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl restart nginx.service
 $USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl daemon-reload
-$USER ALL=(ALL) NOPASSWD: /usr/bin/mkdir -p /etc/pi-dashboard
-$USER ALL=(ALL) NOPASSWD: /usr/bin/tee /etc/pi-dashboard/*
+$USER ALL=(ALL) NOPASSWD: /usr/bin/mkdir -p /etc/pi-control-center
+$USER ALL=(ALL) NOPASSWD: /usr/bin/tee /etc/pi-control-center/*
 $USER ALL=(ALL) NOPASSWD: /usr/bin/mkdir -p /var/www/pi-control-center
 $USER ALL=(ALL) NOPASSWD: /usr/bin/cp -r *
 $USER ALL=(ALL) NOPASSWD: /usr/bin/install -m 755 *
@@ -189,7 +187,6 @@ $USER ALL=(ALL) NOPASSWD: /usr/bin/mkdir -p /opt/*
 $USER ALL=(ALL) NOPASSWD: /usr/bin/journalctl *
 EOF
 sudo chmod 440 /etc/sudoers.d/pi-control-center
-sudo rm -f /etc/sudoers.d/pi-dashboard
 
 sudo systemctl daemon-reload
 
