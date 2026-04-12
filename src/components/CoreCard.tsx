@@ -76,6 +76,9 @@ function ComponentRow({
       <div className={`h-1.5 w-1.5 rounded-full shrink-0 ${online ? 'bg-[hsl(var(--status-online))]' : 'bg-[hsl(var(--status-offline))]'}`} />
       <Icon className="h-3 w-3 text-muted-foreground shrink-0" />
       <span className="font-mono text-[11px] flex-1 truncate">{label}</span>
+      {comp?.port && (
+        <span className="font-mono text-[10px] text-muted-foreground/50 shrink-0">:{comp.port}</span>
+      )}
       {comp && online && (
         <span className="font-mono text-[10px] text-muted-foreground shrink-0">
           {comp.cpu.toFixed(1)}% · {comp.ramMb}MB
