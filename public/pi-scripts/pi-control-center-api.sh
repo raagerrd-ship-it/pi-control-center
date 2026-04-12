@@ -493,6 +493,8 @@ do_install_release() {
     # Component-based: create separate services for engine and ui
     # Engine port = UI port + 50 (e.g. UI=3002 → Engine=3052)
     local engine_port=$((req_port + 50))
+    mkdir -p "$HOME/.config/systemd/user" || return 1
+
     for comp in engine ui; do
       local comp_type comp_entry comp_svc comp_always_on comp_exec comp_port
       comp_type=$(registry_get_component "$app" "$comp" "type")
@@ -519,7 +521,7 @@ do_install_release() {
       [ "$comp_always_on" = "true" ] && restart_policy="always"
 
       local comp_svc_file="$HOME/.config/systemd/user/${comp_svc}.service"
-      cat > "$comp_svc_file" <<UNIT
+      if ! cat > "$comp_svc_file" <<UNIT
 [Unit]
 Description=${app} ${comp} service
 After=network.target
@@ -545,10 +547,13 @@ RestartSec=5
 [Install]
 WantedBy=default.target
 UNIT
+      then
+        return 1
+      fi
 
-      user_systemctl daemon-reload
-      user_systemctl enable "${comp_svc}.service"
-      user_systemctl start "${comp_svc}.service"
+      user_systemctl daemon-reload || return 1
+      user_systemctl enable "${comp_svc}.service" || return 1
+      user_systemctl start "${comp_svc}.service" || return 1
     done
   else
     # Legacy single-service
