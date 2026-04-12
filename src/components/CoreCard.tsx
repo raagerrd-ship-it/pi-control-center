@@ -210,12 +210,24 @@ export const CoreCard = memo(function CoreCard({
   }
 
   // Occupied core — show service info
-  const { definition: def, online, version, cpu, ramMb, port, versionInfo, updateStatus, actionStatus, components } = service;
+  const { definition: def, online, version, cpu, ramMb, port, versionInfo, updateStatus, actionStatus, components, health } = service;
   const isUpdating = updateStatus?.status === 'updating';
   const isPending = actionStatus?.status === 'pending';
   const hasUpdate = versionInfo?.hasUpdate ?? false;
   const piIp = window.location.hostname;
   const isComponentBased = hasComponents(def);
+
+  const healthColor = health?.status === 'ok' ? 'bg-[hsl(var(--status-online))]'
+    : health?.status === 'degraded' ? 'bg-[hsl(var(--status-warning))]'
+    : health?.status === 'error' ? 'bg-destructive'
+    : 'bg-muted-foreground/30';
+
+  const healthLabel = health?.status === 'ok' ? 'Frisk'
+    : health?.status === 'degraded' ? 'Degraderad'
+    : health?.status === 'error' ? 'Fel'
+    : health?.status === 'unreachable' ? 'Ej nåbar'
+    : health?.status === 'offline' ? 'Offline'
+    : '';
 
   const statusColor = online
     ? 'bg-[hsl(var(--status-online))]'
@@ -258,6 +270,21 @@ export const CoreCard = memo(function CoreCard({
             />
           )}
         </div>
+        {/* Health indicator */}
+        {health && health.status !== 'unknown' && (
+          <div className="flex items-center gap-2 px-2 py-0.5 font-mono text-[10px] text-muted-foreground">
+            <div className={`h-1.5 w-1.5 rounded-full shrink-0 ${healthColor}`} />
+            <span>{healthLabel}</span>
+            {health.uptime != null && health.uptime > 0 && (
+              <span className="text-muted-foreground/50">
+                {health.uptime >= 86400 ? `${Math.floor(health.uptime / 86400)}d` : health.uptime >= 3600 ? `${Math.floor(health.uptime / 3600)}h` : `${Math.floor(health.uptime / 60)}m`}
+              </span>
+            )}
+            {health.memoryRss != null && health.memoryRss > 0 && (
+              <span className="text-muted-foreground/50">{health.memoryRss}MB</span>
+            )}
+          </div>
+        )}
       ) : (
         /* Legacy single-service resource row */
         <div className="flex items-center gap-2 font-mono text-[11px] text-muted-foreground">
