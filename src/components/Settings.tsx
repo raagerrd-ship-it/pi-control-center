@@ -22,7 +22,7 @@ const DEFAULT_SETTINGS: DashboardSettings = {
 
 export function loadSettings(): DashboardSettings {
   try {
-    const saved = localStorage.getItem('pi-dashboard-settings');
+    const saved = localStorage.getItem('pi-control-center-settings');
     if (saved) {
       const parsed = JSON.parse(saved);
       return {
@@ -42,7 +42,7 @@ export function Settings({ onSave }: { onSave: (s: DashboardSettings) => void })
   }, [open]);
 
   const save = () => {
-    localStorage.setItem('pi-dashboard-settings', JSON.stringify(settings));
+    localStorage.setItem('pi-control-center-settings', JSON.stringify(settings));
     onSave(settings);
     setOpen(false);
   };
