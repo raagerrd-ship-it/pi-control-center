@@ -77,16 +77,38 @@ assignment_get() {
 
 # Save assignment: assignment_set <key> <port> <core>
 assignment_set() {
-  local tmp
-  tmp=$(jq --arg k "$1" --argjson p "$2" --argjson c "$3" '.[$k] = {"port": $p, "core": $c}' "$ASSIGNMENTS_FILE")
-  echo "$tmp" | sudo tee "$ASSIGNMENTS_FILE" > /dev/null
+  local tmp tmpfile
+  tmpfile="/tmp/pi-control-center/assignments.tmp.$$"
+  # Ensure source file is valid JSON; fall back to empty object
+  if ! jq empty "$ASSIGNMENTS_FILE" 2>/dev/null; then
+    echo '{}' | sudo tee "$ASSIGNMENTS_FILE" > /dev/null
+  fi
+  tmp=$(jq --arg k "$1" --argjson p "$2" --argjson c "$3" '.[$k] = {"port": $p, "core": $c}' "$ASSIGNMENTS_FILE" 2>/dev/null)
+  # Validate output before writing
+  if [ -n "$tmp" ] && echo "$tmp" | jq empty 2>/dev/null; then
+    echo "$tmp" > "$tmpfile"
+    sudo mv "$tmpfile" "$ASSIGNMENTS_FILE"
+  else
+    rm -f "$tmpfile"
+    echo "WARNING: assignment_set failed for $1, keeping existing file" >&2
+  fi
 }
 
 # Remove assignment: assignment_remove <key>
 assignment_remove() {
-  local tmp
-  tmp=$(jq --arg k "$1" 'del(.[$k])' "$ASSIGNMENTS_FILE")
-  echo "$tmp" | sudo tee "$ASSIGNMENTS_FILE" > /dev/null
+  local tmp tmpfile
+  tmpfile="/tmp/pi-control-center/assignments.tmp.$$"
+  if ! jq empty "$ASSIGNMENTS_FILE" 2>/dev/null; then
+    echo '{}' | sudo tee "$ASSIGNMENTS_FILE" > /dev/null
+  fi
+  tmp=$(jq --arg k "$1" 'del(.[$k])' "$ASSIGNMENTS_FILE" 2>/dev/null)
+  if [ -n "$tmp" ] && echo "$tmp" | jq empty 2>/dev/null; then
+    echo "$tmp" > "$tmpfile"
+    sudo mv "$tmpfile" "$ASSIGNMENTS_FILE"
+  else
+    rm -f "$tmpfile"
+    echo "WARNING: assignment_remove failed for $1, keeping existing file" >&2
+  fi
 }
 
 # --- Health polling ---
