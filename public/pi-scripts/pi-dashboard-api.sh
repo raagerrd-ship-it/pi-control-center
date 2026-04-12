@@ -746,6 +746,44 @@ handle_request() {
       fi
       ;;
 
+    "POST /api/factory-reset")
+      # Uninstall ALL services, clear assignments, clear caches
+      local reset_log="$STATUS_DIR/factory-reset.log"
+      : > "$reset_log"
+      echo '{"status":"resetting"}' > "$STATUS_DIR/factory-reset.json"
+      response='{"status":"resetting"}'
+      (
+        for fapp in $(registry_keys); do
+          local fassign
+          fassign=$(assignment_get "$fapp" "port")
+          if [ -n "$fassign" ]; then
+            echo "Avinstallerar $fapp..." >> "$reset_log"
+            do_uninstall "$fapp" >> "$reset_log" 2>&1
+          fi
+        done
+        # Remove all install dirs under /opt (services only)
+        for fapp in $(registry_keys); do
+          local fdir
+          fdir=$(eval echo "$(registry_get "$fapp" "installDir")" 2>/dev/null)
+          [ -n "$fdir" ] && [ -d "$fdir" ] && sudo rm -rf "$fdir" >> "$reset_log" 2>&1
+        done
+        # Clear assignments
+        echo '{}' | sudo tee "$ASSIGNMENTS_FILE" > /dev/null
+        # Clear health cache and status files
+        rm -rf "$HEALTH_DIR"/* "$STATUS_DIR"/*.json "$INSTALL_DIR"/*.json "$INSTALL_DIR"/*.log 2>/dev/null
+        mkdir -p "$HEALTH_DIR"
+        rm -f "$CACHE_FILE"
+        # Clear activity log in browser will happen client-side
+        echo '{"status":"success","timestamp":"'"$(date -Iseconds)"'"}' > "$STATUS_DIR/factory-reset.json"
+        echo "Fabriksåterställning klar." >> "$reset_log"
+      ) &
+
+      ;;
+
+    "GET /api/factory-reset-status")
+      [ -f "$STATUS_DIR/factory-reset.json" ] && response=$(< "$STATUS_DIR/factory-reset.json") || response='{"status":"idle"}'
+      ;;
+
     "POST /api/update/dashboard")
       local sf ddir ndir dashboard_log remote_ref
       sf="$STATUS_DIR/dashboard.json"
