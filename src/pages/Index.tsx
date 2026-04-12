@@ -78,10 +78,8 @@ const Index = () => {
   }, []);
 
   const handleCheckVersion = useCallback(async (app: string) => {
-    try {
-      const v = await fetchVersion(app);
-      setVersions(prev => ({ ...prev, [app]: v }));
-    } catch {}
+    const v = await fetchVersion(app);
+    setVersions(prev => ({ ...prev, [app]: v }));
   }, []);
 
   const handleDashboardUpdate = useCallback(async () => {

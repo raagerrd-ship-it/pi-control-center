@@ -49,7 +49,7 @@ interface CoreCardProps {
   usedPorts: number[];
   status: SystemStatus | null;
   onUpdate: (app: string) => void;
-  onCheckVersion: (app: string) => void;
+  onCheckVersion: (app: string) => Promise<void>;
   onInstall: (app: string, port: number, core: number) => void;
   onUninstall: (app: string) => void;
   onServiceAction: (app: string, action: 'start' | 'stop' | 'restart', component?: 'engine' | 'ui') => void;
