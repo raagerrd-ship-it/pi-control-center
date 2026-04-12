@@ -335,19 +335,75 @@ do_install_release() {
   rm -f "/tmp/pi-dashboard/${app}-dist.tar.gz"
 
   progress "$sf" "$app" "Skapar systemd-service..." "$start_time"
-  local svc_file="$HOME/.config/systemd/user/${svc}.service"
-  local app_type entrypoint exec_start
-  app_type=$(registry_get "$app" "type")
-  entrypoint=$(registry_get "$app" "entrypoint")
-  mkdir -p "$HOME/.config/systemd/user"
 
-  if [ "$app_type" = "node" ] && [ -n "$entrypoint" ]; then
-    exec_start="/usr/bin/node ${install_dir}/${entrypoint}"
+  local has_comp
+  has_comp=$(registry_has_components "$app")
+
+  if [ "$has_comp" = "true" ]; then
+    # Component-based: create separate services for engine and ui
+    for comp in engine ui; do
+      local comp_type comp_entry comp_svc comp_always_on comp_exec
+      comp_type=$(registry_get_component "$app" "$comp" "type")
+      comp_entry=$(registry_get_component "$app" "$comp" "entrypoint")
+      comp_svc=$(registry_get_component "$app" "$comp" "service")
+      comp_always_on=$(registry_get_component "$app" "$comp" "alwaysOn")
+
+      [ -z "$comp_svc" ] && continue
+
+      if [ "$comp_type" = "node" ] && [ -n "$comp_entry" ]; then
+        comp_exec="/usr/bin/node ${install_dir}/${comp_entry}"
+      else
+        comp_exec="/usr/bin/npx serve ${comp_entry:-dist} -l ${req_port} -s"
+      fi
+
+      local restart_policy="on-failure"
+      [ "$comp_always_on" = "true" ] && restart_policy="always"
+
+      local comp_svc_file="$HOME/.config/systemd/user/${comp_svc}.service"
+      cat > "$comp_svc_file" <<UNIT
+[Unit]
+Description=${app} ${comp} service
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=${install_dir}
+ExecStart=${comp_exec}
+Environment=PORT=${req_port}
+CPUAffinity=${req_core}
+AllowedCPUs=${req_core}
+MemoryMax=128M
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=${install_dir}
+PrivateTmp=true
+NoNewPrivileges=true
+Restart=${restart_policy}
+RestartSec=5
+
+[Install]
+WantedBy=default.target
+UNIT
+
+      user_systemctl daemon-reload
+      user_systemctl enable "${comp_svc}.service"
+      user_systemctl start "${comp_svc}.service"
+    done
   else
-    exec_start="/usr/bin/npx serve dist -l ${req_port} -s"
-  fi
+    # Legacy single-service
+    local svc_file="$HOME/.config/systemd/user/${svc}.service"
+    local app_type entrypoint exec_start
+    app_type=$(registry_get "$app" "type")
+    entrypoint=$(registry_get "$app" "entrypoint")
+    mkdir -p "$HOME/.config/systemd/user"
 
-  cat > "$svc_file" <<UNIT
+    if [ "$app_type" = "node" ] && [ -n "$entrypoint" ]; then
+      exec_start="/usr/bin/node ${install_dir}/${entrypoint}"
+    else
+      exec_start="/usr/bin/npx serve dist -l ${req_port} -s"
+    fi
+
+    cat > "$svc_file" <<UNIT
 [Unit]
 Description=${app} service
 After=network.target
@@ -358,6 +414,13 @@ WorkingDirectory=${install_dir}
 ExecStart=${exec_start}
 Environment=PORT=${req_port}
 CPUAffinity=${req_core}
+AllowedCPUs=${req_core}
+MemoryMax=128M
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=${install_dir}
+PrivateTmp=true
+NoNewPrivileges=true
 Restart=on-failure
 RestartSec=5
 
@@ -365,9 +428,10 @@ RestartSec=5
 WantedBy=default.target
 UNIT
 
-  user_systemctl daemon-reload
-  user_systemctl enable "${svc}.service"
-  user_systemctl start "${svc}.service"
+    user_systemctl daemon-reload
+    user_systemctl enable "${svc}.service"
+    user_systemctl start "${svc}.service"
+  fi
 
   return 0
 }
