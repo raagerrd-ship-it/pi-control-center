@@ -37,16 +37,27 @@
     "service": "cast-away"
   },
   {
-    "key": "sonos-gateway",
-    "name": "Sonos Gateway",
-    "type": "node",
-    "entrypoint": "bridge/index.js",
-    "repo": "https://github.com/raagerrd-ship-it/sonos-gateway.git",
-    "releaseUrl": "https://api.github.com/repos/raagerrd-ship-it/sonos-gateway/releases/latest",
-    "installDir": "$HOME/.local/share/sonos-proxy",
-    "installScript": "bridge/install-linux.sh",
-    "updateScript": "$HOME/.local/share/sonos-proxy/bridge/update.sh",
-    "uninstallScript": "bridge/uninstall-linux.sh",
-    "service": "sonos-proxy"
+    "key": "sonos-buddy",
+    "name": "Sonos Buddy",
+    "repo": "https://github.com/raagerrd-ship-it/sonos-buddy.git",
+    "releaseUrl": "https://api.github.com/repos/raagerrd-ship-it/sonos-buddy/releases/latest",
+    "installDir": "/opt/sonos-buddy",
+    "installScript": "pi/setup.sh",
+    "updateScript": "/opt/sonos-buddy/pi/update.sh",
+    "uninstallScript": "pi/uninstall.sh",
+    "components": {
+      "engine": {
+        "type": "node",
+        "entrypoint": "engine/index.js",
+        "service": "sonos-buddy-engine",
+        "alwaysOn": true
+      },
+      "ui": {
+        "type": "static",
+        "entrypoint": "dist/",
+        "service": "sonos-buddy-ui",
+        "alwaysOn": false
+      }
+    }
   }
 ]
