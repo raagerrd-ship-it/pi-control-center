@@ -700,7 +700,7 @@ handle_request() {
       ;;
 
     "GET /api/version")
-      response="{\"name\":\"Pi Dashboard\",\"version\":\"1.0.0\",\"commit\":\"${DASHBOARD_COMMIT}\",\"commitShort\":\"${DASHBOARD_COMMIT_SHORT}\",\"branch\":\"${DASHBOARD_BRANCH}\"}"
+      response="{\"name\":\"Pi Control Center\",\"version\":\"1.0.0\",\"commit\":\"${DASHBOARD_COMMIT}\",\"commitShort\":\"${DASHBOARD_COMMIT_SHORT}\",\"branch\":\"${DASHBOARD_BRANCH}\"}"
       ;;
 
     "GET /api/available-services")

@@ -1,6 +1,6 @@
 #!/bin/bash
 # ============================================================
-# Pi Dashboard — SD Card Prep Script
+# Pi Control Center — SD Card Prep Script
 # ============================================================
 #
 # Run this on your computer AFTER flashing Raspberry Pi OS.
@@ -11,10 +11,10 @@
 #   ./prep-sd-card.sh /path/to/sd-rootfs [REPO_URL]
 #
 # Example (macOS):
-#   ./prep-sd-card.sh /Volumes/rootfs https://github.com/user/pi-dashboard.git
+#   ./prep-sd-card.sh /Volumes/rootfs https://github.com/user/pi-control-center.git
 #
 # Example (Linux):
-#   ./prep-sd-card.sh /mnt/rootfs https://github.com/user/pi-dashboard.git
+#   ./prep-sd-card.sh /mnt/rootfs https://github.com/user/pi-control-center.git
 #
 # After running this:
 #   1. Eject SD card safely
@@ -36,7 +36,7 @@ if [ ! -d "$ROOTFS/etc" ]; then
   exit 1
 fi
 
-echo "=== Pi Dashboard — SD Card Prep ==="
+echo "=== Pi Control Center — SD Card Prep ==="
 echo ""
 echo "Target:  $ROOTFS"
 echo "Repo:    $REPO_URL"
@@ -75,4 +75,4 @@ echo "  3. Slå på strömmen"
 echo "  4. Vänta ~10-15 minuter"
 echo "  5. Öppna http://<pi-ip> på mobilen"
 echo ""
-echo "Loggar vid problem: ssh pi@<ip> → cat /var/log/pi-dashboard-setup.log"
+echo "Loggar vid problem: ssh pi@<ip> → cat /var/log/pi-control-center-setup.log"
