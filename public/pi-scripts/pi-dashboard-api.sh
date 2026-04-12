@@ -51,6 +51,18 @@ registry_get() {
   jq -r --arg k "$1" --arg f "$2" '.[] | select(.key == $k) | .[$f] // empty' "$REGISTRY_FILE" 2>/dev/null
 }
 
+# Get a component field: registry_get_component <key> <component> <field>
+registry_get_component() {
+  jq -r --arg k "$1" --arg c "$2" --arg f "$3" '.[] | select(.key == $k) | .components[$c][$f] // empty' "$REGISTRY_FILE" 2>/dev/null
+}
+
+# Check if service uses components format
+registry_has_components() {
+  local val
+  val=$(jq -r --arg k "$1" '.[] | select(.key == $k) | .components // empty' "$REGISTRY_FILE" 2>/dev/null)
+  [ -n "$val" ] && [ "$val" != "null" ] && echo "true" || echo "false"
+}
+
 # Get all service keys from registry
 registry_keys() {
   jq -r '.[].key' "$REGISTRY_FILE" 2>/dev/null
