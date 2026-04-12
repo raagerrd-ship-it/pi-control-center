@@ -212,3 +212,23 @@ export async function fetchLogs(app: string, type: 'update' | 'install' | 'servi
   const data = await res.json();
   return data.log || 'Tom logg';
 }
+
+export interface FactoryResetResult {
+  status: 'resetting' | 'success' | 'error' | 'idle';
+  timestamp?: string;
+}
+
+export async function triggerFactoryReset(): Promise<FactoryResetResult> {
+  const res = await fetch(`${getBaseUrl()}/api/factory-reset`, {
+    method: 'POST',
+    signal: AbortSignal.timeout(120000),
+  });
+  if (!res.ok) throw new Error('Failed to trigger factory reset');
+  return res.json();
+}
+
+export async function fetchFactoryResetStatus(): Promise<FactoryResetResult> {
+  const res = await fetch(`${getBaseUrl()}/api/factory-reset-status`, { signal: AbortSignal.timeout(4000) });
+  if (!res.ok) throw new Error('Failed to fetch reset status');
+  return res.json();
+}
