@@ -8,7 +8,7 @@ import { useSystemStatus } from '@/hooks/useSystemStatus';
 import { useServiceUpdate } from '@/hooks/useServiceUpdate';
 import { useActivityLog } from '@/hooks/useActivityLog';
 import {
-  triggerUpdate, fetchUpdateStatus, fetchVersions, fetchAvailableServices,
+  triggerUpdate, fetchUpdateStatus, fetchVersions, fetchVersion, fetchAvailableServices,
   type UpdateResult, type VersionMap, type ServiceDefinition, fetchLogs,
 } from '@/lib/api';
 
@@ -75,6 +75,13 @@ const Index = () => {
     } catch {} finally {
       setCheckingVersions(false);
     }
+  }, []);
+
+  const handleCheckVersion = useCallback(async (app: string) => {
+    try {
+      const v = await fetchVersion(app);
+      setVersions(prev => ({ ...prev, [app]: v }));
+    } catch {}
   }, []);
 
   const handleDashboardUpdate = useCallback(async () => {
@@ -196,7 +203,7 @@ const Index = () => {
                   usedPorts={usedPorts}
                   status={status}
                   onUpdate={startUpdate}
-                  onCheckVersion={handleCheckVersions}
+                  onCheckVersion={handleCheckVersion}
                   onInstall={startInstall}
                   onUninstall={startUninstall}
                   onServiceAction={handleServiceAction}
