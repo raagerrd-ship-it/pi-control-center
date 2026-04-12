@@ -99,7 +99,7 @@ export function SystemMonitor({
       <div className="flex flex-col gap-2">
         <div className="flex items-center gap-2 flex-wrap">
           <div className={`h-2 w-2 rounded-full shrink-0 ${noData ? 'bg-muted-foreground/30' : 'bg-[hsl(var(--status-online))]'}`} />
-          <span className="font-medium text-sm leading-none">Dashboard + Nginx</span>
+          <span className="font-medium text-sm leading-none">Pi Control Center</span>
           <span className="font-mono text-[10px] text-muted-foreground inline-flex items-center rounded bg-secondary px-1.5 py-0.5">Core 0</span>
           <span className="font-mono text-[11px] text-muted-foreground">{noData ? '—' : `${status.dashboardCpu?.toFixed(1) ?? '0.0'}%`} · {noData ? '—' : `${status.dashboardRamMb ?? 7}MB`}</span>
         </div>
