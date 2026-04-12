@@ -1,5 +1,5 @@
 import { useState, memo } from 'react';
-import { ExternalLink, RefreshCw, CheckCircle2, AlertCircle, Loader2, Play, Square, RotateCcw, Trash2, Plus } from 'lucide-react';
+import { ExternalLink, RefreshCw, CheckCircle2, AlertCircle, Loader2, Play, Square, RotateCcw, Trash2, Server, Monitor } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import { InstallDialog } from '@/components/InstallDialog';
@@ -21,11 +21,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import type { UpdateResult, InstallResult, ServiceActionResult, VersionInfo, SystemStatus, ServiceDefinition } from '@/lib/api';
+import type { UpdateResult, InstallResult, ServiceActionResult, VersionInfo, SystemStatus, ServiceDefinition, ComponentStatus } from '@/lib/api';
+import { hasComponents } from '@/lib/api';
 
 interface CoreCardProps {
   coreIndex: number;
-  /** Service installed on this core, if any */
   service?: {
     definition: ServiceDefinition;
     online: boolean;
@@ -38,18 +38,69 @@ interface CoreCardProps {
     updateStatus?: UpdateResult;
     installStatus?: InstallResult;
     actionStatus?: ServiceActionResult | { status: 'pending'; action: string };
+    components?: {
+      engine?: ComponentStatus;
+      ui?: ComponentStatus;
+    };
   };
-  /** Services available to install (not yet installed) */
   availableServices: ServiceDefinition[];
-  /** All pending/completed installs keyed by service key */
-  allInstalls: Record<string, import('@/lib/api').InstallResult>;
+  allInstalls: Record<string, InstallResult>;
   usedPorts: number[];
   status: SystemStatus | null;
   onUpdate: (app: string) => void;
   onCheckVersion: (app: string) => void;
   onInstall: (app: string, port: number, core: number) => void;
   onUninstall: (app: string) => void;
-  onServiceAction: (app: string, action: 'start' | 'stop' | 'restart') => void;
+  onServiceAction: (app: string, action: 'start' | 'stop' | 'restart', component?: 'engine' | 'ui') => void;
+}
+
+function ComponentRow({
+  label,
+  icon: Icon,
+  comp,
+  alwaysOn,
+  isPending,
+  onAction,
+}: {
+  label: string;
+  icon: React.ElementType;
+  comp?: ComponentStatus;
+  alwaysOn?: boolean;
+  isPending: boolean;
+  onAction: (action: 'start' | 'stop' | 'restart') => void;
+}) {
+  const online = comp?.online ?? false;
+
+  return (
+    <div className="flex items-center gap-2 py-1">
+      <div className={`h-1.5 w-1.5 rounded-full shrink-0 ${online ? 'bg-[hsl(var(--status-online))]' : 'bg-[hsl(var(--status-offline))]'}`} />
+      <Icon className="h-3 w-3 text-muted-foreground shrink-0" />
+      <span className="font-mono text-[11px] flex-1 truncate">{label}</span>
+      {comp && online && (
+        <span className="font-mono text-[10px] text-muted-foreground shrink-0">
+          {comp.cpu.toFixed(1)}% · {comp.ramMb}MB
+        </span>
+      )}
+      <div className="flex items-center gap-0.5 shrink-0">
+        {!online ? (
+          <Button variant="ghost" size="sm" className="h-5 w-5 p-0" disabled={isPending} onClick={() => onAction('start')} title="Starta">
+            <Play className="h-2.5 w-2.5" />
+          </Button>
+        ) : (
+          <>
+            {!alwaysOn && (
+              <Button variant="ghost" size="sm" className="h-5 w-5 p-0" disabled={isPending} onClick={() => onAction('stop')} title="Stoppa">
+                <Square className="h-2.5 w-2.5" />
+              </Button>
+            )}
+            <Button variant="ghost" size="sm" className="h-5 w-5 p-0" disabled={isPending} onClick={() => onAction('restart')} title="Omstart">
+              <RotateCcw className="h-2.5 w-2.5" />
+            </Button>
+          </>
+        )}
+      </div>
+    </div>
+  );
 }
 
 export const CoreCard = memo(function CoreCard({
@@ -68,7 +119,6 @@ export const CoreCard = memo(function CoreCard({
   const [selectedService, setSelectedService] = useState<string>('');
   const [installingService, setInstallingService] = useState<string>('');
 
-  // Wrap onInstall to track which service is being installed on this core
   const handleInstall = (app: string, port: number, core: number) => {
     setInstallingService(app);
     onInstall(app, port, core);
@@ -82,7 +132,6 @@ export const CoreCard = memo(function CoreCard({
     const installSuccess = activeInstall?.status === 'success';
     const installError = activeInstall?.status === 'error';
 
-    // If we're in the middle of installing, show progress
     if (installing || installSuccess || installError) {
       const name = availableServices.find(s => s.key === trackingKey)?.name ?? trackingKey;
       return (
@@ -157,11 +206,12 @@ export const CoreCard = memo(function CoreCard({
   }
 
   // Occupied core — show service info
-  const { definition: def, online, version, cpu, ramMb, port, versionInfo, updateStatus, actionStatus } = service;
+  const { definition: def, online, version, cpu, ramMb, port, versionInfo, updateStatus, actionStatus, components } = service;
   const isUpdating = updateStatus?.status === 'updating';
   const isPending = actionStatus?.status === 'pending';
   const hasUpdate = versionInfo?.hasUpdate ?? false;
   const piIp = window.location.hostname;
+  const isComponentBased = hasComponents(def);
 
   const statusColor = online
     ? 'bg-[hsl(var(--status-online))]'
@@ -173,29 +223,55 @@ export const CoreCard = memo(function CoreCard({
       <div className="flex items-center justify-between">
         <span className="font-mono text-[11px] text-muted-foreground uppercase tracking-wider">Core {coreIndex}</span>
         <div className="flex items-center gap-1.5">
-          <div className={`h-2 w-2 rounded-full ${statusColor}`} />
+          {!isComponentBased && <div className={`h-2 w-2 rounded-full ${statusColor}`} />}
           {port ? <span className="font-mono text-[11px] text-muted-foreground">:{port}</span> : null}
         </div>
       </div>
 
       <h3 className="font-medium text-sm leading-none">{def.name}</h3>
 
-      {/* Resource row */}
-      <div className="flex items-center gap-2 font-mono text-[11px] text-muted-foreground">
-        {online ? (
-          <>
-            <span className={cpu > 50 ? 'text-[hsl(var(--status-warning))]' : ''}>
-              {cpu.toFixed(1)}%
+      {/* Component rows for engine/ui services */}
+      {isComponentBased ? (
+        <div className="flex flex-col border rounded bg-secondary/20 px-2 py-0.5 divide-y divide-border/30">
+          {def.components?.engine && (
+            <ComponentRow
+              label="Motor"
+              icon={Server}
+              comp={components?.engine}
+              alwaysOn={def.components.engine.alwaysOn}
+              isPending={!!isPending}
+              onAction={(action) => onServiceAction(def.key, action, 'engine')}
+            />
+          )}
+          {def.components?.ui && (
+            <ComponentRow
+              label="UI"
+              icon={Monitor}
+              comp={components?.ui}
+              alwaysOn={def.components.ui.alwaysOn}
+              isPending={!!isPending}
+              onAction={(action) => onServiceAction(def.key, action, 'ui')}
+            />
+          )}
+        </div>
+      ) : (
+        /* Legacy single-service resource row */
+        <div className="flex items-center gap-2 font-mono text-[11px] text-muted-foreground">
+          {online ? (
+            <>
+              <span className={cpu > 50 ? 'text-[hsl(var(--status-warning))]' : ''}>
+                {cpu.toFixed(1)}%
+              </span>
+              <span className="text-border">·</span>
+              <span>{ramMb}MB</span>
+            </>
+          ) : (
+            <span className="inline-flex items-center gap-1 rounded bg-[hsl(var(--status-offline)/0.15)] px-1.5 py-0.5 text-[hsl(var(--status-offline))] text-[10px] font-medium">
+              Offline
             </span>
-            <span className="text-border">·</span>
-            <span>{ramMb}MB</span>
-          </>
-        ) : (
-          <span className="inline-flex items-center gap-1 rounded bg-[hsl(var(--status-offline)/0.15)] px-1.5 py-0.5 text-[hsl(var(--status-offline))] text-[10px] font-medium">
-            Offline
-          </span>
-        )}
-      </div>
+          )}
+        </div>
+      )}
 
       {/* Action feedback */}
       {actionStatus && 'action' in actionStatus && (
@@ -273,18 +349,22 @@ export const CoreCard = memo(function CoreCard({
 
       {/* Actions */}
       <div className="grid grid-cols-2 gap-1 mt-auto">
-        {!online ? (
-          <Button variant="secondary" size="sm" className="font-mono text-[11px] gap-1 h-8 px-2 w-full" disabled={isPending} onClick={() => onServiceAction(def.key, 'start')}>
-            <Play className="h-3 w-3" /> Starta
-          </Button>
-        ) : (
-          <Button variant="secondary" size="sm" className="font-mono text-[11px] gap-1 h-8 px-2 w-full" disabled={isPending} onClick={() => onServiceAction(def.key, 'stop')}>
-            <Square className="h-3 w-3" /> Stoppa
-          </Button>
+        {!isComponentBased && (
+          <>
+            {!online ? (
+              <Button variant="secondary" size="sm" className="font-mono text-[11px] gap-1 h-8 px-2 w-full" disabled={!!isPending} onClick={() => onServiceAction(def.key, 'start')}>
+                <Play className="h-3 w-3" /> Starta
+              </Button>
+            ) : (
+              <Button variant="secondary" size="sm" className="font-mono text-[11px] gap-1 h-8 px-2 w-full" disabled={!!isPending} onClick={() => onServiceAction(def.key, 'stop')}>
+                <Square className="h-3 w-3" /> Stoppa
+              </Button>
+            )}
+            <Button variant="secondary" size="sm" className="font-mono text-[11px] gap-1 h-8 px-2 w-full" disabled={!!isPending || !online} onClick={() => onServiceAction(def.key, 'restart')}>
+              <RotateCcw className="h-3 w-3" /> Omstart
+            </Button>
+          </>
         )}
-        <Button variant="secondary" size="sm" className="font-mono text-[11px] gap-1 h-8 px-2 w-full" disabled={isPending || !online} onClick={() => onServiceAction(def.key, 'restart')}>
-          <RotateCcw className="h-3 w-3" /> Omstart
-        </Button>
         {port ? (
           <a href={`http://${piIp}:${port}`} target="_blank" rel="noopener noreferrer" className="inline-flex items-center justify-center gap-1 h-8 px-2 rounded-md bg-secondary font-mono text-[11px] text-secondary-foreground hover:bg-secondary/80 transition-colors w-full">
             <ExternalLink className="h-3 w-3" /> Öppna

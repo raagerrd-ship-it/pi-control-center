@@ -160,12 +160,13 @@ export function useServiceUpdate(serviceNames: Record<string, string>) {
     }
   }, []);
 
-  const runServiceAction = useCallback(async (app: string, action: 'start' | 'stop' | 'restart') => {
+  const runServiceAction = useCallback(async (app: string, action: 'start' | 'stop' | 'restart', component?: 'engine' | 'ui') => {
     const actionLabel = action === 'start' ? 'Startar' : action === 'stop' ? 'Stoppar' : 'Startar om';
-    addEntryRef.current(label(app), actionLabel + '...', 'info');
+    const compLabel = component ? ` (${component})` : '';
+    addEntryRef.current(label(app), actionLabel + compLabel + '...', 'info');
     setActions(prev => ({ ...prev, [app]: { status: 'pending', action } }));
     try {
-      const result = await serviceAction(app, action);
+      const result = await serviceAction(app, action, component);
       setActions(prev => ({ ...prev, [app]: result }));
       const doneLabel = action === 'start' ? 'Startad' : action === 'stop' ? 'Stoppad' : 'Omstartad';
       if (result.status === 'success') addEntryRef.current(label(app), doneLabel, 'success');

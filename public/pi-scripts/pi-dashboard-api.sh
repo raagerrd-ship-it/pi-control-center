@@ -51,6 +51,18 @@ registry_get() {
   jq -r --arg k "$1" --arg f "$2" '.[] | select(.key == $k) | .[$f] // empty' "$REGISTRY_FILE" 2>/dev/null
 }
 
+# Get a component field: registry_get_component <key> <component> <field>
+registry_get_component() {
+  jq -r --arg k "$1" --arg c "$2" --arg f "$3" '.[] | select(.key == $k) | .components[$c][$f] // empty' "$REGISTRY_FILE" 2>/dev/null
+}
+
+# Check if service uses components format
+registry_has_components() {
+  local val
+  val=$(jq -r --arg k "$1" '.[] | select(.key == $k) | .components // empty' "$REGISTRY_FILE" 2>/dev/null)
+  [ -n "$val" ] && [ "$val" != "null" ] && echo "true" || echo "false"
+}
+
 # Get all service keys from registry
 registry_keys() {
   jq -r '.[].key' "$REGISTRY_FILE" 2>/dev/null
@@ -214,46 +226,94 @@ build_status_json() {
   svc_json=""
 
   for app in $(registry_keys); do
-    local svc install_dir port core online installed ver s_cpu s_ram s_core pid aff running
+    local svc install_dir port core online installed ver s_cpu s_ram s_core pid aff running has_comp
     svc=$(registry_get "$app" "service")
     install_dir=$(eval echo "$(registry_get "$app" "installDir")")
     port=$(assignment_get "$app" "port")
     core=$(assignment_get "$app" "core")
+    has_comp=$(registry_has_components "$app")
 
     [ -z "$port" ] && port=0
     [ -z "$core" ] && core=-1
 
-    running=$(service_is_active "$svc")
-    online="$running"
-    if [ "$online" != "true" ] && [ "$port" -gt 0 ]; then
-      online=$(check_service "$port")
-    fi
-    installed=$(check_installed "$app" "$install_dir" "$svc")
-    ver=$(get_version "$install_dir" "$port")
-    s_cpu=0
-    s_ram=0
-    s_core=${core}
+    # For component-based services, check if ANY component is active
+    if [ "$has_comp" = "true" ]; then
+      local engine_svc ui_svc engine_online ui_online engine_cpu engine_ram ui_cpu ui_ram engine_ver ui_ver
+      engine_svc=$(registry_get_component "$app" "engine" "service")
+      ui_svc=$(registry_get_component "$app" "ui" "service")
+      engine_online="false"; ui_online="false"
+      engine_cpu=0; engine_ram=0; ui_cpu=0; ui_ram=0
+      engine_ver=""; ui_ver=""
 
-    if [ "$online" = "true" ]; then
-      s_ram=$(get_service_ram "$svc")
-      pid=$(systemctl show "${svc}.service" --property=MainPID 2>/dev/null | cut -d= -f2)
-      if [ -z "$pid" ] || [ "$pid" = "0" ]; then
-        pid=$(user_systemctl show "${svc}.service" --property=MainPID 2>/dev/null | cut -d= -f2)
-      fi
-      if [ -n "$pid" ] && [ "$pid" != "0" ]; then
-        s_cpu=$(ps -p "$pid" -o %cpu= 2>/dev/null | tr -d ' ' || echo "0")
-        aff=$(taskset -p "$pid" 2>/dev/null | awk '{print $NF}')
-        case "$aff" in
-          1) s_core=0 ;;
-          2) s_core=1 ;;
-          4) s_core=2 ;;
-          8) s_core=3 ;;
-        esac
-      fi
-    fi
+      [ -n "$engine_svc" ] && engine_online=$(service_is_active "$engine_svc")
+      [ -n "$ui_svc" ] && ui_online=$(service_is_active "$ui_svc")
 
-    [ -n "$svc_json" ] && svc_json="${svc_json},"
-    svc_json="${svc_json}\"${app}\":{\"online\":${online},\"installed\":${installed},\"version\":\"${ver}\",\"cpu\":${s_cpu:-0},\"ramMb\":${s_ram:-0},\"cpuCore\":${s_core},\"port\":${port}}"
+      if [ "$engine_online" = "true" ] && [ -n "$engine_svc" ]; then
+        engine_ram=$(get_service_ram "$engine_svc")
+        local epid
+        epid=$(user_systemctl show "${engine_svc}.service" --property=MainPID 2>/dev/null | cut -d= -f2)
+        [ -n "$epid" ] && [ "$epid" != "0" ] && engine_cpu=$(ps -p "$epid" -o %cpu= 2>/dev/null | tr -d ' ' || echo "0")
+      fi
+      if [ "$ui_online" = "true" ] && [ -n "$ui_svc" ]; then
+        ui_ram=$(get_service_ram "$ui_svc")
+        local upid
+        upid=$(user_systemctl show "${ui_svc}.service" --property=MainPID 2>/dev/null | cut -d= -f2)
+        [ -n "$upid" ] && [ "$upid" != "0" ] && ui_cpu=$(ps -p "$upid" -o %cpu= 2>/dev/null | tr -d ' ' || echo "0")
+      fi
+
+      online="false"
+      [ "$engine_online" = "true" ] || [ "$ui_online" = "true" ] && online="true"
+
+      # Check installed: need install_dir + at least one service file
+      installed="false"
+      if [ -d "$install_dir" ]; then
+        { [ -n "$engine_svc" ] && [ -f "$HOME/.config/systemd/user/${engine_svc}.service" ]; } || \
+        { [ -n "$ui_svc" ] && [ -f "$HOME/.config/systemd/user/${ui_svc}.service" ]; } && installed="true"
+      fi
+
+      ver=$(get_version "$install_dir" "$port")
+      engine_ver="$ver"; ui_ver="$ver"
+
+      local total_cpu total_ram
+      total_cpu=$(echo "$engine_cpu + $ui_cpu" | bc 2>/dev/null || echo "0")
+      total_ram=$((engine_ram + ui_ram))
+
+      [ -n "$svc_json" ] && svc_json="${svc_json},"
+      svc_json="${svc_json}\"${app}\":{\"online\":${online},\"installed\":${installed},\"version\":\"${ver}\",\"cpu\":${total_cpu:-0},\"ramMb\":${total_ram:-0},\"cpuCore\":${core},\"port\":${port},\"components\":{\"engine\":{\"online\":${engine_online},\"version\":\"${engine_ver}\",\"cpu\":${engine_cpu:-0},\"ramMb\":${engine_ram:-0},\"service\":\"${engine_svc}\"},\"ui\":{\"online\":${ui_online},\"version\":\"${ui_ver}\",\"cpu\":${ui_cpu:-0},\"ramMb\":${ui_ram:-0},\"service\":\"${ui_svc}\"}}}"
+    else
+      # Legacy single-service
+      running=$(service_is_active "$svc")
+      online="$running"
+      if [ "$online" != "true" ] && [ "$port" -gt 0 ]; then
+        online=$(check_service "$port")
+      fi
+      installed=$(check_installed "$app" "$install_dir" "$svc")
+      ver=$(get_version "$install_dir" "$port")
+      s_cpu=0
+      s_ram=0
+      s_core=${core}
+
+      if [ "$online" = "true" ]; then
+        s_ram=$(get_service_ram "$svc")
+        pid=$(systemctl show "${svc}.service" --property=MainPID 2>/dev/null | cut -d= -f2)
+        if [ -z "$pid" ] || [ "$pid" = "0" ]; then
+          pid=$(user_systemctl show "${svc}.service" --property=MainPID 2>/dev/null | cut -d= -f2)
+        fi
+        if [ -n "$pid" ] && [ "$pid" != "0" ]; then
+          s_cpu=$(ps -p "$pid" -o %cpu= 2>/dev/null | tr -d ' ' || echo "0")
+          aff=$(taskset -p "$pid" 2>/dev/null | awk '{print $NF}')
+          case "$aff" in
+            1) s_core=0 ;;
+            2) s_core=1 ;;
+            4) s_core=2 ;;
+            8) s_core=3 ;;
+          esac
+        fi
+      fi
+
+      [ -n "$svc_json" ] && svc_json="${svc_json},"
+      svc_json="${svc_json}\"${app}\":{\"online\":${online},\"installed\":${installed},\"version\":\"${ver}\",\"cpu\":${s_cpu:-0},\"ramMb\":${s_ram:-0},\"cpuCore\":${s_core},\"port\":${port}}"
+    fi
   done
 
   local dash_cpu dash_ram nginx_ram dash_pid
@@ -323,19 +383,75 @@ do_install_release() {
   rm -f "/tmp/pi-dashboard/${app}-dist.tar.gz"
 
   progress "$sf" "$app" "Skapar systemd-service..." "$start_time"
-  local svc_file="$HOME/.config/systemd/user/${svc}.service"
-  local app_type entrypoint exec_start
-  app_type=$(registry_get "$app" "type")
-  entrypoint=$(registry_get "$app" "entrypoint")
-  mkdir -p "$HOME/.config/systemd/user"
 
-  if [ "$app_type" = "node" ] && [ -n "$entrypoint" ]; then
-    exec_start="/usr/bin/node ${install_dir}/${entrypoint}"
+  local has_comp
+  has_comp=$(registry_has_components "$app")
+
+  if [ "$has_comp" = "true" ]; then
+    # Component-based: create separate services for engine and ui
+    for comp in engine ui; do
+      local comp_type comp_entry comp_svc comp_always_on comp_exec
+      comp_type=$(registry_get_component "$app" "$comp" "type")
+      comp_entry=$(registry_get_component "$app" "$comp" "entrypoint")
+      comp_svc=$(registry_get_component "$app" "$comp" "service")
+      comp_always_on=$(registry_get_component "$app" "$comp" "alwaysOn")
+
+      [ -z "$comp_svc" ] && continue
+
+      if [ "$comp_type" = "node" ] && [ -n "$comp_entry" ]; then
+        comp_exec="/usr/bin/node ${install_dir}/${comp_entry}"
+      else
+        comp_exec="/usr/bin/npx serve ${comp_entry:-dist} -l ${req_port} -s"
+      fi
+
+      local restart_policy="on-failure"
+      [ "$comp_always_on" = "true" ] && restart_policy="always"
+
+      local comp_svc_file="$HOME/.config/systemd/user/${comp_svc}.service"
+      cat > "$comp_svc_file" <<UNIT
+[Unit]
+Description=${app} ${comp} service
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=${install_dir}
+ExecStart=${comp_exec}
+Environment=PORT=${req_port}
+CPUAffinity=${req_core}
+AllowedCPUs=${req_core}
+MemoryMax=128M
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=${install_dir}
+PrivateTmp=true
+NoNewPrivileges=true
+Restart=${restart_policy}
+RestartSec=5
+
+[Install]
+WantedBy=default.target
+UNIT
+
+      user_systemctl daemon-reload
+      user_systemctl enable "${comp_svc}.service"
+      user_systemctl start "${comp_svc}.service"
+    done
   else
-    exec_start="/usr/bin/npx serve dist -l ${req_port} -s"
-  fi
+    # Legacy single-service
+    local svc_file="$HOME/.config/systemd/user/${svc}.service"
+    local app_type entrypoint exec_start
+    app_type=$(registry_get "$app" "type")
+    entrypoint=$(registry_get "$app" "entrypoint")
+    mkdir -p "$HOME/.config/systemd/user"
 
-  cat > "$svc_file" <<UNIT
+    if [ "$app_type" = "node" ] && [ -n "$entrypoint" ]; then
+      exec_start="/usr/bin/node ${install_dir}/${entrypoint}"
+    else
+      exec_start="/usr/bin/npx serve dist -l ${req_port} -s"
+    fi
+
+    cat > "$svc_file" <<UNIT
 [Unit]
 Description=${app} service
 After=network.target
@@ -346,6 +462,13 @@ WorkingDirectory=${install_dir}
 ExecStart=${exec_start}
 Environment=PORT=${req_port}
 CPUAffinity=${req_core}
+AllowedCPUs=${req_core}
+MemoryMax=128M
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=${install_dir}
+PrivateTmp=true
+NoNewPrivileges=true
 Restart=on-failure
 RestartSec=5
 
@@ -353,9 +476,10 @@ RestartSec=5
 WantedBy=default.target
 UNIT
 
-  user_systemctl daemon-reload
-  user_systemctl enable "${svc}.service"
-  user_systemctl start "${svc}.service"
+    user_systemctl daemon-reload
+    user_systemctl enable "${svc}.service"
+    user_systemctl start "${svc}.service"
+  fi
 
   return 0
 }
@@ -429,15 +553,30 @@ do_install() {
 }
 
 do_uninstall() {
-  local app install_dir svc uninstall_script
+  local app install_dir svc uninstall_script has_comp
   app=$1
   install_dir=$(eval echo "$(registry_get "$app" "installDir")")
   svc=$(registry_get "$app" "service")
   uninstall_script=$(registry_get "$app" "uninstallScript")
+  has_comp=$(registry_has_components "$app")
 
-  # Stop service
-  sudo systemctl stop "${svc}.service" 2>/dev/null || user_systemctl stop "${svc}.service" 2>/dev/null || true
-  sudo systemctl disable "${svc}.service" 2>/dev/null || user_systemctl disable "${svc}.service" 2>/dev/null || true
+  if [ "$has_comp" = "true" ]; then
+    # Stop all component services
+    for comp in engine ui; do
+      local comp_svc
+      comp_svc=$(registry_get_component "$app" "$comp" "service")
+      [ -z "$comp_svc" ] && continue
+      user_systemctl stop "${comp_svc}.service" 2>/dev/null || true
+      user_systemctl disable "${comp_svc}.service" 2>/dev/null || true
+      rm -f "$HOME/.config/systemd/user/${comp_svc}.service" 2>/dev/null || true
+    done
+  else
+    # Legacy single service
+    sudo systemctl stop "${svc}.service" 2>/dev/null || user_systemctl stop "${svc}.service" 2>/dev/null || true
+    sudo systemctl disable "${svc}.service" 2>/dev/null || user_systemctl disable "${svc}.service" 2>/dev/null || true
+    sudo rm -f "/etc/systemd/system/${svc}.service" 2>/dev/null || true
+    rm -f "$HOME/.config/systemd/user/${svc}.service" 2>/dev/null || true
+  fi
 
   # Run uninstall script if it exists
   if [ -n "$uninstall_script" ] && [ -f "$install_dir/$uninstall_script" ]; then
@@ -445,9 +584,6 @@ do_uninstall() {
     bash "$install_dir/$uninstall_script" 2>/dev/null || true
   fi
 
-  # Remove service files
-  sudo rm -f "/etc/systemd/system/${svc}.service" 2>/dev/null || true
-  rm -f "$HOME/.config/systemd/user/${svc}.service" 2>/dev/null || true
   sudo systemctl daemon-reload 2>/dev/null || true
   user_systemctl daemon-reload 2>/dev/null || true
 
@@ -639,14 +775,28 @@ handle_request() {
       ;;
 
     POST\ /api/service/*/*)
-      local rest app action svc
+      local rest app action_with_query action query_string component svc
       rest=${path#/api/service/}
       app=${rest%%/*}
-      action=${rest#*/}
-      svc=$(registry_get "$app" "service")
+      action_with_query=${rest#*/}
+      action=${action_with_query%%\?*}
+      query_string=""
+      component=""
+      if [[ "$action_with_query" == *"?"* ]]; then
+        query_string=${action_with_query#*\?}
+        component=$(echo "$query_string" | grep -o 'component=[^&]*' | cut -d= -f2)
+      fi
+
+      # Resolve the actual systemd service name
+      if [ -n "$component" ]; then
+        svc=$(registry_get_component "$app" "$component" "service")
+      else
+        svc=$(registry_get "$app" "service")
+      fi
+
       if [ -z "$svc" ]; then
         status_line="HTTP/1.1 404 Not Found"
-        response="{\"error\":\"Unknown app: ${app}\"}"
+        response="{\"error\":\"Unknown app or component: ${app}/${component}\"}"
       else
         local svc_ok="false" svc_err="" log_file now
         log_file="$STATUS_DIR/${app}.log"

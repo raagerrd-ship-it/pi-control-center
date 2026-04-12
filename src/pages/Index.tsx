@@ -119,8 +119,8 @@ const Index = () => {
     setTimeout(poll, 3000);
   }, [addEntry]);
 
-  const handleServiceAction = useCallback(async (app: string, action: 'start' | 'stop' | 'restart') => {
-    await runServiceAction(app, action);
+  const handleServiceAction = useCallback(async (app: string, action: 'start' | 'stop' | 'restart', component?: 'engine' | 'ui') => {
+    await runServiceAction(app, action, component);
     setTimeout(() => {
       void refresh();
     }, 800);
@@ -177,6 +177,7 @@ const Index = () => {
                 updateStatus: updates[serviceKey],
                 installStatus: installs[serviceKey],
                 actionStatus: actions[serviceKey],
+                components: svcStatus.components,
               } : undefined;
 
               return (
