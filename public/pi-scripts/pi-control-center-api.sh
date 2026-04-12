@@ -445,6 +445,23 @@ do_install_release() {
   tar xzf "/tmp/pi-control-center/${app}-dist.tar.gz" -C "$install_dir" >> "$INSTALL_DIR/${app}.log" 2>&1
   rm -f "/tmp/pi-control-center/${app}-dist.tar.gz"
 
+  # Run installScript after extraction if runInstallOnRelease is set
+  local run_install_on_release
+  run_install_on_release=$(registry_get "$app" "runInstallOnRelease")
+  if [ "$run_install_on_release" = "true" ]; then
+    local install_script
+    install_script=$(registry_get "$app" "installScript")
+    if [ -n "$install_script" ] && [ -f "$install_dir/$install_script" ]; then
+      progress "$sf" "$app" "Kör installationsskript..." "$start_time"
+      chmod +x "$install_dir/$install_script"
+      find "$install_dir" -name '*.sh' -exec sed -i 's/\r$//' {} +
+      nice -n 15 ionice -c 3 bash "$install_dir/$install_script" --port "$req_port" --core "$req_core" >> "$INSTALL_DIR/${app}.log" 2>&1 || {
+        echo "{\"app\":\"${app}\",\"status\":\"error\",\"message\":\"Installationsskript misslyckades\",\"timestamp\":\"$(date -Iseconds)\"}" > "$sf"
+        return 1
+      }
+    fi
+  fi
+
   progress "$sf" "$app" "Skapar systemd-service..." "$start_time"
 
   local has_comp
