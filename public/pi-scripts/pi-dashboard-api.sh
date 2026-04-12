@@ -775,14 +775,28 @@ handle_request() {
       ;;
 
     POST\ /api/service/*/*)
-      local rest app action svc
+      local rest app action_with_query action query_string component svc
       rest=${path#/api/service/}
       app=${rest%%/*}
-      action=${rest#*/}
-      svc=$(registry_get "$app" "service")
+      action_with_query=${rest#*/}
+      action=${action_with_query%%\?*}
+      query_string=""
+      component=""
+      if [[ "$action_with_query" == *"?"* ]]; then
+        query_string=${action_with_query#*\?}
+        component=$(echo "$query_string" | grep -o 'component=[^&]*' | cut -d= -f2)
+      fi
+
+      # Resolve the actual systemd service name
+      if [ -n "$component" ]; then
+        svc=$(registry_get_component "$app" "$component" "service")
+      else
+        svc=$(registry_get "$app" "service")
+      fi
+
       if [ -z "$svc" ]; then
         status_line="HTTP/1.1 404 Not Found"
-        response="{\"error\":\"Unknown app: ${app}\"}"
+        response="{\"error\":\"Unknown app or component: ${app}/${component}\"}"
       else
         local svc_ok="false" svc_err="" log_file now
         log_file="$STATUS_DIR/${app}.log"
