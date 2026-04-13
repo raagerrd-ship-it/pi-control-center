@@ -653,7 +653,8 @@ do_install() {
     chmod +x "$install_dir/$script"
 
     progress "$sf" "$app" "Kör installationsskript (kan ta flera minuter)..." "$start_time"
-    if ! nice -n 15 ionice -c 3 bash "$install_dir/$script" --port "$req_port" --core "$req_core" >> "$INSTALL_DIR/${app}.log" 2>&1; then
+    if ! sudo systemd-run --scope --quiet -p MemoryMax=256M \
+      nice -n 15 ionice -c 3 bash "$install_dir/$script" --port "$req_port" --core "$req_core" >> "$INSTALL_DIR/${app}.log" 2>&1; then
       echo "{\"app\":\"${app}\",\"status\":\"error\",\"message\":\"Installationsskript misslyckades\",\"timestamp\":\"$(date -Iseconds)\"}" > "$sf"
       return 1
     fi
