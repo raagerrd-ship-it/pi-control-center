@@ -587,7 +587,23 @@ do_install_release() {
         comp_port=$req_port
       fi
 
+      # Determine working directory: use the entrypoint's parent directory
+      # so that Node.js can find node_modules/ adjacent to the entrypoint.
+      # E.g. entrypoint="pi/dist/index.js" → work_dir="${install_dir}/pi"
+      local comp_work_dir="${install_dir}"
       if [ "$comp_type" = "node" ] && [ -n "$comp_entry" ]; then
+        # Strip filename to get relative dir, then strip trailing subdirs to find package root
+        local entry_dir
+        entry_dir=$(dirname "$comp_entry")  # e.g. "pi/dist"
+        # Walk up from entry_dir to find where package.json lives
+        local search_dir="${install_dir}/${entry_dir}"
+        while [ "$search_dir" != "$install_dir" ] && [ "$search_dir" != "/" ]; do
+          if [ -f "${search_dir}/package.json" ]; then
+            comp_work_dir="$search_dir"
+            break
+          fi
+          search_dir=$(dirname "$search_dir")
+        done
         comp_exec="/usr/bin/node ${install_dir}/${comp_entry}"
       else
         comp_exec="/usr/bin/python3 ${PI_HOME}/pi-control-center/public/pi-scripts/static-spa-server.py --root ${install_dir}/${comp_entry:-dist} --port ${comp_port} --host 0.0.0.0"
@@ -615,7 +631,7 @@ After=network.target
 
 [Service]
 Type=simple
-WorkingDirectory=${install_dir}
+WorkingDirectory=${comp_work_dir}
 ExecStart=${comp_exec}
 Environment=NPM_CONFIG_CACHE=${install_dir}/.npm-cache
 Environment=PORT=${comp_port}
