@@ -64,8 +64,15 @@ if [ -f "$API_SCRIPT" ]; then
 fi
 
 echo "[7/7] Cleaning up..."
-rm -rf node_modules
-npm cache clean --force 2>/dev/null || true
+# Keep node_modules for faster next update; only clean if disk < 200MB free
+AVAIL_MB=$(df -m "$DASHBOARD_DIR" | awk 'NR==2{print $4}')
+if [ "${AVAIL_MB:-0}" -lt 200 ]; then
+  echo "  Low disk (${AVAIL_MB}MB) — cleaning node_modules"
+  rm -rf node_modules
+  npm cache clean --force 2>/dev/null || true
+else
+  echo "  Disk OK (${AVAIL_MB}MB free) — keeping node_modules for next update"
+fi
 
 sudo systemctl restart pi-control-center-api 2>/dev/null || true
 
