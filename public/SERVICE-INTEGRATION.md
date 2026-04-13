@@ -723,7 +723,7 @@ Pi Control Center pollar `/api/health` var **30:e sekund** för varje aktiv moto
 
 ---
 
-## 12. Checklista
+## 13. Checklista
 
 Innan din tjänst kan installeras via Pi Control Center, verifiera:
 
@@ -736,12 +736,14 @@ Innan din tjänst kan installeras via Pi Control Center, verifiera:
 - [ ] Alla skript är exekverbara (`chmod +x`) med **LF-radslut**
 - [ ] Tjänsten lyssnar på `PORT` miljövariabeln
 - [ ] Tjänsten modifierar **inga** systemfiler
+- [ ] **Motorn har CORS-headers** (`Access-Control-Allow-Origin: *`) på alla svar
 
 ### Starkt rekommenderat
 
 - [ ] Motor/UI-separation med `components` i `services.json`
 - [ ] Motor och UI har separata tjänstnamn (t.ex. `my-service-engine`, `my-service-ui`)
 - [ ] Motorn exponerar `/api/health` endpoint
+- [ ] Motorn hanterar `OPTIONS` preflight-requests
 - [ ] UI:t beräknar motorns port som `UI-port + 50`
 - [ ] Motorn klarar av att köras i veckor utan omstart
 - [ ] RAM-förbrukning under 128MB per komponent
