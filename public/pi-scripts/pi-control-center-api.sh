@@ -1251,6 +1251,8 @@ handle_request() {
       else
         v_install_dir=$(eval echo "$(registry_get "$vapp" "installDir")" 2>/dev/null)
         v_repo=$(registry_get "$vapp" "repo" 2>/dev/null)
+        local v_release_url
+        v_release_url=$(registry_get "$vapp" "releaseUrl" 2>/dev/null)
         if [ -z "$v_install_dir" ]; then
           status_line="HTTP/1.1 404 Not Found"
           response="{\"error\":\"unknown service: ${vapp}\"}"
@@ -1258,15 +1260,26 @@ handle_request() {
           v_local=""
           v_local_hash=""
           v_remote_hash=""
-          if [ -d "$v_install_dir/.git" ]; then
+          v_has_update="false"
+
+          if [ -f "$v_install_dir/VERSION.json" ]; then
+            # Release-based install: compare tag from VERSION.json against latest GitHub release
+            v_local_hash=$(jq -r '.tag // .version // empty' "$v_install_dir/VERSION.json" 2>/dev/null)
+            v_local=$(jq -r '.version // .tag // empty' "$v_install_dir/VERSION.json" 2>/dev/null)
+            if [ -n "$v_release_url" ]; then
+              v_remote_hash=$(curl -sf --max-time 10 "$v_release_url" 2>/dev/null | jq -r '.tag_name // empty' 2>/dev/null)
+            fi
+            [ -n "$v_local_hash" ] && [ -n "$v_remote_hash" ] && [ "$v_local_hash" != "$v_remote_hash" ] && v_has_update="true"
+          elif [ -d "$v_install_dir/.git" ]; then
+            # Legacy git-based install: compare commit hashes
             v_local=$(git -C "$v_install_dir" log -1 --format='%cd' --date=format:'%-d %b' 2>/dev/null)
             v_local="${v_local,,}"
             v_local_hash=$(git -C "$v_install_dir" rev-parse --short HEAD 2>/dev/null)
+            v_remote_hash=$(git ls-remote --heads "$v_repo" main 2>/dev/null | cut -c1-7)
+            [ -z "$v_remote_hash" ] && v_remote_hash=$(git ls-remote --heads "$v_repo" master 2>/dev/null | cut -c1-7)
+            [ -n "$v_local_hash" ] && [ -n "$v_remote_hash" ] && [ "$v_local_hash" != "$v_remote_hash" ] && v_has_update="true"
           fi
-          v_remote_hash=$(git ls-remote --heads "$v_repo" main 2>/dev/null | cut -c1-7)
-          [ -z "$v_remote_hash" ] && v_remote_hash=$(git ls-remote --heads "$v_repo" master 2>/dev/null | cut -c1-7)
-          v_has_update="false"
-          [ -n "$v_local_hash" ] && [ -n "$v_remote_hash" ] && [ "$v_local_hash" != "$v_remote_hash" ] && v_has_update="true"
+
           response="{\"local\":\"${v_local}\",\"remote\":\"${v_remote_hash}\",\"hasUpdate\":${v_has_update}}"
         fi
       fi
@@ -1276,22 +1289,34 @@ handle_request() {
       local vj
       vj=""
       for app in $(registry_keys); do
-        local install_dir repo local_v local_hash remote_hash has_update
+        local install_dir repo local_v local_hash remote_hash has_update rel_url
         install_dir=$(eval echo "$(registry_get "$app" "installDir")")
         repo=$(registry_get "$app" "repo")
+        rel_url=$(registry_get "$app" "releaseUrl")
         local_v=""
         local_hash=""
         remote_hash=""
-        if [ -d "$install_dir/.git" ]; then
+        has_update="false"
+
+        if [ -f "$install_dir/VERSION.json" ]; then
+          # Release-based install
+          local_hash=$(jq -r '.tag // .version // empty' "$install_dir/VERSION.json" 2>/dev/null)
+          local_v=$(jq -r '.version // .tag // empty' "$install_dir/VERSION.json" 2>/dev/null)
+          if [ -n "$rel_url" ]; then
+            remote_hash=$(curl -sf --max-time 10 "$rel_url" 2>/dev/null | jq -r '.tag_name // empty' 2>/dev/null)
+          fi
+          [ -n "$local_hash" ] && [ -n "$remote_hash" ] && [ "$local_hash" != "$remote_hash" ] && has_update="true"
+        elif [ -d "$install_dir/.git" ]; then
+          # Legacy git-based install
           local_v=$(git -C "$install_dir" log -1 --format='%cd' --date=format:'%-d %b' 2>/dev/null)
           local_v="${local_v,,}"
           local_hash=$(git -C "$install_dir" rev-parse --short HEAD 2>/dev/null)
+          remote_hash=$(git ls-remote --heads "$repo" main 2>/dev/null | cut -c1-7)
+          [ -z "$remote_hash" ] && remote_hash=$(git ls-remote --heads "$repo" master 2>/dev/null | cut -c1-7)
+          [ -n "$local_hash" ] && [ -n "$remote_hash" ] && [ "$local_hash" != "$remote_hash" ] && has_update="true"
         fi
-        remote_hash=$(git ls-remote --heads "$repo" main 2>/dev/null | cut -c1-7)
-        [ -z "$remote_hash" ] && remote_hash=$(git ls-remote --heads "$repo" master 2>/dev/null | cut -c1-7)
+
         [ -n "$vj" ] && vj="${vj},"
-        has_update="false"
-        [ -n "$local_hash" ] && [ -n "$remote_hash" ] && [ "$local_hash" != "$remote_hash" ] && has_update="true"
         vj="${vj}\"${app}\":{\"local\":\"${local_v}\",\"remote\":\"${remote_hash}\",\"hasUpdate\":${has_update}}"
       done
 
