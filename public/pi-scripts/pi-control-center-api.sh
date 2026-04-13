@@ -648,6 +648,14 @@ AllowedCPUs=${req_core}"
 AllowedCPUs=0"
       fi
 
+      local comp_security_lines="PrivateTmp=true
+NoNewPrivileges=true"
+      if [ "$comp" = "engine" ] && [ "$comp_type" = "node" ]; then
+        comp_security_lines="PrivateTmp=true
+AmbientCapabilities=CAP_NET_RAW
+CapabilityBoundingSet=CAP_NET_RAW"
+      fi
+
       local comp_svc_file="$PI_HOME/.config/systemd/user/${comp_svc}.service"
       # Remove any root-owned service file left by installScript (which runs via sudo)
       [ -f "$comp_svc_file" ] && [ ! -w "$comp_svc_file" ] && sudo rm -f "$comp_svc_file"
@@ -669,8 +677,7 @@ MemoryMax=128M
 ProtectSystem=strict
 ProtectHome=read-only
 ReadWritePaths=${install_dir}
-PrivateTmp=true
-NoNewPrivileges=true
+${comp_security_lines}
 Restart=${restart_policy}
 RestartSec=5
 
