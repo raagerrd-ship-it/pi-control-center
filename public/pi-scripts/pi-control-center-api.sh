@@ -11,6 +11,7 @@ fi
 
 PORT="${1:-8585}"
 SCRIPT_PATH="$(readlink -f "$0")"
+PI_HOME="/home/pi"
 STATUS_DIR="/tmp/pi-control-center"
 INSTALL_DIR="/tmp/pi-control-center/install"
 CACHE_FILE="$STATUS_DIR/status-cache.json"
