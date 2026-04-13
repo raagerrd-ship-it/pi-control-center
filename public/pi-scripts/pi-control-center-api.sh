@@ -1212,7 +1212,12 @@ echo "Pi Control Center API listening on port $PORT"
 # Start health polling in background
 health_poll_loop &
 HEALTH_PID=$!
-trap "kill $HEALTH_PID 2>/dev/null; exit" EXIT INT TERM
+
+# Start status cache refresh in background
+status_cache_loop &
+CACHE_PID=$!
+
+trap "kill $HEALTH_PID $CACHE_PID 2>/dev/null; exit" EXIT INT TERM
 
 while true; do
   socat TCP-LISTEN:${PORT},reuseaddr,fork EXEC:"${SCRIPT_PATH} --handle-request ${PORT}" 2>/dev/null || sleep 1
