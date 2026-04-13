@@ -413,19 +413,25 @@ build_status_json() {
 }
 
 get_cached_status() {
+  # Always serve from cache — background loop keeps it fresh
   if [ -f "$CACHE_FILE" ]; then
-    local age
-    age=$(( $(date +%s) - $(stat -c %Y "$CACHE_FILE" 2>/dev/null || echo 0) ))
-    if [ "$age" -lt "$CACHE_MAX_AGE" ]; then
-      cat "$CACHE_FILE"
-      return
-    fi
+    cat "$CACHE_FILE"
+  else
+    echo '{"cpu":0,"temp":0,"ramUsed":0,"ramTotal":0,"diskUsed":0,"diskTotal":0,"uptime":"—","services":{}}'
   fi
+}
 
+# Background loop that refreshes the status cache every CACHE_MAX_AGE seconds
+status_cache_loop() {
+  # Build initial cache immediately
   local json
-  json=$(build_status_json)
-  echo "$json" > "$CACHE_FILE"
-  echo "$json"
+  json=$(build_status_json 2>/dev/null)
+  [ -n "$json" ] && echo "$json" > "$CACHE_FILE"
+  while true; do
+    sleep "$CACHE_MAX_AGE"
+    json=$(build_status_json 2>/dev/null)
+    [ -n "$json" ] && echo "$json" > "$CACHE_FILE"
+  done
 }
 
 
@@ -1206,7 +1212,12 @@ echo "Pi Control Center API listening on port $PORT"
 # Start health polling in background
 health_poll_loop &
 HEALTH_PID=$!
-trap "kill $HEALTH_PID 2>/dev/null; exit" EXIT INT TERM
+
+# Start status cache refresh in background
+status_cache_loop &
+CACHE_PID=$!
+
+trap "kill $HEALTH_PID $CACHE_PID 2>/dev/null; exit" EXIT INT TERM
 
 while true; do
   socat TCP-LISTEN:${PORT},reuseaddr,fork EXEC:"${SCRIPT_PATH} --handle-request ${PORT}" 2>/dev/null || sleep 1
