@@ -5,11 +5,26 @@
 # Usage: ./pi-control-center-api.sh [port]
 
 REQUEST_MODE="${1:-}"
-if [ "$REQUEST_MODE" = "--handle-request" ]; then
-  shift
-fi
+INSTALL_APP=""
+INSTALL_PORT=""
+INSTALL_CORE=""
 
-PORT="${1:-8585}"
+case "$REQUEST_MODE" in
+  --handle-request)
+    shift
+    PORT="${1:-8585}"
+    ;;
+  --run-install)
+    shift
+    INSTALL_APP="${1:-}"
+    INSTALL_PORT="${2:-3000}"
+    INSTALL_CORE="${3:-1}"
+    PORT="8585"
+    ;;
+  *)
+    PORT="${1:-8585}"
+    ;;
+esac
 SCRIPT_PATH="$(readlink -f "$0")"
 PI_HOME="/home/pi"
 STATUS_DIR="/tmp/pi-control-center"
@@ -445,6 +460,17 @@ progress() {
   echo "{\"app\":\"${app}\",\"status\":\"installing\",\"progress\":\"${msg}\",\"elapsed\":\"${time_str}\"}" > "$sf"
 }
 
+queue_install() {
+  local app=$1 req_port=$2 req_core=$3 unit_name
+  unit_name="pi-control-center-install-${app}-$(date +%s)"
+  sudo systemd-run --quiet --collect --unit "$unit_name" \
+    -p Type=exec \
+    -p User="$(whoami)" \
+    -p Group="$(id -gn)" \
+    -p MemoryMax=256M \
+    "$SCRIPT_PATH" --run-install "$app" "$req_port" "$req_core"
+}
+
 do_install_release() {
   local app=$1 req_port=$2 req_core=$3 sf=$4 start_time=$5
   local release_url install_dir svc download_url
@@ -792,8 +818,13 @@ handle_request() {
         # Clear stale status and log before starting new install
         echo "{\"app\":\"${app}\",\"status\":\"installing\",\"progress\":\"Startar installation...\"}" > "$INSTALL_DIR/${app}.json"
         rm -f "$INSTALL_DIR/${app}.log"
-        do_install "$app" "$req_port" "$req_core" &
-        response="{\"app\":\"${app}\",\"status\":\"installing\",\"progress\":\"Startar installation...\"}"
+        if queue_install "$app" "$req_port" "$req_core"; then
+          response="{\"app\":\"${app}\",\"status\":\"installing\",\"progress\":\"Startar installation...\"}"
+        else
+          status_line="HTTP/1.1 500 Internal Server Error"
+          echo "{\"app\":\"${app}\",\"status\":\"error\",\"message\":\"Kunde inte starta installationsjobb\",\"timestamp\":\"$(date -Iseconds)\"}" > "$INSTALL_DIR/${app}.json"
+          response=$(< "$INSTALL_DIR/${app}.json")
+        fi
       fi
       ;;
 
@@ -1218,6 +1249,14 @@ handle_request() {
 if [ "$REQUEST_MODE" = "--handle-request" ]; then
   handle_request
   exit 0
+fi
+
+if [ "$REQUEST_MODE" = "--run-install" ]; then
+  [ -n "$INSTALL_APP" ] || exit 1
+  mkdir -p "$INSTALL_DIR"
+  exec >> "$INSTALL_DIR/${INSTALL_APP}.log" 2>&1
+  do_install "$INSTALL_APP" "$INSTALL_PORT" "$INSTALL_CORE"
+  exit $?
 fi
 
 echo "Pi Control Center API listening on port $PORT"
