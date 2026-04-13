@@ -83,15 +83,21 @@ const Index = () => {
   }, []);
 
   const handleDashboardUpdate = useCallback(async () => {
+    const commitBefore = status?.commit || '';
     addEntry('DASHBOARD', 'Uppdatering startad', 'info');
     setDashboardUpdate({ app: 'dashboard', status: 'updating' });
     try { await triggerUpdate('dashboard'); } catch {}
     let retries = 0;
+    let lostContact = false;
     let lastLogLine = '';
     const poll = async () => {
       try {
         const result = await fetchUpdateStatus('dashboard');
         setDashboardUpdate(result);
+        if (lostContact) {
+          addEntry('DASHBOARD', 'Åter kontakt — fortsätter spåra uppdatering', 'success');
+          lostContact = false;
+        }
         if (result.status === 'updating') {
           retries = 0;
           try {
@@ -117,17 +123,52 @@ const Index = () => {
             }
           } catch {}
         }
+        // status is idle — API restarted and lost state. Check if commit changed.
+        else if (result.status === 'idle' && commitBefore) {
+          try {
+            const freshStatus = await import('@/lib/api').then(m => m.fetchSystemStatus());
+            if (freshStatus.commit && freshStatus.commit !== commitBefore) {
+              addEntry('DASHBOARD', `Uppdaterad (${commitBefore.slice(0, 7)} → ${freshStatus.commit.slice(0, 7)})`, 'success');
+              setDashboardUpdate({ app: 'dashboard', status: 'success' });
+              void refresh();
+              void handleCheckVersions();
+            } else {
+              // Same commit — might still be building, retry a few more times
+              if (retries < 10) { retries++; setTimeout(poll, 5000); }
+              else {
+                addEntry('DASHBOARD', 'Uppdatering slutförd (ingen ny version hittades)', 'info');
+                setDashboardUpdate({ app: 'dashboard', status: 'success' });
+              }
+            }
+          } catch {
+            if (retries < 10) { retries++; setTimeout(poll, 5000); }
+          }
+        }
       } catch {
         retries++;
+        if (!lostContact && retries >= 3) {
+          lostContact = true;
+          addEntry('DASHBOARD', 'Pi upptagen — inväntar status...', 'info');
+        }
         if (retries < 60) { setTimeout(poll, 3000); }
         else {
+          // Last resort: check if commit changed
+          try {
+            const freshStatus = await import('@/lib/api').then(m => m.fetchSystemStatus());
+            if (freshStatus.commit && freshStatus.commit !== commitBefore) {
+              addEntry('DASHBOARD', `Uppdaterad (${commitBefore.slice(0, 7)} → ${freshStatus.commit.slice(0, 7)})`, 'success');
+              setDashboardUpdate({ app: 'dashboard', status: 'success' });
+              void refresh();
+              return;
+            }
+          } catch {}
           addEntry('DASHBOARD', 'Tappade anslutning under uppdatering', 'error');
           setDashboardUpdate({ app: 'dashboard', status: 'error', message: 'Lost connection to API' });
         }
       }
     };
     setTimeout(poll, 3000);
-  }, [addEntry]);
+  }, [addEntry, status?.commit, refresh, handleCheckVersions]);
 
   const handleServiceAction = useCallback(async (app: string, action: 'start' | 'stop' | 'restart', component?: 'engine' | 'ui') => {
     await runServiceAction(app, action, component);
