@@ -572,6 +572,13 @@ do_install_release() {
       local restart_policy="on-failure"
       [ "$comp_always_on" = "true" ] && restart_policy="always"
 
+      # Only pin engine to a specific core; UI is lightweight and can float
+      local cpu_pin_lines=""
+      if [ "$comp" = "engine" ]; then
+        cpu_pin_lines="CPUAffinity=${req_core}
+AllowedCPUs=${req_core}"
+      fi
+
       local comp_svc_file="$PI_HOME/.config/systemd/user/${comp_svc}.service"
       if ! cat > "$comp_svc_file" <<UNIT
 [Unit]
@@ -586,8 +593,7 @@ Environment=NPM_CONFIG_CACHE=${install_dir}/.npm-cache
 Environment=PORT=${comp_port}
 Environment=ENGINE_PORT=${engine_port}
 Environment=UI_PORT=${req_port}
-CPUAffinity=${req_core}
-AllowedCPUs=${req_core}
+${cpu_pin_lines}
 MemoryMax=128M
 ProtectSystem=strict
 ProtectHome=read-only
