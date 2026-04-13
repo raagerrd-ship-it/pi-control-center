@@ -266,8 +266,11 @@ get_version() {
       local parsed
       parsed=$(echo "$api_ver" | grep -o '"version"[[:space:]]*:[[:space:]]*"[^"]*"' | head -1 | cut -d'"' -f4)
       if [ -n "$parsed" ]; then echo "$parsed"; return; fi
-      # If not JSON, use raw response
-      echo "$api_ver"; return
+      # If not JSON, check it's not HTML before using raw response
+      case "$api_ver" in
+        *"<"*">"*|*"<!doctype"*|*"<html"*) ;; # HTML response, skip
+        *) echo "$api_ver"; return ;;
+      esac
     fi
   fi
   # 2) Git commit date
@@ -363,9 +366,10 @@ build_status_json() {
         { [ -n "$ui_svc" ] && [ -f "$PI_HOME/.config/systemd/user/${ui_svc}.service" ]; } && installed="true"
       fi
 
-      ver=$(get_version "$install_dir" "$port")
-      engine_ver="$ver"; ui_ver="$ver"
+      # Use engine port for version check (UI port serves static HTML, not API)
       local engine_port=$((port + 50))
+      ver=$(get_version "$install_dir" "$engine_port")
+      engine_ver="$ver"; ui_ver="$ver"
 
       local total_cpu total_ram
       total_cpu=$(echo "$engine_cpu + $ui_cpu" | bc 2>/dev/null || echo "0")
