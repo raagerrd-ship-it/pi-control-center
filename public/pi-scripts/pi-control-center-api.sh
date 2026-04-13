@@ -835,9 +835,15 @@ do_uninstall() {
   sudo systemctl daemon-reload 2>/dev/null || true
   user_systemctl daemon-reload 2>/dev/null || true
 
+  # Remove install directory
+  if [ -n "$install_dir" ] && [ -d "$install_dir" ]; then
+    sudo rm -rf "$install_dir"
+  fi
+
   # Remove assignment
   assignment_remove "$app"
   rm -f "$CACHE_FILE"
+  rm -f "$HEALTH_DIR/${app}.json"
 }
 
 handle_request() {
