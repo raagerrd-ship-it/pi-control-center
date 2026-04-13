@@ -68,7 +68,8 @@ Motorn är din tjänsts **backend/logik**. Den:
 
 UI:t är din tjänsts **webbgränssnitt**. Det:
 
-- Är en **statisk webbapp** som serveras via `npx serve`
+- Är en **statisk webbapp** som serveras via en inbyggd **Python SPA-server** (`static-spa-server.py`)
+- Python-servern använder ~5MB RAM jämfört med ~40MB för `npx serve`
 - Kommunicerar med motorn via HTTP (till motorns port)
 - Kan stoppas, startas om och uppdateras **utan att motorn påverkas**
 - Har `Restart=on-failure` — startar bara om vid krasch, inte vid normal stopp
@@ -204,7 +205,9 @@ Din tjänst registreras i `public/services.json`. Det finns två format:
 | `name` | ✅ | Visningsnamn i dashboarden |
 | `repo` | ✅ | Git-klon-URL (fallback om inget release finns) |
 | `releaseUrl` | ⭐ | GitHub Releases API-URL för förbyggda nedladdningar |
+| `releaseAsset` | 🔹 | Filnamn på release-asset att ladda ner (default: `dist.tar.gz`). Ange om din release använder ett annat namn |
 | `installDir` | ✅ | Installationskatalog (`$HOME` expanderas automatiskt) |
+| `runInstallOnRelease` | 🔹 | `true` = kör `npm install --omit=dev` efter uppackning av release. Krävs om motorn har **native-moduler** (t.ex. Bluetooth, sharp) som måste kompileras för Pi:ns arkitektur/Node-version |
 | `installScript` | ✅ | Sökväg relativt repo-root (körs vid fallback-install) |
 | `updateScript` | ✅ | Absolut sökväg (finns efter installation) |
 | `uninstallScript` | ✅ | Sökväg relativt repo-root |
@@ -213,7 +216,7 @@ Din tjänst registreras i `public/services.json`. Det finns två format:
 | `entrypoint` | 🔸 | Sökväg till huvudfil (enbart legacy) |
 | `service` | 🔸 | systemd-tjänstnamn (enbart legacy) |
 
-✅ = krävs alltid · ⭐ = starkt rekommenderat · 🔸 = enbart legacy-format
+✅ = krävs alltid · ⭐ = starkt rekommenderat · 🔹 = valfritt · 🔸 = enbart legacy-format
 
 ### Fältreferens — Komponentnivå
 
@@ -232,9 +235,9 @@ node {installDir}/{entrypoint}
 # PORT sätts automatiskt som miljövariabel
 ```
 
-**`"static"`** — Statisk webbapp (typiskt UI:t):
+**`"static"`** — Statisk webbapp (typiskt UI:t), serveras av Python SPA-server:
 ```bash
-npx serve {installDir}/{entrypoint} -l {port} -s
+python3 /opt/pi-control-center/static-spa-server.py {installDir}/{entrypoint} {port}
 ```
 
 ---
