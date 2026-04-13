@@ -652,8 +652,8 @@ AllowedCPUs=0"
 NoNewPrivileges=true"
       if [ "$comp" = "engine" ] && [ "$comp_type" = "node" ]; then
         comp_security_lines="PrivateTmp=true
-AmbientCapabilities=CAP_NET_RAW
-CapabilityBoundingSet=CAP_NET_RAW"
+AmbientCapabilities=CAP_NET_RAW CAP_NET_ADMIN
+CapabilityBoundingSet=CAP_NET_RAW CAP_NET_ADMIN"
       fi
 
       local comp_svc_file="$PI_HOME/.config/systemd/user/${comp_svc}.service"
@@ -718,8 +718,8 @@ NoNewPrivileges=true"
       done
       exec_start="/usr/bin/node ${install_dir}/${entrypoint}"
       legacy_security_lines="PrivateTmp=true
-AmbientCapabilities=CAP_NET_RAW
-CapabilityBoundingSet=CAP_NET_RAW"
+AmbientCapabilities=CAP_NET_RAW CAP_NET_ADMIN
+CapabilityBoundingSet=CAP_NET_RAW CAP_NET_ADMIN"
     else
       exec_start="/usr/bin/python3 ${PI_HOME}/pi-control-center/public/pi-scripts/static-spa-server.py --root ${install_dir}/dist --port ${req_port} --host 0.0.0.0"
     fi
