@@ -18,8 +18,9 @@
 8. [Uppdateringsflöde](#8-uppdateringsflöde)
 9. [Avinstallation](#9-avinstallation)
 10. [Miljövariabler](#10-miljövariabler)
-11. [Health Endpoint — Standard för motorer](#11-health-endpoint--standard-för-motorer)
-12. [Checklista](#12-checklista)
+11. [CORS — Obligatoriskt för motorer](#11-cors--obligatoriskt-för-motorer)
+12. [Health Endpoint — Standard för motorer](#12-health-endpoint--standard-för-motorer)
+13. [Checklista](#13-checklista)
 
 ---
 
