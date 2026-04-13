@@ -1419,6 +1419,38 @@ if [ "$REQUEST_MODE" = "--run-install" ]; then
   exit $?
 fi
 
+# --- Startup: remove conflicting system-level service files ---
+startup_cleanup_system_services() {
+  local cleaned=0
+  for app in $(registry_keys); do
+    local has_comp svc_names=""
+    has_comp=$(registry_has_components "$app")
+    if [ "$has_comp" = "true" ]; then
+      for comp in engine ui; do
+        local cs
+        cs=$(registry_get_component "$app" "$comp" "service")
+        [ -n "$cs" ] && svc_names="$svc_names $cs"
+      done
+    else
+      local s
+      s=$(registry_get "$app" "service")
+      [ -n "$s" ] && svc_names="$s"
+    fi
+    for svc_name in $svc_names; do
+      local sys_file="/etc/systemd/system/${svc_name}.service"
+      if [ -f "$sys_file" ]; then
+        log "Startup cleanup: removing conflicting system-level service ${sys_file}"
+        sudo systemctl stop "${svc_name}.service" 2>/dev/null || true
+        sudo systemctl disable "${svc_name}.service" 2>/dev/null || true
+        sudo rm -f "$sys_file"
+        cleaned=1
+      fi
+    done
+  done
+  [ "$cleaned" -eq 1 ] && sudo systemctl daemon-reload
+}
+startup_cleanup_system_services
+
 echo "Pi Control Center API listening on port $PORT"
 
 # Start health polling in background
