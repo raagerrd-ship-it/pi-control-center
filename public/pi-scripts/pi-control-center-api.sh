@@ -477,7 +477,9 @@ do_install_release() {
       progress "$sf" "$app" "Kör installationsskript..." "$start_time"
       chmod +x "$install_dir/$install_script"
       find "$install_dir" -name '*.sh' -exec sed -i 's/\r$//' {} +
-      nice -n 15 ionice -c 3 bash "$install_dir/$install_script" --port "$req_port" --core "$req_core" >> "$INSTALL_DIR/${app}.log" 2>&1 || {
+      # Run in a separate cgroup so memory usage doesn't count against the API service's MemoryMax
+      sudo systemd-run --scope --quiet -p MemoryMax=256M \
+        nice -n 15 ionice -c 3 bash "$install_dir/$install_script" --port "$req_port" --core "$req_core" >> "$INSTALL_DIR/${app}.log" 2>&1 || {
         echo "{\"app\":\"${app}\",\"status\":\"error\",\"message\":\"Installationsskript misslyckades\",\"timestamp\":\"$(date -Iseconds)\"}" > "$sf"
         return 1
       }
@@ -651,7 +653,8 @@ do_install() {
     chmod +x "$install_dir/$script"
 
     progress "$sf" "$app" "Kör installationsskript (kan ta flera minuter)..." "$start_time"
-    if ! nice -n 15 ionice -c 3 bash "$install_dir/$script" --port "$req_port" --core "$req_core" >> "$INSTALL_DIR/${app}.log" 2>&1; then
+    if ! sudo systemd-run --scope --quiet -p MemoryMax=256M \
+      nice -n 15 ionice -c 3 bash "$install_dir/$script" --port "$req_port" --core "$req_core" >> "$INSTALL_DIR/${app}.log" 2>&1; then
       echo "{\"app\":\"${app}\",\"status\":\"error\",\"message\":\"Installationsskript misslyckades\",\"timestamp\":\"$(date -Iseconds)\"}" > "$sf"
       return 1
     fi

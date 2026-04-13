@@ -185,6 +185,7 @@ $USER ALL=(ALL) NOPASSWD: /usr/bin/chown *
 $USER ALL=(ALL) NOPASSWD: /usr/bin/rm -rf /opt/*
 $USER ALL=(ALL) NOPASSWD: /usr/bin/mkdir -p /opt/*
 $USER ALL=(ALL) NOPASSWD: /usr/bin/journalctl *
+$USER ALL=(ALL) NOPASSWD: /usr/bin/systemd-run *
 EOF
 sudo chmod 440 /etc/sudoers.d/pi-control-center
 
