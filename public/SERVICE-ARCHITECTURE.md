@@ -98,12 +98,12 @@ Motorn ska kunna köra i veckor utan tillsyn:
 
 ## 2. UI:t — Krav och konfiguration
 
-UI:t är en statisk webbsida som serveras med `npx serve` och pratar med motorn via HTTP.
+UI:t är en statisk webbsida som serveras med en inbyggd **Python-baserad SPA-server** (`static-spa-server.py`) och pratar med motorn via HTTP. Python-servern är extremt minnessnål (~5MB RSS) jämfört med `npx serve` (~40MB) och hanterar SPA-routing automatiskt.
 
 ### Krav
 
 1. **Statisk build** — `npm run build` → `dist/`-katalog
-2. **Serveras med `npx serve`** på `UI_PORT`
+2. **Serveras med Python SPA-server** på `UI_PORT`
 3. **Konfigurerar motor-URL dynamiskt:**
 
 ```javascript
@@ -226,7 +226,7 @@ After=network.target
 [Service]
 Type=simple
 WorkingDirectory=/opt/my-service
-ExecStart=/usr/bin/npx serve dist/ -l 3002 -s
+ExecStart=/usr/bin/python3 /opt/pi-control-center/static-spa-server.py /opt/my-service/dist 3002
 Environment=PORT=3002
 Environment=ENGINE_PORT=3052
 Environment=UI_PORT=3002
@@ -251,7 +251,7 @@ WantedBy=default.target
 |----------|-------|----|
 | `Restart` | `always` — startar om oavsett exit-kod | `on-failure` — startar bara om vid krasch |
 | `PORT` | Vald port + 50 | Vald port |
-| `ExecStart` | `node engine/index.js` | `npx serve dist/ -l {port} -s` |
+| `ExecStart` | `node engine/index.js` | `python3 static-spa-server.py {dir} {port}` |
 
 ---
 
