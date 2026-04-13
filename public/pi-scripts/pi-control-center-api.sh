@@ -1116,17 +1116,19 @@ handle_request() {
 
               export XDG_RUNTIME_DIR="$USER_RUNTIME_DIR"
               export DBUS_SESSION_BUS_ADDRESS="$USER_BUS_ADDRESS"
-              # Restart component-based or legacy services
-              local has_comp_upd
-              has_comp_upd=$(registry_has_components "$app")
-              if [ "$has_comp_upd" = "true" ]; then
-                for comp_upd in engine ui; do
-                  local comp_svc_upd
-                  comp_svc_upd=$(registry_get_component "$app" "$comp_upd" "service")
-                  [ -n "$comp_svc_upd" ] && user_systemctl restart "${comp_svc_upd}.service" 2>> "$update_log" || true
-                done
-              else
-                user_systemctl restart "${svc}.service" 2>> "$update_log" || sudo systemctl restart "${svc}.service" 2>> "$update_log" || true
+              # Restart services (skip if managed: false)
+              if [ "$(registry_is_managed "$app")" != "false" ]; then
+                local has_comp_upd
+                has_comp_upd=$(registry_has_components "$app")
+                if [ "$has_comp_upd" = "true" ]; then
+                  for comp_upd in engine ui; do
+                    local comp_svc_upd
+                    comp_svc_upd=$(registry_get_component "$app" "$comp_upd" "service")
+                    [ -n "$comp_svc_upd" ] && user_systemctl restart "${comp_svc_upd}.service" 2>> "$update_log" || true
+                  done
+                else
+                  user_systemctl restart "${svc}.service" 2>> "$update_log" || sudo systemctl restart "${svc}.service" 2>> "$update_log" || true
+                fi
               fi
 
               updated=true
