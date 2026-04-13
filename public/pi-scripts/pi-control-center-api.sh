@@ -1128,9 +1128,10 @@ handle_request() {
           v_local="${v_local,,}"
         fi
         [ -n "$d_repo_url" ] && v_remote_hash=$(git ls-remote --heads "$d_repo_url" main 2>/dev/null | cut -c1-7)
+        [ -z "$v_remote_hash" ] && [ -n "$d_repo_url" ] && v_remote_hash=$(git ls-remote --heads "$d_repo_url" master 2>/dev/null | cut -c1-7)
         v_has_update="false"
         [ -n "$v_local_hash" ] && [ -n "$v_remote_hash" ] && [ "$v_local_hash" != "$v_remote_hash" ] && v_has_update="true"
-        response="{\"local\":\"${v_local}\",\"remote\":\"\",\"hasUpdate\":${v_has_update}}"
+        response="{\"local\":\"${v_local}\",\"remote\":\"${v_remote_hash}\",\"hasUpdate\":${v_has_update}}"
       else
         v_install_dir=$(eval echo "$(registry_get "$vapp" "installDir")" 2>/dev/null)
         v_repo=$(registry_get "$vapp" "repo" 2>/dev/null)
@@ -1147,9 +1148,10 @@ handle_request() {
             v_local_hash=$(git -C "$v_install_dir" rev-parse --short HEAD 2>/dev/null)
           fi
           v_remote_hash=$(git ls-remote --heads "$v_repo" main 2>/dev/null | cut -c1-7)
+          [ -z "$v_remote_hash" ] && v_remote_hash=$(git ls-remote --heads "$v_repo" master 2>/dev/null | cut -c1-7)
           v_has_update="false"
           [ -n "$v_local_hash" ] && [ -n "$v_remote_hash" ] && [ "$v_local_hash" != "$v_remote_hash" ] && v_has_update="true"
-          response="{\"local\":\"${v_local}\",\"remote\":\"\",\"hasUpdate\":${v_has_update}}"
+          response="{\"local\":\"${v_local}\",\"remote\":\"${v_remote_hash}\",\"hasUpdate\":${v_has_update}}"
         fi
       fi
       ;;
@@ -1170,10 +1172,11 @@ handle_request() {
           local_hash=$(git -C "$install_dir" rev-parse --short HEAD 2>/dev/null)
         fi
         remote_hash=$(git ls-remote --heads "$repo" main 2>/dev/null | cut -c1-7)
+        [ -z "$remote_hash" ] && remote_hash=$(git ls-remote --heads "$repo" master 2>/dev/null | cut -c1-7)
         [ -n "$vj" ] && vj="${vj},"
         has_update="false"
         [ -n "$local_hash" ] && [ -n "$remote_hash" ] && [ "$local_hash" != "$remote_hash" ] && has_update="true"
-        vj="${vj}\"${app}\":{\"local\":\"${local_v}\",\"remote\":\"\",\"hasUpdate\":${has_update}}"
+        vj="${vj}\"${app}\":{\"local\":\"${local_v}\",\"remote\":\"${remote_hash}\",\"hasUpdate\":${has_update}}"
       done
 
       local d_local d_hash d_remote_hash d_update d_repo_url
@@ -1181,20 +1184,18 @@ handle_request() {
       d_hash=""
       d_remote_hash=""
       local ddir2="$PI_HOME/pi-control-center"
-      # Read repo URL from git config file directly (avoids git safe.directory issues)
       d_repo_url=$(grep -A1 '\[remote "origin"\]' "$ddir2/.git/config" 2>/dev/null | grep 'url' | sed 's/.*= //')
       if [ -d "$ddir2/.git" ]; then
-        # Read local hash directly from git files to avoid safe.directory
         d_hash=$(cat "$ddir2/.git/refs/heads/main" 2>/dev/null || cat "$ddir2/.git/refs/heads/master" 2>/dev/null)
         d_hash=${d_hash:0:7}
-        # Read local date via git log as pi user
         d_local=$(sudo -u pi git -C "$ddir2" log -1 --format='%cd' --date=format:'%-d %b' 2>/dev/null)
         d_local="${d_local,,}"
       fi
       [ -n "$d_repo_url" ] && d_remote_hash=$(git ls-remote --heads "$d_repo_url" main 2>/dev/null | cut -c1-7)
+      [ -z "$d_remote_hash" ] && [ -n "$d_repo_url" ] && d_remote_hash=$(git ls-remote --heads "$d_repo_url" master 2>/dev/null | cut -c1-7)
       d_update="false"
       [ -n "$d_hash" ] && [ -n "$d_remote_hash" ] && [ "$d_hash" != "$d_remote_hash" ] && d_update="true"
-      vj="${vj},\"dashboard\":{\"local\":\"${d_local}\",\"remote\":\"\",\"hasUpdate\":${d_update}}"
+      vj="${vj},\"dashboard\":{\"local\":\"${d_local}\",\"remote\":\"${d_remote_hash}\",\"hasUpdate\":${d_update}}"
       response="{${vj}}"
       ;;
 
