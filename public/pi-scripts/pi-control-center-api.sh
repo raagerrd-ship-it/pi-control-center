@@ -736,6 +736,16 @@ CapabilityBoundingSet=CAP_NET_RAW CAP_NET_ADMIN"
 
     # Remove any root-owned service file left by installScript (which runs via sudo)
     [ -f "$svc_file" ] && [ ! -w "$svc_file" ] && sudo rm -f "$svc_file"
+
+    # Remove conflicting system-level service file that overrides user-level
+    local sys_svc_file="/etc/systemd/system/${svc}.service"
+    if [ -f "$sys_svc_file" ]; then
+      log "Removing conflicting system-level service: ${sys_svc_file}"
+      sudo systemctl stop "${svc}.service" 2>/dev/null || true
+      sudo systemctl disable "${svc}.service" 2>/dev/null || true
+      sudo rm -f "$sys_svc_file"
+      sudo systemctl daemon-reload
+    fi
     cat > "$svc_file" <<UNIT
 [Unit]
 Description=${app} service
