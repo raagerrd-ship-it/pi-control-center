@@ -648,6 +648,14 @@ AllowedCPUs=${req_core}"
 AllowedCPUs=0"
       fi
 
+      local comp_security_lines="PrivateTmp=true
+NoNewPrivileges=true"
+      if [ "$comp" = "engine" ] && [ "$comp_type" = "node" ]; then
+        comp_security_lines="PrivateTmp=true
+AmbientCapabilities=CAP_NET_RAW
+CapabilityBoundingSet=CAP_NET_RAW"
+      fi
+
       local comp_svc_file="$PI_HOME/.config/systemd/user/${comp_svc}.service"
       # Remove any root-owned service file left by installScript (which runs via sudo)
       [ -f "$comp_svc_file" ] && [ ! -w "$comp_svc_file" ] && sudo rm -f "$comp_svc_file"
@@ -669,8 +677,7 @@ MemoryMax=128M
 ProtectSystem=strict
 ProtectHome=read-only
 ReadWritePaths=${install_dir}
-PrivateTmp=true
-NoNewPrivileges=true
+${comp_security_lines}
 Restart=${restart_policy}
 RestartSec=5
 
@@ -696,6 +703,8 @@ UNIT
 
     # Determine working directory from entrypoint's package.json location
     local legacy_work_dir="${install_dir}"
+    local legacy_security_lines="PrivateTmp=true
+NoNewPrivileges=true"
     if [ "$app_type" = "node" ] && [ -n "$entrypoint" ]; then
       local entry_dir
       entry_dir=$(dirname "$entrypoint")
@@ -708,6 +717,9 @@ UNIT
         search_dir=$(dirname "$search_dir")
       done
       exec_start="/usr/bin/node ${install_dir}/${entrypoint}"
+      legacy_security_lines="PrivateTmp=true
+AmbientCapabilities=CAP_NET_RAW
+CapabilityBoundingSet=CAP_NET_RAW"
     else
       exec_start="/usr/bin/python3 ${PI_HOME}/pi-control-center/public/pi-scripts/static-spa-server.py --root ${install_dir}/dist --port ${req_port} --host 0.0.0.0"
     fi
@@ -731,8 +743,7 @@ MemoryMax=128M
 ProtectSystem=strict
 ProtectHome=read-only
 ReadWritePaths=${install_dir}
-PrivateTmp=true
-NoNewPrivileges=true
+${legacy_security_lines}
 Restart=on-failure
 RestartSec=5
 
