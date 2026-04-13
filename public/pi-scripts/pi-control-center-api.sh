@@ -143,6 +143,8 @@ poll_engine_health() {
 }
 
 health_poll_loop() {
+  # Also clean up stale status files (update/install) older than 10 minutes
+  local cleanup_counter=0
   while true; do
     for app in $(registry_keys); do
       local has_comp port engine_port engine_svc engine_active
@@ -166,6 +168,12 @@ health_poll_loop() {
       fi
     done
     sleep 30
+    # Run cleanup every ~5 minutes (every 10th iteration × 30s)
+    cleanup_counter=$((cleanup_counter + 1))
+    if [ $((cleanup_counter % 10)) -eq 0 ]; then
+      find "$STATUS_DIR" -maxdepth 1 -name '*.json' ! -name 'status-cache.json' ! -name 'factory-reset.json' -mmin +10 -delete 2>/dev/null
+      find "$INSTALL_DIR" -maxdepth 1 -name '*.json' -mmin +10 -delete 2>/dev/null
+    fi
   done
 }
 
