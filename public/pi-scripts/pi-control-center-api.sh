@@ -1174,17 +1174,22 @@ handle_request() {
         vj="${vj}\"${app}\":{\"local\":\"${local_v}\",\"remote\":\"\",\"hasUpdate\":${has_update}}"
       done
 
-      local d_local d_hash d_remote_hash d_update
+      local d_local d_hash d_remote_hash d_update d_repo_url
       d_local=""
       d_hash=""
       d_remote_hash=""
       local ddir2="$PI_HOME/pi-control-center"
+      # Read repo URL from git config file directly (avoids git safe.directory issues)
+      d_repo_url=$(grep -A1 '\[remote "origin"\]' "$ddir2/.git/config" 2>/dev/null | grep 'url' | sed 's/.*= //')
       if [ -d "$ddir2/.git" ]; then
-        d_local=$(git -C "$ddir2" log -1 --format='%cd' --date=format:'%-d %b' 2>/dev/null)
+        # Read local hash directly from git files to avoid safe.directory
+        d_hash=$(cat "$ddir2/.git/refs/heads/main" 2>/dev/null || cat "$ddir2/.git/refs/heads/master" 2>/dev/null)
+        d_hash=${d_hash:0:7}
+        # Read local date via git log as pi user
+        d_local=$(sudo -u pi git -C "$ddir2" log -1 --format='%cd' --date=format:'%-d %b' 2>/dev/null)
         d_local="${d_local,,}"
-        d_hash=$(git -C "$ddir2" rev-parse --short HEAD 2>/dev/null)
       fi
-      d_remote_hash=$(git ls-remote --heads "$(git -C "$ddir2" remote get-url origin 2>/dev/null)" main 2>/dev/null | cut -c1-7)
+      [ -n "$d_repo_url" ] && d_remote_hash=$(git ls-remote --heads "$d_repo_url" main 2>/dev/null | cut -c1-7)
       d_update="false"
       [ -n "$d_hash" ] && [ -n "$d_remote_hash" ] && [ "$d_hash" != "$d_remote_hash" ] && d_update="true"
       vj="${vj},\"dashboard\":{\"local\":\"${d_local}\",\"remote\":\"\",\"hasUpdate\":${d_update}}"
