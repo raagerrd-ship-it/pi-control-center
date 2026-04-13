@@ -884,6 +884,10 @@ handle_request() {
 
         cd "$ddir" 2>/dev/null || { dashboard_fail "Dashboard-katalog saknas"; exit 1; }
 
+        dashboard_progress "Återställer lokala ändringar..."
+        git checkout -- . 2>/dev/null || true
+        git clean -fd -e node_modules >/dev/null 2>&1 || true
+
         dashboard_progress "Hämtar senaste kod..."
         nice -n 15 git fetch origin main --depth=1 --quiet 2>/dev/null || nice -n 15 git fetch origin master --depth=1 --quiet 2>/dev/null || { dashboard_fail "Git fetch misslyckades"; exit 1; }
         git rev-parse origin/main >/dev/null 2>&1 || remote_ref="origin/master"
