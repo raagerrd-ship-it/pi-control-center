@@ -564,7 +564,7 @@ do_install_release() {
       if [ "$comp_type" = "node" ] && [ -n "$comp_entry" ]; then
         comp_exec="/usr/bin/node ${install_dir}/${comp_entry}"
       else
-        comp_exec="/usr/bin/npx serve ${comp_entry:-dist} -l ${comp_port} -s"
+        comp_exec="/usr/bin/npx --yes serve ${comp_entry:-dist} -l ${comp_port} -s"
       fi
 
       local restart_policy="on-failure"
@@ -603,7 +603,7 @@ UNIT
 
       user_systemctl daemon-reload || return 1
       user_systemctl enable "${comp_svc}.service" || return 1
-      user_systemctl start "${comp_svc}.service" || return 1
+      user_systemctl --no-block start "${comp_svc}.service" || return 1
     done
   else
     # Legacy single-service
@@ -616,7 +616,7 @@ UNIT
     if [ "$app_type" = "node" ] && [ -n "$entrypoint" ]; then
       exec_start="/usr/bin/node ${install_dir}/${entrypoint}"
     else
-      exec_start="/usr/bin/npx serve dist -l ${req_port} -s"
+      exec_start="/usr/bin/npx --yes serve dist -l ${req_port} -s"
     fi
 
     cat > "$svc_file" <<UNIT
@@ -646,7 +646,7 @@ UNIT
 
     user_systemctl daemon-reload
     user_systemctl enable "${svc}.service"
-    user_systemctl start "${svc}.service"
+    user_systemctl --no-block start "${svc}.service"
   fi
 
   return 0
