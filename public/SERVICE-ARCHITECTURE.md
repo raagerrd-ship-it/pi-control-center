@@ -146,14 +146,28 @@ UI:t ska **aldrig** ha egen affärslogik. All data hämtas från motorn via HTTP
   webbläsaren                             integrationer
 ```
 
-### CORS
+### CORS — Obligatoriskt
 
-Motorn måste tillåta requests från UI:ts port:
+Eftersom UI:t serveras av en separat Python-server på en **annan port** än motorn, krävs CORS-headers på **alla svar**. Utan CORS blockerar webbläsaren alla API-anrop.
 
 ```javascript
+// Med cors-paketet (rekommenderat)
 import cors from 'cors';
-app.use(cors());  // Tillåt alla origins (ok i lokalt nätverk)
+app.use(cors());  // Tillåt alla origins — säkert i lokalt nätverk
 ```
+
+```javascript
+// Utan cors-paketet
+app.use((req, res, next) => {
+  res.header('Access-Control-Allow-Origin', '*');
+  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+  res.header('Access-Control-Allow-Headers', 'Content-Type');
+  if (req.method === 'OPTIONS') return res.sendStatus(204);
+  next();
+});
+```
+
+> **Se [SERVICE-INTEGRATION.md §11](./SERVICE-INTEGRATION.md#11-cors--obligatoriskt-för-motorer)** för fullständig CORS-dokumentation med felsökningstips.
 
 ### Realtidsuppdateringar (valfritt)
 
