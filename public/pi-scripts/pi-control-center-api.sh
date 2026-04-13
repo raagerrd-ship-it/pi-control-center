@@ -667,7 +667,19 @@ UNIT
     mkdir -p "$PI_HOME/.config/systemd/user"
     mkdir -p "${install_dir}/.npm-cache"
 
+    # Determine working directory from entrypoint's package.json location
+    local legacy_work_dir="${install_dir}"
     if [ "$app_type" = "node" ] && [ -n "$entrypoint" ]; then
+      local entry_dir
+      entry_dir=$(dirname "$entrypoint")
+      local search_dir="${install_dir}/${entry_dir}"
+      while [ "$search_dir" != "$install_dir" ] && [ "$search_dir" != "/" ]; do
+        if [ -f "${search_dir}/package.json" ]; then
+          legacy_work_dir="$search_dir"
+          break
+        fi
+        search_dir=$(dirname "$search_dir")
+      done
       exec_start="/usr/bin/node ${install_dir}/${entrypoint}"
     else
       exec_start="/usr/bin/python3 ${PI_HOME}/pi-control-center/public/pi-scripts/static-spa-server.py --root ${install_dir}/dist --port ${req_port} --host 0.0.0.0"
