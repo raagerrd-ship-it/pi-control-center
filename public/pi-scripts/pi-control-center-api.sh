@@ -32,10 +32,10 @@ sudo mkdir -p /etc/pi-control-center 2>/dev/null || true
 DASHBOARD_COMMIT=""
 DASHBOARD_COMMIT_SHORT=""
 DASHBOARD_BRANCH=""
-if [ -d "$HOME/pi-control-center/.git" ]; then
-  DASHBOARD_COMMIT=$(git -C "$HOME/pi-control-center" rev-parse HEAD 2>/dev/null || echo "")
-  DASHBOARD_COMMIT_SHORT=$(git -C "$HOME/pi-control-center" rev-parse --short HEAD 2>/dev/null || echo "")
-  DASHBOARD_BRANCH=$(git -C "$HOME/pi-control-center" rev-parse --abbrev-ref HEAD 2>/dev/null || echo "")
+if [ -d "$PI_HOME/pi-control-center/.git" ]; then
+  DASHBOARD_COMMIT=$(git -C "$PI_HOME/pi-control-center" rev-parse HEAD 2>/dev/null || echo "")
+  DASHBOARD_COMMIT_SHORT=$(git -C "$PI_HOME/pi-control-center" rev-parse --short HEAD 2>/dev/null || echo "")
+  DASHBOARD_BRANCH=$(git -C "$PI_HOME/pi-control-center" rev-parse --abbrev-ref HEAD 2>/dev/null || echo "")
 fi
 
 # Initialize assignments file if missing
@@ -237,7 +237,7 @@ check_installed() {
   local install_dir=$2
   local svc=$3
 
-  [ -d "$install_dir" ] && { [ -f "$HOME/.config/systemd/user/${svc}.service" ] || [ -f "/etc/systemd/system/${svc}.service" ]; } && echo "true" || echo "false"
+  [ -d "$install_dir" ] && { [ -f "$PI_HOME/.config/systemd/user/${svc}.service" ] || [ -f "/etc/systemd/system/${svc}.service" ]; } && echo "true" || echo "false"
 }
 
 get_version() {
@@ -344,8 +344,8 @@ build_status_json() {
       # Check installed: need install_dir + at least one service file
       installed="false"
       if [ -d "$install_dir" ]; then
-        { [ -n "$engine_svc" ] && [ -f "$HOME/.config/systemd/user/${engine_svc}.service" ]; } || \
-        { [ -n "$ui_svc" ] && [ -f "$HOME/.config/systemd/user/${ui_svc}.service" ]; } && installed="true"
+        { [ -n "$engine_svc" ] && [ -f "$PI_HOME/.config/systemd/user/${engine_svc}.service" ]; } || \
+        { [ -n "$ui_svc" ] && [ -f "$PI_HOME/.config/systemd/user/${ui_svc}.service" ]; } && installed="true"
       fi
 
       ver=$(get_version "$install_dir" "$port")
@@ -517,7 +517,7 @@ do_install_release() {
     # Component-based: create separate services for engine and ui
     # Engine port = UI port + 50 (e.g. UI=3002 → Engine=3052)
     local engine_port=$((req_port + 50))
-    mkdir -p "$HOME/.config/systemd/user" || return 1
+    mkdir -p "$PI_HOME/.config/systemd/user" || return 1
 
     for comp in engine ui; do
       local comp_type comp_entry comp_svc comp_always_on comp_exec comp_port
@@ -544,7 +544,7 @@ do_install_release() {
       local restart_policy="on-failure"
       [ "$comp_always_on" = "true" ] && restart_policy="always"
 
-      local comp_svc_file="$HOME/.config/systemd/user/${comp_svc}.service"
+      local comp_svc_file="$PI_HOME/.config/systemd/user/${comp_svc}.service"
       if ! cat > "$comp_svc_file" <<UNIT
 [Unit]
 Description=${app} ${comp} service
@@ -581,11 +581,11 @@ UNIT
     done
   else
     # Legacy single-service
-    local svc_file="$HOME/.config/systemd/user/${svc}.service"
+    local svc_file="$PI_HOME/.config/systemd/user/${svc}.service"
     local app_type entrypoint exec_start
     app_type=$(registry_get "$app" "type")
     entrypoint=$(registry_get "$app" "entrypoint")
-    mkdir -p "$HOME/.config/systemd/user"
+    mkdir -p "$PI_HOME/.config/systemd/user"
 
     if [ "$app_type" = "node" ] && [ -n "$entrypoint" ]; then
       exec_start="/usr/bin/node ${install_dir}/${entrypoint}"
@@ -711,14 +711,14 @@ do_uninstall() {
       [ -z "$comp_svc" ] && continue
       user_systemctl stop "${comp_svc}.service" 2>/dev/null || true
       user_systemctl disable "${comp_svc}.service" 2>/dev/null || true
-      rm -f "$HOME/.config/systemd/user/${comp_svc}.service" 2>/dev/null || true
+      rm -f "$PI_HOME/.config/systemd/user/${comp_svc}.service" 2>/dev/null || true
     done
   else
     # Legacy single service
     sudo systemctl stop "${svc}.service" 2>/dev/null || user_systemctl stop "${svc}.service" 2>/dev/null || true
     sudo systemctl disable "${svc}.service" 2>/dev/null || user_systemctl disable "${svc}.service" 2>/dev/null || true
     sudo rm -f "/etc/systemd/system/${svc}.service" 2>/dev/null || true
-    rm -f "$HOME/.config/systemd/user/${svc}.service" 2>/dev/null || true
+    rm -f "$PI_HOME/.config/systemd/user/${svc}.service" 2>/dev/null || true
   fi
 
   # Run uninstall script if it exists
@@ -856,7 +856,7 @@ handle_request() {
     "POST /api/update/dashboard")
       local sf ddir ndir dashboard_log remote_ref start_time
       sf="$STATUS_DIR/dashboard.json"
-      ddir="$HOME/pi-control-center"
+      ddir="$PI_HOME/pi-control-center"
       ndir="/var/www/pi-control-center"
       dashboard_log="$STATUS_DIR/dashboard.log"
       remote_ref="origin/main"
@@ -1118,8 +1118,8 @@ handle_request() {
         v_local=""
         v_local_hash=""
         v_remote_hash=""
-        local ddir="$HOME/pi-control-center"
-        [ ! -d "$ddir" ] && ddir="$HOME/pi-control-center"
+        local ddir="$PI_HOME/pi-control-center"
+        [ ! -d "$ddir" ] && ddir="$PI_HOME/pi-control-center"
         if [ -d "$ddir/.git" ]; then
           v_local=$(git -C "$ddir" log -1 --format='%cd' --date=format:'%-d %b' 2>/dev/null)
           v_local="${v_local,,}"
@@ -1178,7 +1178,7 @@ handle_request() {
       d_local=""
       d_hash=""
       d_remote_hash=""
-      local ddir2="$HOME/pi-control-center"
+      local ddir2="$PI_HOME/pi-control-center"
       if [ -d "$ddir2/.git" ]; then
         d_local=$(git -C "$ddir2" log -1 --format='%cd' --date=format:'%-d %b' 2>/dev/null)
         d_local="${d_local,,}"
