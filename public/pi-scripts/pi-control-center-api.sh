@@ -692,7 +692,7 @@ After=network.target
 
 [Service]
 Type=simple
-WorkingDirectory=${install_dir}
+WorkingDirectory=${legacy_work_dir}
 ExecStart=${exec_start}
 Environment=NPM_CONFIG_CACHE=${install_dir}/.npm-cache
 Environment=PORT=${req_port}
