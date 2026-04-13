@@ -699,6 +699,8 @@ UNIT
       exec_start="/usr/bin/python3 ${PI_HOME}/pi-control-center/public/pi-scripts/static-spa-server.py --root ${install_dir}/dist --port ${req_port} --host 0.0.0.0"
     fi
 
+    # Remove any root-owned service file left by installScript (which runs via sudo)
+    [ -f "$svc_file" ] && [ ! -w "$svc_file" ] && sudo rm -f "$svc_file"
     cat > "$svc_file" <<UNIT
 [Unit]
 Description=${app} service
