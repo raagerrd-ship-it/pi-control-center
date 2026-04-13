@@ -567,61 +567,13 @@ do_install_release() {
       if [ "$comp_type" = "node" ] && [ -n "$comp_entry" ]; then
         comp_exec="/usr/bin/node ${install_dir}/${comp_entry}"
       else
-        comp_exec="/usr/bin/npx --yes serve ${comp_entry:-dist} -l ${comp_port} -s"
+        comp_exec="/usr/bin/python3 ${PI_HOME}/pi-control-center/public/pi-scripts/static-spa-server.py --root ${install_dir}/${comp_entry:-dist} --port ${comp_port} --host 0.0.0.0"
       fi
-
-      local restart_policy="on-failure"
-      [ "$comp_always_on" = "true" ] && restart_policy="always"
-
-      local comp_svc_file="$PI_HOME/.config/systemd/user/${comp_svc}.service"
-      if ! cat > "$comp_svc_file" <<UNIT
-[Unit]
-Description=${app} ${comp} service
-After=network.target
-
-[Service]
-Type=simple
-WorkingDirectory=${install_dir}
-ExecStart=${comp_exec}
-Environment=NPM_CONFIG_CACHE=${install_dir}/.npm-cache
-Environment=PORT=${comp_port}
-Environment=ENGINE_PORT=${engine_port}
-Environment=UI_PORT=${req_port}
-CPUAffinity=${req_core}
-AllowedCPUs=${req_core}
-MemoryMax=128M
-ProtectSystem=strict
-ProtectHome=read-only
-ReadWritePaths=${install_dir}
-PrivateTmp=true
-NoNewPrivileges=true
-Restart=${restart_policy}
-RestartSec=5
-
-[Install]
-WantedBy=default.target
-UNIT
-      then
-        return 1
-      fi
-
-      user_systemctl daemon-reload || return 1
-      user_systemctl enable "${comp_svc}.service" || return 1
-      user_systemctl --no-block start "${comp_svc}.service" || return 1
-    done
-  else
-    # Legacy single-service
-    local svc_file="$PI_HOME/.config/systemd/user/${svc}.service"
-    local app_type entrypoint exec_start
-    app_type=$(registry_get "$app" "type")
-    entrypoint=$(registry_get "$app" "entrypoint")
-    mkdir -p "$PI_HOME/.config/systemd/user"
-    mkdir -p "${install_dir}/.npm-cache"
-
+...
     if [ "$app_type" = "node" ] && [ -n "$entrypoint" ]; then
       exec_start="/usr/bin/node ${install_dir}/${entrypoint}"
     else
-      exec_start="/usr/bin/npx --yes serve dist -l ${req_port} -s"
+      exec_start="/usr/bin/python3 ${PI_HOME}/pi-control-center/public/pi-scripts/static-spa-server.py --root ${install_dir}/dist --port ${req_port} --host 0.0.0.0"
     fi
 
     cat > "$svc_file" <<UNIT
