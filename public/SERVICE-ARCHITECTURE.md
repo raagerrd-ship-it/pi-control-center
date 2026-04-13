@@ -157,7 +157,7 @@ app.use(cors());  // Tillåt alla origins (ok i lokalt nätverk)
 
 ### Realtidsuppdateringar (valfritt)
 
-Använd **Server-Sent Events (SSE)** istället för WebSockets — lättare och fungerar bättre med `npx serve`:
+Använd **Server-Sent Events (SSE)** istället för WebSockets — lättare och enklare att implementera:
 
 ```javascript
 // Motor
@@ -296,7 +296,7 @@ my-service/
 │   │   ├── App.tsx
 │   │   ├── config.ts          # API_BASE = hostname:ENGINE_PORT
 │   │   └── ...
-│   ├── dist/                  # Byggs av CI → serveras av npx serve
+│   ├── dist/                  # Byggs av CI → serveras av Python SPA-server
 │   └── package.json
 ├── scripts/
 │   ├── install.sh             # Fallback-installation
