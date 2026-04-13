@@ -262,6 +262,20 @@ service_is_active() {
   fi
 }
 
+get_service_pid() {
+  local svc=$1 pid
+  pid=$(user_systemctl show "$svc.service" --property=MainPID 2>/dev/null | cut -d= -f2)
+  if [ -z "$pid" ] || [ "$pid" = "0" ]; then
+    pid=$(systemctl show "$svc.service" --property=MainPID 2>/dev/null | cut -d= -f2)
+  fi
+
+  if [ -n "$pid" ] && [ "$pid" != "0" ]; then
+    echo "$pid"
+  else
+    echo ""
+  fi
+}
+
 check_installed() {
   local app=$1
   local install_dir=$2
@@ -318,10 +332,7 @@ get_service_ram() {
     echo $((val / 1048576))
   else
     # Fallback: read VmRSS from /proc/<PID>/status
-    pid=$(user_systemctl show "$1.service" --property=MainPID 2>/dev/null | cut -d= -f2)
-    if [ -z "$pid" ] || [ "$pid" = "0" ]; then
-      pid=$(systemctl show "$1.service" --property=MainPID 2>/dev/null | cut -d= -f2)
-    fi
+    pid=$(get_service_pid "$1")
     if [ -n "$pid" ] && [ "$pid" != "0" ] && [ -f "/proc/$pid/status" ]; then
       val=$(grep '^VmRSS:' "/proc/$pid/status" 2>/dev/null | awk '{print $2}')
       if [ -n "$val" ] && [ "$val" -gt 0 ] 2>/dev/null; then
@@ -360,26 +371,34 @@ build_status_json() {
 
     # For component-based services, check if ANY component is active
     if [ "$has_comp" = "true" ]; then
-      local engine_svc ui_svc engine_online ui_online engine_cpu engine_ram ui_cpu ui_ram engine_ver ui_ver
+      local engine_svc ui_svc engine_online ui_online engine_cpu engine_ram ui_cpu ui_ram engine_ver ui_ver engine_port
       engine_svc=$(registry_get_component "$app" "engine" "service")
       ui_svc=$(registry_get_component "$app" "ui" "service")
+      engine_port=$((port + 50))
       engine_online="false"; ui_online="false"
       engine_cpu=0; engine_ram=0; ui_cpu=0; ui_ram=0
       engine_ver=""; ui_ver=""
 
       [ -n "$engine_svc" ] && engine_online=$(service_is_active "$engine_svc")
+      if [ "$engine_online" != "true" ] && [ "$engine_port" -gt 0 ] 2>/dev/null; then
+        engine_online=$(check_service "$engine_port")
+      fi
+
       [ -n "$ui_svc" ] && ui_online=$(service_is_active "$ui_svc")
+      if [ "$ui_online" != "true" ] && [ "$port" -gt 0 ] 2>/dev/null; then
+        ui_online=$(check_service "$port")
+      fi
 
       if [ "$engine_online" = "true" ] && [ -n "$engine_svc" ]; then
         engine_ram=$(get_service_ram "$engine_svc")
         local epid
-        epid=$(user_systemctl show "${engine_svc}.service" --property=MainPID 2>/dev/null | cut -d= -f2)
+        epid=$(get_service_pid "$engine_svc")
         [ -n "$epid" ] && [ "$epid" != "0" ] && engine_cpu=$(ps -p "$epid" -o %cpu= 2>/dev/null | tr -d ' ' || echo "0")
       fi
       if [ "$ui_online" = "true" ] && [ -n "$ui_svc" ]; then
         ui_ram=$(get_service_ram "$ui_svc")
         local upid
-        upid=$(user_systemctl show "${ui_svc}.service" --property=MainPID 2>/dev/null | cut -d= -f2)
+        upid=$(get_service_pid "$ui_svc")
         [ -n "$upid" ] && [ "$upid" != "0" ] && ui_cpu=$(ps -p "$upid" -o %cpu= 2>/dev/null | tr -d ' ' || echo "0")
       fi
 
@@ -394,7 +413,6 @@ build_status_json() {
       fi
 
       # Use engine port for version check (UI port serves static HTML, not API)
-      local engine_port=$((port + 50))
       ver=$(get_version "$install_dir" "$engine_port")
       engine_ver="$ver"; ui_ver="$ver"
 
@@ -427,10 +445,7 @@ build_status_json() {
 
       if [ "$online" = "true" ]; then
         s_ram=$(get_service_ram "$svc")
-        pid=$(systemctl show "${svc}.service" --property=MainPID 2>/dev/null | cut -d= -f2)
-        if [ -z "$pid" ] || [ "$pid" = "0" ]; then
-          pid=$(user_systemctl show "${svc}.service" --property=MainPID 2>/dev/null | cut -d= -f2)
-        fi
+        pid=$(get_service_pid "$svc")
         if [ -n "$pid" ] && [ "$pid" != "0" ]; then
           s_cpu=$(ps -p "$pid" -o %cpu= 2>/dev/null | tr -d ' ' || echo "0")
           aff=$(taskset -p "$pid" 2>/dev/null | awk '{print $NF}')
