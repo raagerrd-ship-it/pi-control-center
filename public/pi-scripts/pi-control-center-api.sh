@@ -86,6 +86,13 @@ registry_keys() {
   jq -r '.[].key' "$REGISTRY_FILE" 2>/dev/null
 }
 
+# Check if a service is managed by PCC (defaults to true if field absent)
+registry_is_managed() {
+  local val
+  val=$(jq -r --arg k "$1" '.[] | select(.key == $k) | .managed // true' "$REGISTRY_FILE" 2>/dev/null)
+  [ "$val" != "false" ] && echo "true" || echo "false"
+}
+
 # Get assignment field: assignment_get <key> <field>
 assignment_get() {
   jq -r --arg k "$1" --arg f "$2" '.[$k][$f] // empty' "$ASSIGNMENTS_FILE" 2>/dev/null
@@ -570,6 +577,12 @@ do_install_release() {
       sudo systemd-run --scope --quiet -p MemoryMax=256M \
         nice -n 15 ionice -c 3 bash "$install_dir/$install_script" --port "$req_port" --core "$req_core" >> "$INSTALL_DIR/${app}.log" 2>&1 || true
     fi
+  fi
+
+  # Skip systemd service generation if managed: false
+  if [ "$(registry_is_managed "$app")" = "false" ]; then
+    progress "$sf" "$app" "Hanteras externt – hoppar över systemd-service..." "$start_time"
+    return 0
   fi
 
   progress "$sf" "$app" "Skapar systemd-service..." "$start_time"
@@ -1103,17 +1116,19 @@ handle_request() {
 
               export XDG_RUNTIME_DIR="$USER_RUNTIME_DIR"
               export DBUS_SESSION_BUS_ADDRESS="$USER_BUS_ADDRESS"
-              # Restart component-based or legacy services
-              local has_comp_upd
-              has_comp_upd=$(registry_has_components "$app")
-              if [ "$has_comp_upd" = "true" ]; then
-                for comp_upd in engine ui; do
-                  local comp_svc_upd
-                  comp_svc_upd=$(registry_get_component "$app" "$comp_upd" "service")
-                  [ -n "$comp_svc_upd" ] && user_systemctl restart "${comp_svc_upd}.service" 2>> "$update_log" || true
-                done
-              else
-                user_systemctl restart "${svc}.service" 2>> "$update_log" || sudo systemctl restart "${svc}.service" 2>> "$update_log" || true
+              # Restart services (skip if managed: false)
+              if [ "$(registry_is_managed "$app")" != "false" ]; then
+                local has_comp_upd
+                has_comp_upd=$(registry_has_components "$app")
+                if [ "$has_comp_upd" = "true" ]; then
+                  for comp_upd in engine ui; do
+                    local comp_svc_upd
+                    comp_svc_upd=$(registry_get_component "$app" "$comp_upd" "service")
+                    [ -n "$comp_svc_upd" ] && user_systemctl restart "${comp_svc_upd}.service" 2>> "$update_log" || true
+                  done
+                else
+                  user_systemctl restart "${svc}.service" 2>> "$update_log" || sudo systemctl restart "${svc}.service" 2>> "$update_log" || true
+                fi
               fi
 
               updated=true
