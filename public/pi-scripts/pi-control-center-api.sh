@@ -1289,22 +1289,34 @@ handle_request() {
       local vj
       vj=""
       for app in $(registry_keys); do
-        local install_dir repo local_v local_hash remote_hash has_update
+        local install_dir repo local_v local_hash remote_hash has_update rel_url
         install_dir=$(eval echo "$(registry_get "$app" "installDir")")
         repo=$(registry_get "$app" "repo")
+        rel_url=$(registry_get "$app" "releaseUrl")
         local_v=""
         local_hash=""
         remote_hash=""
-        if [ -d "$install_dir/.git" ]; then
+        has_update="false"
+
+        if [ -f "$install_dir/VERSION.json" ]; then
+          # Release-based install
+          local_hash=$(jq -r '.tag // .version // empty' "$install_dir/VERSION.json" 2>/dev/null)
+          local_v=$(jq -r '.version // .tag // empty' "$install_dir/VERSION.json" 2>/dev/null)
+          if [ -n "$rel_url" ]; then
+            remote_hash=$(curl -sf --max-time 10 "$rel_url" 2>/dev/null | jq -r '.tag_name // empty' 2>/dev/null)
+          fi
+          [ -n "$local_hash" ] && [ -n "$remote_hash" ] && [ "$local_hash" != "$remote_hash" ] && has_update="true"
+        elif [ -d "$install_dir/.git" ]; then
+          # Legacy git-based install
           local_v=$(git -C "$install_dir" log -1 --format='%cd' --date=format:'%-d %b' 2>/dev/null)
           local_v="${local_v,,}"
           local_hash=$(git -C "$install_dir" rev-parse --short HEAD 2>/dev/null)
+          remote_hash=$(git ls-remote --heads "$repo" main 2>/dev/null | cut -c1-7)
+          [ -z "$remote_hash" ] && remote_hash=$(git ls-remote --heads "$repo" master 2>/dev/null | cut -c1-7)
+          [ -n "$local_hash" ] && [ -n "$remote_hash" ] && [ "$local_hash" != "$remote_hash" ] && has_update="true"
         fi
-        remote_hash=$(git ls-remote --heads "$repo" main 2>/dev/null | cut -c1-7)
-        [ -z "$remote_hash" ] && remote_hash=$(git ls-remote --heads "$repo" master 2>/dev/null | cut -c1-7)
+
         [ -n "$vj" ] && vj="${vj},"
-        has_update="false"
-        [ -n "$local_hash" ] && [ -n "$remote_hash" ] && [ "$local_hash" != "$remote_hash" ] && has_update="true"
         vj="${vj}\"${app}\":{\"local\":\"${local_v}\",\"remote\":\"${remote_hash}\",\"hasUpdate\":${has_update}}"
       done
 
