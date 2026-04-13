@@ -18,8 +18,8 @@
         "alwaysOn": true
       },
       "ui": {
-        "type": "node",
-        "entrypoint": "pi/dist/frontend.js",
+        "type": "static",
+        "entrypoint": "dist/",
         "service": "lotus-light-ui",
         "alwaysOn": false
       }
