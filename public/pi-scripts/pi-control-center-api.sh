@@ -266,8 +266,11 @@ get_version() {
       local parsed
       parsed=$(echo "$api_ver" | grep -o '"version"[[:space:]]*:[[:space:]]*"[^"]*"' | head -1 | cut -d'"' -f4)
       if [ -n "$parsed" ]; then echo "$parsed"; return; fi
-      # If not JSON, use raw response
-      echo "$api_ver"; return
+      # If not JSON, check it's not HTML before using raw response
+      case "$api_ver" in
+        *"<"*">"*|*"<!doctype"*|*"<html"*) ;; # HTML response, skip
+        *) echo "$api_ver"; return ;;
+      esac
     fi
   fi
   # 2) Git commit date
