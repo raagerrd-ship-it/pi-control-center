@@ -85,6 +85,11 @@ function ComponentRow({
           {comp.cpu.toFixed(1)}% · {comp.ramMb}MB
         </span>
       )}
+      {comp?.cpuCore != null && (
+        <span className="font-mono text-[9px] text-muted-foreground/40 bg-secondary/50 rounded px-1 py-0.5 shrink-0">
+          C{comp.cpuCore}
+        </span>
+      )}
       <div className="flex items-center gap-0.5 shrink-0">
         {!online ? (
           <Button variant="ghost" size="sm" className="h-5 w-5 p-0" disabled={isPending} onClick={() => onAction('start')} title="Starta">

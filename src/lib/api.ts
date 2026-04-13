@@ -12,6 +12,7 @@ export interface ComponentStatus {
   ramMb: number;
   service: string;
   port?: number;
+  cpuCore?: number;
 }
 
 export interface HealthStatus {
