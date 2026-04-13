@@ -636,6 +636,8 @@ AllowedCPUs=0"
       fi
 
       local comp_svc_file="$PI_HOME/.config/systemd/user/${comp_svc}.service"
+      # Remove any root-owned service file left by installScript (which runs via sudo)
+      [ -f "$comp_svc_file" ] && [ ! -w "$comp_svc_file" ] && sudo rm -f "$comp_svc_file"
       if ! cat > "$comp_svc_file" <<UNIT
 [Unit]
 Description=${app} ${comp} service
