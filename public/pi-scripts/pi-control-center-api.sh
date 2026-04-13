@@ -538,25 +538,37 @@ do_install_release() {
     return 1
   fi
 
-  # Run installScript after extraction if runInstallOnRelease is set
+  # Run npm install if runInstallOnRelease is set (for native modules that need rebuilding)
   local run_install_on_release
   run_install_on_release=$(registry_get "$app" "runInstallOnRelease")
   if [ "$run_install_on_release" = "true" ]; then
+    # Find directories containing package.json and run npm install in each
+    local pkg_dirs
+    pkg_dirs=$(find "$install_dir" -name "package.json" -not -path "*/node_modules/*" -exec dirname {} \;)
+    for pkg_dir in $pkg_dirs; do
+      if [ -d "$pkg_dir/node_modules" ]; then
+        progress "$sf" "$app" "Bygger om native-moduler i ${pkg_dir##*/}..." "$start_time"
+        if ! sudo systemd-run --scope --quiet -p MemoryMax=256M \
+          bash -lc "cd '$pkg_dir' && NPM_CONFIG_CACHE='${install_dir}/.npm-cache' nice -n 15 ionice -c 3 npm rebuild --no-audit --no-fund" >> "$INSTALL_DIR/${app}.log" 2>&1; then
+          progress "$sf" "$app" "npm rebuild misslyckades i ${pkg_dir##*/}, försöker npm install..." "$start_time"
+          sudo systemd-run --scope --quiet -p MemoryMax=256M \
+            bash -lc "cd '$pkg_dir' && NPM_CONFIG_CACHE='${install_dir}/.npm-cache' nice -n 15 ionice -c 3 npm install --omit=dev --no-audit --no-fund" >> "$INSTALL_DIR/${app}.log" 2>&1 || {
+            echo "{\"app\":\"${app}\",\"status\":\"error\",\"message\":\"npm install misslyckades i ${pkg_dir##*/}\",\"timestamp\":\"$(date -Iseconds)\"}" > "$sf"
+            return 1
+          }
+        fi
+      fi
+    done
+
+    # Also run installScript if it exists (for additional setup like config files)
     local install_script
     install_script=$(registry_get "$app" "installScript")
     if [ -n "$install_script" ] && [ -f "$install_dir/$install_script" ]; then
       progress "$sf" "$app" "Kör installationsskript..." "$start_time"
       chmod +x "$install_dir/$install_script"
       find "$install_dir" -name '*.sh' -exec sed -i 's/\r$//' {} +
-      # Run in a separate cgroup so memory usage doesn't count against the API service's MemoryMax
       sudo systemd-run --scope --quiet -p MemoryMax=256M \
-        nice -n 15 ionice -c 3 bash "$install_dir/$install_script" --port "$req_port" --core "$req_core" >> "$INSTALL_DIR/${app}.log" 2>&1 || {
-        echo "{\"app\":\"${app}\",\"status\":\"error\",\"message\":\"Installationsskript misslyckades\",\"timestamp\":\"$(date -Iseconds)\"}" > "$sf"
-        return 1
-      }
-    else
-      echo "{\"app\":\"${app}\",\"status\":\"error\",\"message\":\"Installationsskript saknas: ${install_script}\",\"timestamp\":\"$(date -Iseconds)\"}" > "$sf"
-      return 1
+        nice -n 15 ionice -c 3 bash "$install_dir/$install_script" --port "$req_port" --core "$req_core" >> "$INSTALL_DIR/${app}.log" 2>&1 || true
     fi
   fi
 
