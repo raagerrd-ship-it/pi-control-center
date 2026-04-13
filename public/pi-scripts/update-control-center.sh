@@ -33,11 +33,20 @@ sed -i 's/\r$//' "$DASHBOARD_DIR/public/pi-scripts/"*.sh
 chmod +x "$DASHBOARD_DIR/public/pi-scripts/"*.sh
 
 echo "[2/7] Installing dependencies..."
-rm -rf node_modules package-lock.json
-nice -n 15 ionice -c 3 npm install --no-audit --no-fund
-
-echo "[3/7] Updating browserslist..."
-npx -y update-browserslist-db@latest 2>/dev/null || true
+# Only do full reinstall if package.json changed
+PREV_HASH=""
+[ -f node_modules/.package-hash ] && PREV_HASH=$(cat node_modules/.package-hash)
+CURR_HASH=$(md5sum package.json | awk '{print $1}')
+if [ "$PREV_HASH" != "$CURR_HASH" ] || [ ! -d node_modules ]; then
+  echo "  package.json changed — full install"
+  rm -rf node_modules package-lock.json
+  nice -n 15 ionice -c 3 npm install --no-audit --no-fund
+  echo "$CURR_HASH" > node_modules/.package-hash
+  echo "[3/7] Updating browserslist..."
+  npx -y update-browserslist-db@latest 2>/dev/null || true
+else
+  echo "  dependencies unchanged — skipping install"
+fi
 
 echo "[4/7] Building (this may take a few minutes)..."
 nice -n 15 ionice -c 3 npm run build
