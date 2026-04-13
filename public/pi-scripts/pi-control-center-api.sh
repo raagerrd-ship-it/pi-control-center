@@ -577,6 +577,10 @@ do_install_release() {
       if [ "$comp" = "engine" ]; then
         cpu_pin_lines="CPUAffinity=${req_core}
 AllowedCPUs=${req_core}"
+      else
+        # UI: pin to core 0 (shared with dashboard) – minimal CPU usage
+        cpu_pin_lines="CPUAffinity=0
+AllowedCPUs=0"
       fi
 
       local comp_svc_file="$PI_HOME/.config/systemd/user/${comp_svc}.service"
