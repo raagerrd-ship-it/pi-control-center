@@ -464,8 +464,20 @@ do_install_release() {
   fi
 
   progress "$sf" "$app" "Packar upp..." "$start_time"
-  tar xzf "/tmp/pi-control-center/${app}-dist.tar.gz" -C "$install_dir" >> "$INSTALL_DIR/${app}.log" 2>&1
+  if ! tar xzf "/tmp/pi-control-center/${app}-dist.tar.gz" -C "$install_dir" >> "$INSTALL_DIR/${app}.log" 2>&1; then
+    echo "{\"app\":\"${app}\",\"status\":\"error\",\"message\":\"Uppackning misslyckades\",\"timestamp\":\"$(date -Iseconds)\"}" > "$sf"
+    rm -f "/tmp/pi-control-center/${app}-dist.tar.gz"
+    return 1
+  fi
   rm -f "/tmp/pi-control-center/${app}-dist.tar.gz"
+
+  # Verify extraction produced files
+  local file_count
+  file_count=$(find "$install_dir" -mindepth 1 -maxdepth 1 | head -1)
+  if [ -z "$file_count" ]; then
+    echo "{\"app\":\"${app}\",\"status\":\"error\",\"message\":\"Uppackning tom — inga filer extraherades\",\"timestamp\":\"$(date -Iseconds)\"}" > "$sf"
+    return 1
+  fi
 
   # Run installScript after extraction if runInstallOnRelease is set
   local run_install_on_release
@@ -483,6 +495,9 @@ do_install_release() {
         echo "{\"app\":\"${app}\",\"status\":\"error\",\"message\":\"Installationsskript misslyckades\",\"timestamp\":\"$(date -Iseconds)\"}" > "$sf"
         return 1
       }
+    else
+      echo "{\"app\":\"${app}\",\"status\":\"error\",\"message\":\"Installationsskript saknas: ${install_script}\",\"timestamp\":\"$(date -Iseconds)\"}" > "$sf"
+      return 1
     fi
   fi
 
