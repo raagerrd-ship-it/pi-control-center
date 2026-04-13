@@ -463,11 +463,13 @@ progress() {
 queue_install() {
   local app=$1 req_port=$2 req_core=$3 unit_name
   unit_name="pi-control-center-install-${app}-$(date +%s)"
-  sudo systemd-run --quiet --collect --unit "$unit_name" \
+  sudo systemd-run --quiet --collect --no-block --unit "$unit_name" \
     -p Type=exec \
     -p User="$(whoami)" \
     -p Group="$(id -gn)" \
     -p MemoryMax=256M \
+    -p Environment="XDG_RUNTIME_DIR=$USER_RUNTIME_DIR" \
+    -p Environment="DBUS_SESSION_BUS_ADDRESS=$USER_BUS_ADDRESS" \
     "$SCRIPT_PATH" --run-install "$app" "$req_port" "$req_core"
 }
 
