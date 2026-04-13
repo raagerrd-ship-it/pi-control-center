@@ -238,7 +238,7 @@ sudo rm -f /etc/nginx/sites-enabled/default
 sudo ln -sf /etc/nginx/sites-available/pi-control-center /etc/nginx/sites-enabled/
 sudo nginx -t && sudo systemctl restart nginx
 
-# 8. API service with watchdog and hard CPU pinning
+# 8. API service with hard CPU pinning
 echo "[8/9] Setting up API service..."
 chmod +x "$DASHBOARD_DIR/public/pi-scripts/pi-control-center-api.sh"
 
@@ -253,7 +253,6 @@ User=$PI_USER
 ExecStart=$DASHBOARD_DIR/public/pi-scripts/pi-control-center-api.sh $API_PORT
 Restart=always
 RestartSec=10
-WatchdogSec=60
 MemoryMax=30M
 Nice=10
 CPUAffinity=0
