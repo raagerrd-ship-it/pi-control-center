@@ -631,7 +631,7 @@ After=network.target
 
 [Service]
 Type=simple
-WorkingDirectory=${install_dir}
+WorkingDirectory=${comp_work_dir}
 ExecStart=${comp_exec}
 Environment=NPM_CONFIG_CACHE=${install_dir}/.npm-cache
 Environment=PORT=${comp_port}
