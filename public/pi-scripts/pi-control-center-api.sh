@@ -14,7 +14,7 @@ SCRIPT_PATH="$(readlink -f "$0")"
 STATUS_DIR="/tmp/pi-control-center"
 INSTALL_DIR="/tmp/pi-control-center/install"
 CACHE_FILE="$STATUS_DIR/status-cache.json"
-CACHE_MAX_AGE=2  # seconds
+CACHE_MAX_AGE=4  # seconds
 USER_ID="$(id -u)"
 USER_RUNTIME_DIR="/run/user/$USER_ID"
 USER_BUS_ADDRESS="unix:path=$USER_RUNTIME_DIR/bus"
