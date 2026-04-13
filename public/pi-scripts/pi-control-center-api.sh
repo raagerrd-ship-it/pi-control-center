@@ -659,6 +659,16 @@ CapabilityBoundingSet=CAP_NET_RAW CAP_NET_ADMIN"
       local comp_svc_file="$PI_HOME/.config/systemd/user/${comp_svc}.service"
       # Remove any root-owned service file left by installScript (which runs via sudo)
       [ -f "$comp_svc_file" ] && [ ! -w "$comp_svc_file" ] && sudo rm -f "$comp_svc_file"
+
+      # Remove conflicting system-level service file that overrides user-level
+      local sys_svc_file="/etc/systemd/system/${comp_svc}.service"
+      if [ -f "$sys_svc_file" ]; then
+        log "Removing conflicting system-level service: ${sys_svc_file}"
+        sudo systemctl stop "${comp_svc}.service" 2>/dev/null || true
+        sudo systemctl disable "${comp_svc}.service" 2>/dev/null || true
+        sudo rm -f "$sys_svc_file"
+        sudo systemctl daemon-reload
+      fi
       if ! cat > "$comp_svc_file" <<UNIT
 [Unit]
 Description=${app} ${comp} service
