@@ -546,6 +546,7 @@ do_install_release() {
     # Engine port = UI port + 50 (e.g. UI=3002 → Engine=3052)
     local engine_port=$((req_port + 50))
     mkdir -p "$PI_HOME/.config/systemd/user" || return 1
+    mkdir -p "${install_dir}/.npm-cache" || return 1
 
     for comp in engine ui; do
       local comp_type comp_entry comp_svc comp_always_on comp_exec comp_port
@@ -582,6 +583,7 @@ After=network.target
 Type=simple
 WorkingDirectory=${install_dir}
 ExecStart=${comp_exec}
+Environment=NPM_CONFIG_CACHE=${install_dir}/.npm-cache
 Environment=PORT=${comp_port}
 Environment=ENGINE_PORT=${engine_port}
 Environment=UI_PORT=${req_port}
@@ -614,6 +616,7 @@ UNIT
     app_type=$(registry_get "$app" "type")
     entrypoint=$(registry_get "$app" "entrypoint")
     mkdir -p "$PI_HOME/.config/systemd/user"
+    mkdir -p "${install_dir}/.npm-cache"
 
     if [ "$app_type" = "node" ] && [ -n "$entrypoint" ]; then
       exec_start="/usr/bin/node ${install_dir}/${entrypoint}"
@@ -630,6 +633,7 @@ After=network.target
 Type=simple
 WorkingDirectory=${install_dir}
 ExecStart=${exec_start}
+Environment=NPM_CONFIG_CACHE=${install_dir}/.npm-cache
 Environment=PORT=${req_port}
 CPUAffinity=${req_core}
 AllowedCPUs=${req_core}
