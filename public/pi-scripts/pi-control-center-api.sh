@@ -847,36 +847,94 @@ handle_request() {
       ;;
 
     "POST /api/update/dashboard")
-      local sf ddir ndir dashboard_log remote_ref
+      local sf ddir ndir dashboard_log remote_ref start_time
       sf="$STATUS_DIR/dashboard.json"
       ddir="$HOME/pi-control-center"
       ndir="/var/www/pi-control-center"
       dashboard_log="$STATUS_DIR/dashboard.log"
       remote_ref="origin/main"
+      start_time=$(date +%s)
       mkdir -p "$STATUS_DIR"
-      echo '{"app":"dashboard","status":"updating"}' > "$sf"
+      echo '{"app":"dashboard","status":"updating","progress":"Köar uppdatering..."}' > "$sf"
       : > "$dashboard_log"
-      response='{"app":"dashboard","status":"updating"}'
+      response=$(< "$sf")
       (
-        cd "$ddir" 2>/dev/null || { echo "{\"app\":\"dashboard\",\"status\":\"error\",\"message\":\"Dir not found\",\"timestamp\":\"$(date -Iseconds)\"}" > "$sf"; exit 1; }
-        nice -n 15 git fetch origin main --depth=1 --quiet 2>/dev/null || nice -n 15 git fetch origin master --depth=1 --quiet 2>/dev/null || { echo "{\"app\":\"dashboard\",\"status\":\"error\",\"message\":\"Git fetch failed\",\"timestamp\":\"$(date -Iseconds)\"}" > "$sf"; exit 1; }
+        dashboard_progress() {
+          local msg=$1
+          local elapsed min sec time_str
+          elapsed=$(( $(date +%s) - start_time ))
+          min=$((elapsed / 60))
+          sec=$((elapsed % 60))
+          if [ "$min" -gt 0 ]; then time_str="${min}m ${sec}s"; else time_str="${sec}s"; fi
+          echo "{\"app\":\"dashboard\",\"status\":\"updating\",\"progress\":\"${msg}\",\"elapsed\":\"${time_str}\"}" > "$sf"
+        }
+
+        dashboard_fail() {
+          local msg=$1
+          echo "{\"app\":\"dashboard\",\"status\":\"error\",\"message\":\"${msg}\",\"timestamp\":\"$(date -Iseconds)\"}" > "$sf"
+        }
+
+        trap 'code=$?; if [ "$code" -ne 0 ] && grep -q "\"status\":\"updating\"" "$sf" 2>/dev/null; then dashboard_fail "Uppdateringen avbröts oväntat"; fi' EXIT
+
+        cd "$ddir" 2>/dev/null || { dashboard_fail "Dashboard-katalog saknas"; exit 1; }
+
+        dashboard_progress "Hämtar senaste kod..."
+        nice -n 15 git fetch origin main --depth=1 --quiet 2>/dev/null || nice -n 15 git fetch origin master --depth=1 --quiet 2>/dev/null || { dashboard_fail "Git fetch misslyckades"; exit 1; }
         git rev-parse origin/main >/dev/null 2>&1 || remote_ref="origin/master"
-        git reset --hard "$remote_ref" --quiet || { echo "{\"app\":\"dashboard\",\"status\":\"error\",\"message\":\"Git reset failed\",\"timestamp\":\"$(date -Iseconds)\"}" > "$sf"; exit 1; }
-        git clean -fd >/dev/null 2>&1 || true
+        git reset --hard "$remote_ref" --quiet || { dashboard_fail "Git reset misslyckades"; exit 1; }
+        git clean -fd -e node_modules >/dev/null 2>&1 || true
         sed -i 's/\r$//' "$ddir/public/pi-scripts/"*.sh
         chmod +x "$ddir/public/pi-scripts/"*.sh
-        NODE_OPTIONS="--max-old-space-size=256" nice -n 15 ionice -c 3 npm install --no-audit --no-fund || { echo "{\"app\":\"dashboard\",\"status\":\"error\",\"message\":\"npm install failed\",\"timestamp\":\"$(date -Iseconds)\"}" > "$sf"; exit 1; }
-        npx -y update-browserslist-db@latest >/dev/null 2>&1 || true
-        NODE_OPTIONS="--max-old-space-size=256" nice -n 15 ionice -c 3 npx vite build || { echo "{\"app\":\"dashboard\",\"status\":\"error\",\"message\":\"Build failed\",\"timestamp\":\"$(date -Iseconds)\"}" > "$sf"; exit 1; }
+
+        dashboard_progress "Säkerställer swap..."
+        if [ "$(swapon --show | wc -l)" -lt 2 ] && [ -f /etc/dphys-swapfile ]; then
+          sudo sed -i 's/^CONF_SWAPSIZE=.*/CONF_SWAPSIZE=512/' /etc/dphys-swapfile
+          sudo dphys-swapfile setup || true
+          sudo dphys-swapfile swapon || true
+        fi
+
+        prev_hash=""
+        [ -f node_modules/.package-hash ] && prev_hash=$(cat node_modules/.package-hash 2>/dev/null || true)
+        curr_hash=$(md5sum package.json | awk '{print $1}')
+
+        if [ ! -d node_modules ] || [ "$prev_hash" != "$curr_hash" ]; then
+          dashboard_progress "Installerar dependencies..."
+          if ! sudo systemd-run --scope --quiet -p MemoryMax=384M bash -lc "cd '$ddir' && NODE_OPTIONS='--max-old-space-size=320' nice -n 15 ionice -c 3 npm install --no-audit --no-fund"; then
+            dashboard_fail "npm install misslyckades eller dödades (troligen minnesbrist)"
+            exit 1
+          fi
+          echo "$curr_hash" > node_modules/.package-hash
+          npx -y update-browserslist-db@latest >/dev/null 2>&1 || true
+        else
+          echo "Dependencies unchanged — skipping npm install"
+        fi
+
+        dashboard_progress "Bygger dashboard..."
+        if ! sudo systemd-run --scope --quiet -p MemoryMax=384M bash -lc "cd '$ddir' && NODE_OPTIONS='--max-old-space-size=320' nice -n 15 ionice -c 3 npx vite build"; then
+          dashboard_fail "Build misslyckades eller dödades (troligen minnesbrist)"
+          exit 1
+        fi
+
+        dashboard_progress "Deployar..."
         sudo mkdir -p "$ndir"
-        sudo cp -r dist/* "$ndir/" || { echo "{\"app\":\"dashboard\",\"status\":\"error\",\"message\":\"Deploy failed\",\"timestamp\":\"$(date -Iseconds)\"}" > "$sf"; exit 1; }
+        sudo cp -r dist/* "$ndir/" || { dashboard_fail "Deploy misslyckades"; exit 1; }
         [ -f "$ddir/public/services.json" ] && sudo cp "$ddir/public/services.json" "$ndir/" || true
         if [ -f "$ddir/public/pi-scripts/pi-control-center-api.sh" ]; then
           sudo install -m 755 "$ddir/public/pi-scripts/pi-control-center-api.sh" /usr/local/bin/pi-control-center-api.sh || true
         fi
-        rm -rf node_modules
-        npm cache clean --force >/dev/null 2>&1 || true
-        echo "{\"app\":\"dashboard\",\"status\":\"success\",\"timestamp\":\"$(date -Iseconds)\"}" > "$sf"
+
+        dashboard_progress "Städar upp..."
+        avail_mb=$(df -m "$ddir" | awk 'NR==2{print $4}')
+        if [ "${avail_mb:-0}" -lt 200 ]; then
+          rm -rf node_modules
+          npm cache clean --force >/dev/null 2>&1 || true
+        fi
+
+        elapsed=$(( $(date +%s) - start_time ))
+        t_min=$((elapsed / 60))
+        t_sec=$((elapsed % 60))
+        if [ "$t_min" -gt 0 ]; then total_str="${t_min}m ${t_sec}s"; else total_str="${t_sec}s"; fi
+        echo "{\"app\":\"dashboard\",\"status\":\"success\",\"message\":\"Dashboard uppdaterad (${total_str})\",\"timestamp\":\"$(date -Iseconds)\"}" > "$sf"
         sudo systemctl restart pi-control-center-api >/dev/null 2>&1 || true
       ) >> "$dashboard_log" 2>&1 &
       ;;
