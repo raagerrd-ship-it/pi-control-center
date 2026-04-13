@@ -1119,13 +1119,15 @@ handle_request() {
         v_local_hash=""
         v_remote_hash=""
         local ddir="$PI_HOME/pi-control-center"
-        [ ! -d "$ddir" ] && ddir="$PI_HOME/pi-control-center"
+        local d_repo_url
+        d_repo_url=$(grep -A1 '\[remote "origin"\]' "$ddir/.git/config" 2>/dev/null | grep 'url' | sed 's/.*= //')
         if [ -d "$ddir/.git" ]; then
-          v_local=$(git -C "$ddir" log -1 --format='%cd' --date=format:'%-d %b' 2>/dev/null)
+          v_local_hash=$(cat "$ddir/.git/refs/heads/main" 2>/dev/null || cat "$ddir/.git/refs/heads/master" 2>/dev/null)
+          v_local_hash=${v_local_hash:0:7}
+          v_local=$(sudo -u pi git -C "$ddir" log -1 --format='%cd' --date=format:'%-d %b' 2>/dev/null)
           v_local="${v_local,,}"
-          v_local_hash=$(git -C "$ddir" rev-parse --short HEAD 2>/dev/null)
         fi
-        v_remote_hash=$(git ls-remote --heads "$(git -C "$ddir" remote get-url origin 2>/dev/null)" main 2>/dev/null | cut -c1-7)
+        [ -n "$d_repo_url" ] && v_remote_hash=$(git ls-remote --heads "$d_repo_url" main 2>/dev/null | cut -c1-7)
         v_has_update="false"
         [ -n "$v_local_hash" ] && [ -n "$v_remote_hash" ] && [ "$v_local_hash" != "$v_remote_hash" ] && v_has_update="true"
         response="{\"local\":\"${v_local}\",\"remote\":\"\",\"hasUpdate\":${v_has_update}}"
