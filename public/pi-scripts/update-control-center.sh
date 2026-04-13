@@ -33,11 +33,20 @@ sed -i 's/\r$//' "$DASHBOARD_DIR/public/pi-scripts/"*.sh
 chmod +x "$DASHBOARD_DIR/public/pi-scripts/"*.sh
 
 echo "[2/7] Installing dependencies..."
-rm -rf node_modules package-lock.json
-nice -n 15 ionice -c 3 npm install --no-audit --no-fund
-
-echo "[3/7] Updating browserslist..."
-npx -y update-browserslist-db@latest 2>/dev/null || true
+# Only do full reinstall if package.json changed
+PREV_HASH=""
+[ -f node_modules/.package-hash ] && PREV_HASH=$(cat node_modules/.package-hash)
+CURR_HASH=$(md5sum package.json | awk '{print $1}')
+if [ "$PREV_HASH" != "$CURR_HASH" ] || [ ! -d node_modules ]; then
+  echo "  package.json changed — full install"
+  rm -rf node_modules package-lock.json
+  nice -n 15 ionice -c 3 npm install --no-audit --no-fund
+  echo "$CURR_HASH" > node_modules/.package-hash
+  echo "[3/7] Updating browserslist..."
+  npx -y update-browserslist-db@latest 2>/dev/null || true
+else
+  echo "  dependencies unchanged — skipping install"
+fi
 
 echo "[4/7] Building (this may take a few minutes)..."
 nice -n 15 ionice -c 3 npm run build
@@ -55,8 +64,15 @@ if [ -f "$API_SCRIPT" ]; then
 fi
 
 echo "[7/7] Cleaning up..."
-rm -rf node_modules
-npm cache clean --force 2>/dev/null || true
+# Keep node_modules for faster next update; only clean if disk < 200MB free
+AVAIL_MB=$(df -m "$DASHBOARD_DIR" | awk 'NR==2{print $4}')
+if [ "${AVAIL_MB:-0}" -lt 200 ]; then
+  echo "  Low disk (${AVAIL_MB}MB) — cleaning node_modules"
+  rm -rf node_modules
+  npm cache clean --force 2>/dev/null || true
+else
+  echo "  Disk OK (${AVAIL_MB}MB free) — keeping node_modules for next update"
+fi
 
 sudo systemctl restart pi-control-center-api 2>/dev/null || true
 
