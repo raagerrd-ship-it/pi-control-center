@@ -149,8 +149,33 @@ poll_engine_health() {
   fi
 }
 
+HEAL_FAIL_DIR="$STATUS_DIR/heal-fails"
+mkdir -p "$HEAL_FAIL_DIR"
+
+try_heal_component() {
+  local app=$1 svc=$2 comp_label=$3 comp_port=$4
+  local fail_file="$HEAL_FAIL_DIR/${app}-${comp_label}"
+  local prev_fails=0
+  [ -f "$fail_file" ] && prev_fails=$(cat "$fail_file" 2>/dev/null)
+
+  if [ "$prev_fails" -ge 3 ]; then
+    return
+  fi
+
+  local port_up
+  port_up=$(check_service "$comp_port")
+  if [ "$port_up" = "true" ]; then
+    echo 0 > "$fail_file"
+    return
+  fi
+
+  prev_fails=$((prev_fails + 1))
+  echo "$prev_fails" > "$fail_file"
+  echo "SELF-HEAL: $app/$comp_label not listening on port $comp_port (attempt $prev_fails/3), restarting $svc" >&2
+  user_systemctl restart "${svc}.service" 2>/dev/null || systemctl restart "${svc}.service" 2>/dev/null
+}
+
 health_poll_loop() {
-  # Also clean up stale status files (update/install) older than 10 minutes
   local cleanup_counter=0
   while true; do
     for app in $(registry_keys); do
@@ -166,8 +191,15 @@ health_poll_loop() {
         [ "$engine_active" != "true" ] && { echo '{"status":"offline"}' > "$HEALTH_DIR/${app}.json"; continue; }
         engine_port=$((port + 50))
         poll_engine_health "$app" "$engine_port"
+
+        local ui_svc
+        ui_svc=$(registry_get_component "$app" "ui" "service")
+        if [ -n "$ui_svc" ]; then
+          try_heal_component "$app" "$ui_svc" "ui" "$port"
+        fi
+
+        try_heal_component "$app" "$engine_svc" "engine" "$engine_port"
       else
-        # Legacy services: try health endpoint on their main port
         local svc_active
         svc_active=$(service_is_active "$(registry_get "$app" "service")")
         [ "$svc_active" != "true" ] && { echo '{"status":"offline"}' > "$HEALTH_DIR/${app}.json"; continue; }
@@ -175,11 +207,11 @@ health_poll_loop() {
       fi
     done
     sleep 30
-    # Run cleanup every ~5 minutes (every 10th iteration × 30s)
     cleanup_counter=$((cleanup_counter + 1))
     if [ $((cleanup_counter % 10)) -eq 0 ]; then
       find "$STATUS_DIR" -maxdepth 1 -name '*.json' ! -name 'status-cache.json' ! -name 'factory-reset.json' -mmin +10 -delete 2>/dev/null
       find "$INSTALL_DIR" -maxdepth 1 -name '*.json' -mmin +10 -delete 2>/dev/null
+      echo 0 > "$HEAL_FAIL_DIR"/* 2>/dev/null || true
     fi
   done
 }
