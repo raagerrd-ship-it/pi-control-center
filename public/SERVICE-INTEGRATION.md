@@ -540,7 +540,63 @@ const ENGINE_URL = `http://${window.location.hostname}:${enginePort}`;
 
 ---
 
-## 11. Health Endpoint — Standard för motorer
+## 11. CORS — Obligatoriskt för motorer
+
+Eftersom UI:t serveras av en separat Python-server på en **annan port** än motorn, krävs **CORS-headers** på alla svar från motorn. Utan CORS blockerar webbläsaren alla API-anrop från UI:t.
+
+### Krav
+
+Motorn **måste**:
+
+1. Svara med `Access-Control-Allow-Origin: *` på alla responses
+2. Hantera `OPTIONS` preflight-requests och returnera `204` med CORS-headers
+3. Inkludera CORS-headers även på felresponses (4xx, 5xx)
+
+### Referensimplementation (Express)
+
+```javascript
+import cors from 'cors';
+
+// Tillåt alla origins — säkert i lokalt nätverk
+app.use(cors());
+```
+
+### Referensimplementation (utan cors-paket)
+
+Om du vill undvika ett extra beroende:
+
+```javascript
+app.use((req, res, next) => {
+  res.header('Access-Control-Allow-Origin', '*');
+  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+  res.header('Access-Control-Allow-Headers', 'Content-Type');
+  
+  if (req.method === 'OPTIONS') {
+    return res.sendStatus(204);
+  }
+  next();
+});
+```
+
+### Varför `*` och inte en specifik origin?
+
+Pi Control Center körs i ett **lokalt nätverk** där IP-adresser kan variera. Att hårdkoda en origin fungerar inte. `Access-Control-Allow-Origin: *` är säkert eftersom:
+
+- Tjänsterna är bara tillgängliga inom det lokala nätverket
+- Det finns ingen autentisering med cookies som behöver skyddas
+- Alla API-anrop är explicita `fetch()`-anrop, inte credentials-baserade
+
+### Felsökning
+
+Om UI:t inte kan nå motorn, kontrollera:
+
+1. **Webbläsarkonsolen** — leta efter `CORS policy` eller `blocked by CORS`
+2. **Motorns svar-headers** — `curl -I http://pi-ip:3052/api/health` bör visa `Access-Control-Allow-Origin: *`
+3. **OPTIONS-stöd** — `curl -X OPTIONS http://pi-ip:3052/api/health` bör returnera `204`
+
+---
+
+## 12. Health Endpoint — Standard för motorer
 
 Varje motor **bör** exponera en hälsokontroll-endpoint som Pi Control Center kan använda för att övervaka tjänstens tillstånd.
 
