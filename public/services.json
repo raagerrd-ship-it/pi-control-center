@@ -13,7 +13,7 @@
     "components": {
       "engine": {
         "type": "node",
-        "entrypoint": "engine/index.js",
+        "entrypoint": "pi/dist/index.js",
         "service": "lotus-light-engine",
         "alwaysOn": true
       },
