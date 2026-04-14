@@ -40,6 +40,7 @@ export interface ServiceStatus {
 
 export interface SystemStatus {
   cpu: number;
+  cpuCores?: number[];
   temp: number;
   ramUsed: number;
   ramTotal: number;
