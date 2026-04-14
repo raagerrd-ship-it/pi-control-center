@@ -20,7 +20,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import type { UpdateResult, InstallResult, ServiceActionResult, VersionInfo, SystemStatus, ServiceDefinition, ComponentStatus, HealthStatus } from '@/lib/api';
+import type { UpdateResult, InstallResult, ServiceActionResult, VersionInfo, ServiceDefinition, ComponentStatus, HealthStatus } from '@/lib/api';
 import { hasComponents } from '@/lib/api';
 
 interface CoreCardProps {
