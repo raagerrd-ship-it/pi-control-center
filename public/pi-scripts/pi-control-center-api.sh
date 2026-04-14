@@ -1299,7 +1299,7 @@ handle_request() {
 
         dashboard_progress "Säkerställer swap..."
         if [ "$(swapon --show | wc -l)" -lt 2 ] && [ -f /etc/dphys-swapfile ]; then
-          sudo sed -i 's/^CONF_SWAPSIZE=.*/CONF_SWAPSIZE=512/' /etc/dphys-swapfile
+          sudo sed -i 's/^CONF_SWAPSIZE=.*/CONF_SWAPSIZE=768/' /etc/dphys-swapfile
           sudo dphys-swapfile setup || true
           sudo dphys-swapfile swapon || true
         fi
@@ -1310,7 +1310,7 @@ handle_request() {
 
         if [ ! -d node_modules ] || [ "$prev_hash" != "$curr_hash" ]; then
           dashboard_progress "Installerar dependencies..."
-          if ! sudo systemd-run --scope --quiet -p MemoryMax=512M bash -lc "cd '$ddir' && NODE_OPTIONS='--max-old-space-size=384' nice -n 15 ionice -c 3 npm install --omit=dev --no-audit --no-fund"; then
+          if ! sudo systemd-run --scope --quiet -p MemoryMax=400M bash -lc "cd '$ddir' && NODE_OPTIONS='--max-old-space-size=352' nice -n 15 ionice -c 3 npm install --omit=dev --no-audit --no-fund"; then
             dashboard_fail "npm install misslyckades eller dödades (troligen minnesbrist)"
             exit 1
           fi
