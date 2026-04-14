@@ -745,10 +745,13 @@ AllowedCPUs=0"
 
       local comp_security_lines="PrivateTmp=true
 NoNewPrivileges=true"
+      local comp_env_lines=""
       if [ "$comp" = "engine" ] && [ "$comp_type" = "node" ]; then
         comp_security_lines="PrivateTmp=true
+NoNewPrivileges=false
 AmbientCapabilities=CAP_NET_RAW CAP_NET_ADMIN
 CapabilityBoundingSet=CAP_NET_RAW CAP_NET_ADMIN"
+        comp_env_lines="Environment=DBUS_SYSTEM_BUS_ADDRESS=unix:path=/run/dbus/system_bus_socket"
       fi
 
       local comp_svc_file="$PI_HOME/.config/systemd/user/${comp_svc}.service"
@@ -777,6 +780,7 @@ Environment=NPM_CONFIG_CACHE=${install_dir}/.npm-cache
 Environment=PORT=${comp_port}
 Environment=ENGINE_PORT=${engine_port}
 Environment=UI_PORT=${req_port}
+${comp_env_lines}
 ${cpu_pin_lines}
 MemoryMax=128M
 ProtectSystem=strict
@@ -810,6 +814,7 @@ UNIT
     local legacy_work_dir="${install_dir}"
     local legacy_security_lines="PrivateTmp=true
 NoNewPrivileges=true"
+    local legacy_env_lines=""
     if [ "$app_type" = "node" ] && [ -n "$entrypoint" ]; then
       local entry_dir
       entry_dir=$(dirname "$entrypoint")
@@ -823,8 +828,10 @@ NoNewPrivileges=true"
       done
       exec_start="/usr/bin/node ${install_dir}/${entrypoint}"
       legacy_security_lines="PrivateTmp=true
+NoNewPrivileges=false
 AmbientCapabilities=CAP_NET_RAW CAP_NET_ADMIN
 CapabilityBoundingSet=CAP_NET_RAW CAP_NET_ADMIN"
+      legacy_env_lines="Environment=DBUS_SYSTEM_BUS_ADDRESS=unix:path=/run/dbus/system_bus_socket"
     else
       exec_start="/usr/bin/python3 ${PI_HOME}/pi-control-center/public/pi-scripts/static-spa-server.py --root ${install_dir}/dist --port ${req_port} --host 0.0.0.0"
     fi
