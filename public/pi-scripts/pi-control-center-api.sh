@@ -859,6 +859,7 @@ WorkingDirectory=${legacy_work_dir}
 ExecStart=${exec_start}
 Environment=NPM_CONFIG_CACHE=${install_dir}/.npm-cache
 Environment=PORT=${req_port}
+${legacy_env_lines}
 CPUAffinity=${req_core}
 AllowedCPUs=${req_core}
 MemoryMax=128M
