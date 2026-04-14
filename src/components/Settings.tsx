@@ -224,16 +224,16 @@ export function Settings({ onSave }: { onSave: (s: DashboardSettings) => void })
                   ) : (
                     <>
                       <AlertTriangle className="h-3 w-3 mr-1.5" />
-                      Fabriksåterställning (bara tjänster)
+                      Ta bort alla tjänster
                     </>
                   )}
                 </Button>
               </AlertDialogTrigger>
               <AlertDialogContent className="max-w-sm">
                 <AlertDialogHeader>
-                  <AlertDialogTitle className="font-mono flex items-center gap-2">
-                    <AlertTriangle className="h-4 w-4 text-destructive" />
-                    Fabriksåterställning
+                    <AlertDialogTitle className="font-mono flex items-center gap-2">
+                     <AlertTriangle className="h-4 w-4 text-destructive" />
+                     Ta bort alla tjänster
                   </AlertDialogTitle>
                   <AlertDialogDescription className="text-xs leading-relaxed">
                     Detta avinstallerar <strong>alla tjänster</strong> och rensar alla tilldelningar.
@@ -248,7 +248,7 @@ export function Settings({ onSave }: { onSave: (s: DashboardSettings) => void })
                     onClick={handleFactoryReset}
                     className="font-mono text-xs bg-destructive text-destructive-foreground hover:bg-destructive/90"
                   >
-                    Återställ till fabrik
+                    Ta bort alla tjänster
                   </AlertDialogAction>
                 </AlertDialogFooter>
               </AlertDialogContent>
