@@ -37,18 +37,6 @@ const Index = () => {
     handleCheckVersions();
   }, []);
 
-  const usedPorts = useMemo(() => {
-    if (!status?.services) return [];
-    const ports: number[] = [];
-    Object.values(status.services)
-      .filter(s => s.installed && s.port)
-      .forEach(s => {
-        ports.push(s.port!);
-        ports.push(s.port! + 50); // engine port
-      });
-    return ports;
-  }, [status]);
-
   // Map: core index → service key installed on that core
   const coreServiceMap = useMemo(() => {
     const map: Record<number, string> = {};
@@ -239,8 +227,6 @@ const Index = () => {
                   service={service}
                   availableServices={uninstalledServices}
                   allInstalls={installs}
-                  usedPorts={usedPorts}
-                  status={status}
                   onUpdate={startUpdate}
                   onCheckVersion={handleCheckVersion}
                   onInstall={startInstall}

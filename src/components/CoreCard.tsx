@@ -1,8 +1,7 @@
 import { useState, memo } from 'react';
-import { ExternalLink, RefreshCw, CheckCircle2, AlertCircle, Loader2, Play, Square, RotateCcw, Trash2, Server, Monitor } from 'lucide-react';
+import { ExternalLink, RefreshCw, CheckCircle2, AlertCircle, Loader2, Play, Square, RotateCcw, Trash2, Server, Monitor, Download } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
-import { InstallDialog } from '@/components/InstallDialog';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -21,7 +20,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import type { UpdateResult, InstallResult, ServiceActionResult, VersionInfo, SystemStatus, ServiceDefinition, ComponentStatus, HealthStatus } from '@/lib/api';
+import type { UpdateResult, InstallResult, ServiceActionResult, VersionInfo, ServiceDefinition, ComponentStatus, HealthStatus } from '@/lib/api';
 import { hasComponents } from '@/lib/api';
 
 interface CoreCardProps {
@@ -46,8 +45,6 @@ interface CoreCardProps {
   };
   availableServices: ServiceDefinition[];
   allInstalls: Record<string, InstallResult>;
-  usedPorts: number[];
-  status: SystemStatus | null;
   onUpdate: (app: string) => void;
   onCheckVersion: (app: string) => Promise<void>;
   onInstall: (app: string, port: number, core: number) => void;
@@ -117,8 +114,6 @@ export const CoreCard = memo(function CoreCard({
   service,
   availableServices,
   allInstalls,
-  usedPorts,
-  status,
   onUpdate,
   onCheckVersion,
   onInstall,
@@ -129,9 +124,12 @@ export const CoreCard = memo(function CoreCard({
   const [installingService, setInstallingService] = useState<string>('');
   const [checkingVersion, setCheckingVersion] = useState(false);
 
-  const handleInstall = (app: string, port: number, core: number) => {
+  const uiPort = 3000 + coreIndex;
+  const enginePort = 3050 + coreIndex;
+
+  const handleInstall = (app: string) => {
     setInstallingService(app);
-    onInstall(app, port, core);
+    onInstall(app, uiPort, coreIndex);
   };
 
   // Empty core — show add service UI
@@ -199,15 +197,21 @@ export const CoreCard = memo(function CoreCard({
             </Select>
 
             {selectedService && (
-              <InstallDialog
-                appKey={selectedService}
-                appName={availableServices.find(s => s.key === selectedService)?.name ?? selectedService}
-                core={coreIndex}
-                usedPorts={usedPorts}
-                status={status}
-                onInstall={handleInstall}
+              <Button
+                variant="default"
+                size="sm"
+                className="font-mono text-xs gap-1.5 w-full"
                 disabled={installing}
-              />
+                onClick={() => handleInstall(selectedService)}
+              >
+                <Download className="h-3 w-3" />
+                Installera på Core {coreIndex}
+              </Button>
+            )}
+            {selectedService && (
+              <p className="font-mono text-[10px] text-muted-foreground">
+                UI: :{uiPort} · Motor: :{enginePort}
+              </p>
             )}
           </div>
         ) : null}
