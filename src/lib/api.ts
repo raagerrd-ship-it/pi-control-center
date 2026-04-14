@@ -222,6 +222,7 @@ export async function fetchLogs(app: string, type: 'update' | 'install' | 'servi
 
 export interface FactoryResetResult {
   status: 'resetting' | 'success' | 'error' | 'idle';
+  phase?: string;
   timestamp?: string;
 }
 
