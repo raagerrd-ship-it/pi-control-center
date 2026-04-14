@@ -1233,6 +1233,7 @@ handle_request() {
 
         echo '{"status":"resetting","phase":"Bygger dashboard..."}' > "$STATUS_DIR/factory-reset.json"
         echo "Bygger dashboard..." >> "$reset_log"
+        sudo rm -rf "$ddir/dist"
         sudo systemd-run --scope --quiet -p MemoryMax=384M bash -lc "cd '$ddir' && NODE_OPTIONS='--max-old-space-size=320' nice -n 15 ionice -c 3 npx vite build" >> "$reset_log" 2>&1 || true
 
         echo '{"status":"resetting","phase":"Deployar..."}' > "$STATUS_DIR/factory-reset.json"
