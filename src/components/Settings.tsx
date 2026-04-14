@@ -70,9 +70,12 @@ export function Settings({ onSave }: { onSave: (s: DashboardSettings) => void })
     setResetDone(false);
     try {
       await triggerFactoryReset();
+      let failures = 0;
+      const MAX_FAILURES = 20;
       const poll = async () => {
         try {
           const result = await fetchFactoryResetStatus();
+          failures = 0;
           if (result.status === 'success') {
             setResetting(false);
             setResetDone(true);
@@ -84,6 +87,11 @@ export function Settings({ onSave }: { onSave: (s: DashboardSettings) => void })
             setResetting(false);
           }
         } catch {
+          failures++;
+          if (failures >= MAX_FAILURES) {
+            setResetting(false);
+            return;
+          }
           setTimeout(poll, 3000);
         }
       };
