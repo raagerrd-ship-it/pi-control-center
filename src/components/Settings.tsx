@@ -151,15 +151,68 @@ export function Settings({ onSave }: { onSave: (s: DashboardSettings) => void })
 
           <Button onClick={save} className="font-mono text-sm">Spara</Button>
 
-          <div className="border-t border-border pt-4 mt-2">
-            <Label className="text-xs text-muted-foreground font-mono mb-2 block">Farlig zon</Label>
+          <div className="border-t border-border pt-4 mt-2 flex flex-col gap-2">
+            <Label className="text-xs text-muted-foreground font-mono mb-1 block">Farlig zon</Label>
+
+            {/* Återställ Pi — full reset + reinstall PCC */}
             <AlertDialog>
               <AlertDialogTrigger asChild>
                 <Button
                   variant="outline"
                   size="sm"
-                  disabled={resetting}
+                  disabled={piResetting || resetting}
                   className="w-full font-mono text-xs text-destructive border-destructive/30 hover:bg-destructive/10 hover:text-destructive"
+                >
+                  {piResetting ? (
+                    <>
+                      <Loader2 className="h-3 w-3 animate-spin mr-1.5" />
+                      <span className="truncate">{piResetPhase || 'Återställer...'}</span>
+                    </>
+                  ) : piResetDone ? (
+                    'Återställd ✓'
+                  ) : (
+                    <>
+                      <RotateCcw className="h-3 w-3 mr-1.5" />
+                      Återställ Pi
+                    </>
+                  )}
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent className="max-w-sm">
+                <AlertDialogHeader>
+                  <AlertDialogTitle className="font-mono flex items-center gap-2">
+                    <RotateCcw className="h-4 w-4 text-destructive" />
+                    Återställ Pi
+                  </AlertDialogTitle>
+                  <AlertDialogDescription className="text-xs leading-relaxed">
+                    Detta <strong>avinstallerar alla tjänster</strong> och installerar sedan om
+                    senaste versionen av Pi Control Center.
+                    <br /><br />
+                    Efteråt kan du installera rena versioner av tjänsterna.
+                    <br /><br />
+                    <span className="text-destructive font-medium">Åtgärden kan inte ångras.</span>
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel className="font-mono text-xs">Avbryt</AlertDialogCancel>
+                  <AlertDialogAction
+                    onClick={handlePiReset}
+                    className="font-mono text-xs bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                  >
+                    Återställ Pi
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+
+            {/* Fabriksåterställning — bara avinstallera tjänster */}
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  disabled={resetting || piResetting}
+                  className="w-full font-mono text-[11px] text-muted-foreground hover:text-destructive"
                 >
                   {resetting ? (
                     <>
@@ -171,7 +224,7 @@ export function Settings({ onSave }: { onSave: (s: DashboardSettings) => void })
                   ) : (
                     <>
                       <AlertTriangle className="h-3 w-3 mr-1.5" />
-                      Fabriksåterställning
+                      Fabriksåterställning (bara tjänster)
                     </>
                   )}
                 </Button>
@@ -184,7 +237,7 @@ export function Settings({ onSave }: { onSave: (s: DashboardSettings) => void })
                   </AlertDialogTitle>
                   <AlertDialogDescription className="text-xs leading-relaxed">
                     Detta avinstallerar <strong>alla tjänster</strong> och rensar alla tilldelningar.
-                    Pi OS och Pi Control Center bevaras.
+                    Pi OS och Pi Control Center bevaras oförändrade.
                     <br /><br />
                     <span className="text-destructive font-medium">Åtgärden kan inte ångras.</span>
                   </AlertDialogDescription>
