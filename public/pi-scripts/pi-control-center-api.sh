@@ -894,7 +894,7 @@ do_install() {
   progress "$sf" "$app" "Sparar konfiguration..." "$start_time"
 
   # Save assignment
-  assignment_set "$app" "$req_port" "$req_core"
+  assignment_set "$app" "$req_port" "$req_core"  # port stored for compat but always derived from core
 
   rm -f "$CACHE_FILE"
   local total_elapsed=$(( $(date +%s) - start_time ))
