@@ -36,7 +36,6 @@ export function useSystemStatus() {
       setConnection('connected');
       failCount.current = 0;
       if (!wasConnected.current) {
-        addEntryRef.current('SYSTEM', 'Ansluten till Pi', 'success');
         wasConnected.current = true;
       }
     } catch (e) {
@@ -47,17 +46,7 @@ export function useSystemStatus() {
       let reachable = false;
       try { reachable = await fetchPing(); } catch {}
       setConnection(reachable ? 'busy' : 'offline');
-      if (wasConnected.current) {
-        const reason = reachable ? 'Pi upptagen — status-anrop timeout' : 'Tappade anslutning: ' + msg;
-        addEntryRef.current('SYSTEM', reason, reachable ? 'info' : 'error');
-        wasConnected.current = false;
-      } else if (loadingRef.current) {
-        addEntryRef.current('SYSTEM', 'Kunde inte ansluta: ' + msg, 'error');
-      } else {
-        const delay = Math.min(BASE_INTERVAL * Math.pow(2, failCount.current), MAX_INTERVAL);
-        const state = reachable ? 'Pi upptagen' : 'Offline';
-        addEntryRef.current('SYSTEM', `${state} — återansluter om ${Math.round(delay / 1000)}s (försök ${failCount.current})`, reachable ? 'info' : 'error');
-      }
+      wasConnected.current = false;
     } finally {
       setLoading(false);
       loadingRef.current = false;
@@ -68,7 +57,7 @@ export function useSystemStatus() {
   pollRef.current = poll;
 
   useEffect(() => {
-    addEntryRef.current('SYSTEM', 'Ansluter till API...', 'info');
+    // Silent connect — no log spam
     poll();
 
     const handleVisibility = () => {
