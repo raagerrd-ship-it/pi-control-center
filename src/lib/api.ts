@@ -234,6 +234,15 @@ export async function triggerFactoryReset(): Promise<FactoryResetResult> {
   return res.json();
 }
 
+export async function triggerPiReset(): Promise<FactoryResetResult> {
+  const res = await fetch(`${getBaseUrl()}/api/pi-reset`, {
+    method: 'POST',
+    signal: AbortSignal.timeout(120000),
+  });
+  if (!res.ok) throw new Error('Failed to trigger Pi reset');
+  return res.json();
+}
+
 export async function fetchFactoryResetStatus(): Promise<FactoryResetResult> {
   const res = await fetch(`${getBaseUrl()}/api/factory-reset-status`, { signal: AbortSignal.timeout(4000) });
   if (!res.ok) throw new Error('Failed to fetch reset status');

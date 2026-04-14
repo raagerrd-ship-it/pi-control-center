@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Settings as SettingsIcon, AlertTriangle, Loader2 } from 'lucide-react';
+import { Settings as SettingsIcon, AlertTriangle, Loader2, RotateCcw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -22,7 +22,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog';
-import { triggerFactoryReset, fetchFactoryResetStatus } from '@/lib/api';
+import { triggerFactoryReset, triggerPiReset, fetchFactoryResetStatus } from '@/lib/api';
 
 export interface DashboardSettings {
   deviceLabel: string;
