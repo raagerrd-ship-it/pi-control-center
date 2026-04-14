@@ -1061,6 +1061,39 @@ handle_request() {
           fdir=$(eval echo "$(registry_get "$fapp" "installDir")" 2>/dev/null)
           [ -n "$fdir" ] && [ -d "$fdir" ] && sudo rm -rf "$fdir" >> "$reset_log" 2>&1
         done
+
+        # Kill any remaining user systemd services (except PCC itself)
+        echo "Rensar kvarvarande systemd-tjänster..." >> "$reset_log"
+        local user_services
+        user_services=$(sudo -u pi XDG_RUNTIME_DIR="/run/user/$(id -u pi)" systemctl --user list-units --type=service --no-legend --plain 2>/dev/null | awk '{print $1}' || true)
+        for svc in $user_services; do
+          case "$svc" in
+            pi-control-center-*|dbus*|init.scope) continue ;;
+            *)
+              echo "  Stoppar och inaktiverar $svc" >> "$reset_log"
+              sudo -u pi XDG_RUNTIME_DIR="/run/user/$(id -u pi)" systemctl --user stop "$svc" 2>/dev/null || true
+              sudo -u pi XDG_RUNTIME_DIR="/run/user/$(id -u pi)" systemctl --user disable "$svc" 2>/dev/null || true
+              ;;
+          esac
+        done
+
+        # Remove leftover user service files (except PCC)
+        local user_svc_dir="$PI_HOME/.config/systemd/user"
+        if [ -d "$user_svc_dir" ]; then
+          find "$user_svc_dir" -name '*.service' ! -name 'pi-control-center-*' -exec rm -f {} \; 2>/dev/null || true
+          sudo -u pi XDG_RUNTIME_DIR="/run/user/$(id -u pi)" systemctl --user daemon-reload 2>/dev/null || true
+        fi
+
+        # Kill any stray processes on service ports (3001-3003, 3051-3053)
+        for port in 3001 3002 3003 3051 3052 3053; do
+          local pid
+          pid=$(sudo lsof -ti ":$port" 2>/dev/null || true)
+          if [ -n "$pid" ]; then
+            echo "  Dödar process på port $port (PID $pid)" >> "$reset_log"
+            sudo kill -9 $pid 2>/dev/null || true
+          fi
+        done
+
         # Clear assignments
         echo '{}' | sudo tee "$ASSIGNMENTS_FILE" > /dev/null
         # Clear health cache and status files
