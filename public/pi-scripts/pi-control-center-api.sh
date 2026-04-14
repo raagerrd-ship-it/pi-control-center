@@ -56,6 +56,10 @@ fi
 # Initialize assignments file if missing
 [ -f "$ASSIGNMENTS_FILE" ] || echo '{}' | sudo tee "$ASSIGNMENTS_FILE" > /dev/null
 
+# Fixed port mapping: UI = 3000 + core, Engine = 3050 + core
+port_for_core() { echo $((3000 + ${1:-1})); }
+engine_port_for_core() { echo $((3050 + ${1:-1})); }
+
 user_systemctl() {
   XDG_RUNTIME_DIR="$USER_RUNTIME_DIR" \
   DBUS_SESSION_BUS_ADDRESS="$USER_BUS_ADDRESS" \
@@ -179,17 +183,18 @@ health_poll_loop() {
   local cleanup_counter=0
   while true; do
     for app in $(registry_keys); do
-      local has_comp port engine_port engine_svc engine_active
+      local has_comp core port engine_port engine_svc engine_active
       has_comp=$(registry_has_components "$app")
-      port=$(assignment_get "$app" "port")
-      [ -z "$port" ] || [ "$port" = "0" ] && continue
+      core=$(assignment_get "$app" "core")
+      [ -z "$core" ] || [ "$core" -lt 1 ] 2>/dev/null && continue
+      port=$(port_for_core "$core")
 
       if [ "$has_comp" = "true" ]; then
         engine_svc=$(registry_get_component "$app" "engine" "service")
         [ -z "$engine_svc" ] && continue
         engine_active=$(service_is_active "$engine_svc")
         [ "$engine_active" != "true" ] && { echo '{"status":"offline"}' > "$HEALTH_DIR/${app}.json"; continue; }
-        engine_port=$((port + 50))
+        engine_port=$(engine_port_for_core "$core")
         poll_engine_health "$app" "$engine_port"
 
         local ui_svc
@@ -394,19 +399,23 @@ build_status_json() {
     local svc install_dir port core online installed ver s_cpu s_ram s_core pid aff running has_comp
     svc=$(registry_get "$app" "service")
     install_dir=$(eval echo "$(registry_get "$app" "installDir")")
-    port=$(assignment_get "$app" "port")
     core=$(assignment_get "$app" "core")
     has_comp=$(registry_has_components "$app")
 
-    [ -z "$port" ] && port=0
     [ -z "$core" ] && core=-1
+    # Derive port from core using fixed mapping
+    if [ "$core" -ge 1 ] 2>/dev/null; then
+      port=$(port_for_core "$core")
+    else
+      port=0
+    fi
 
     # For component-based services, check if ANY component is active
     if [ "$has_comp" = "true" ]; then
       local engine_svc ui_svc engine_online ui_online engine_cpu engine_ram ui_cpu ui_ram engine_ver ui_ver engine_port
       engine_svc=$(registry_get_component "$app" "engine" "service")
       ui_svc=$(registry_get_component "$app" "ui" "service")
-      engine_port=$((port + 50))
+      engine_port=$(engine_port_for_core "$core")
       engine_online="false"; ui_online="false"
       engine_cpu=0; engine_ram=0; ui_cpu=0; ui_ram=0
       engine_ver=""; ui_ver=""
@@ -639,8 +648,8 @@ do_install_release() {
 
   if [ "$has_comp" = "true" ]; then
     # Component-based: create separate services for engine and ui
-    # Engine port = UI port + 50 (e.g. UI=3002 → Engine=3052)
-    local engine_port=$((req_port + 50))
+    # Fixed ports: UI = 3000 + core, Engine = 3050 + core
+    local engine_port=$(engine_port_for_core "$req_core")
     mkdir -p "$PI_HOME/.config/systemd/user" || return 1
     mkdir -p "${install_dir}/.npm-cache" || return 1
 
@@ -885,7 +894,7 @@ do_install() {
   progress "$sf" "$app" "Sparar konfiguration..." "$start_time"
 
   # Save assignment
-  assignment_set "$app" "$req_port" "$req_core"
+  assignment_set "$app" "$req_port" "$req_core"  # port stored for compat but always derived from core
 
   rm -f "$CACHE_FILE"
   local total_elapsed=$(( $(date +%s) - start_time ))
@@ -989,8 +998,8 @@ handle_request() {
     POST\ /api/install/*)
       local app req_port req_core
       app=${path#/api/install/}
-      req_port=$(echo "$body" | jq -r '.port // 3000' 2>/dev/null)
       req_core=$(echo "$body" | jq -r '.core // 1' 2>/dev/null)
+      req_port=$(port_for_core "$req_core")
       if [ -z "$(registry_get "$app" "repo")" ]; then
         status_line="HTTP/1.1 404 Not Found"
         response="{\"error\":\"Unknown app: ${app}\"}"
