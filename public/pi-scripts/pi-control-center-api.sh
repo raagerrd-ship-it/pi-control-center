@@ -190,7 +190,7 @@ health_poll_loop() {
     for app in $(registry_keys); do
       local has_comp core port engine_port engine_svc engine_active
       has_comp=$(registry_has_components "$app")
-      core=$(assignment_get "$app" "core")
+      core=$(assignment_get_core "$app")
       [ -z "$core" ] || [ "$core" -lt 1 ] 2>/dev/null && continue
       port=$(port_for_core "$core")
 
@@ -404,7 +404,7 @@ build_status_json() {
     local svc install_dir port core online installed ver s_cpu s_ram s_core pid aff running has_comp
     svc=$(registry_get "$app" "service")
     install_dir=$(eval echo "$(registry_get "$app" "installDir")")
-    core=$(assignment_get "$app" "core")
+    core=$(assignment_get_core "$app")
     has_comp=$(registry_has_components "$app")
 
     [ -z "$core" ] && core=-1
@@ -899,7 +899,7 @@ do_install() {
   progress "$sf" "$app" "Sparar konfiguration..." "$start_time"
 
   # Save assignment
-  assignment_set "$app" "$req_port" "$req_core"  # port stored for compat but always derived from core
+  assignment_set "$app" "$req_core"
 
   rm -f "$CACHE_FILE"
   local total_elapsed=$(( $(date +%s) - start_time ))
@@ -1049,7 +1049,7 @@ handle_request() {
       (
         for fapp in $(registry_keys); do
           local fassign
-          fassign=$(assignment_get "$fapp" "port")
+          fassign=$(assignment_get_core "$fapp")
           if [ -n "$fassign" ]; then
             echo "Avinstallerar $fapp..." >> "$reset_log"
             do_uninstall "$fapp" >> "$reset_log" 2>&1
