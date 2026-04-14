@@ -99,9 +99,12 @@ export function Settings({ onSave }: { onSave: (s: DashboardSettings) => void })
     setPiResetPhase('Startar...');
     try {
       await triggerPiReset();
+      let failures = 0;
+      const MAX_FAILURES = 20;
       const poll = async () => {
         try {
           const result = await fetchFactoryResetStatus();
+          failures = 0;
           if (result.status === 'success') {
             setPiResetting(false);
             setPiResetDone(true);
@@ -115,6 +118,12 @@ export function Settings({ onSave }: { onSave: (s: DashboardSettings) => void })
             setPiResetting(false);
           }
         } catch {
+          failures++;
+          if (failures >= MAX_FAILURES) {
+            setPiResetting(false);
+            setPiResetPhase('');
+            return;
+          }
           setTimeout(poll, 3000);
         }
       };
