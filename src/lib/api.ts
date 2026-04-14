@@ -178,7 +178,7 @@ export async function triggerInstall(app: string, port: number, core: number): P
   const res = await fetch(`${getBaseUrl()}/api/install/${app}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ port, core }),
+    body: JSON.stringify({ core }),
     signal: AbortSignal.timeout(300000),
   });
   if (!res.ok) throw new Error('Failed to trigger install');
