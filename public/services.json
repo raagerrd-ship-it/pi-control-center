@@ -8,19 +8,19 @@
     "installDir": "/opt/lotus-light",
 "runInstallOnRelease": false,
     "installScript": "scripts/install.sh",
-    "updateScript": "/opt/sonos-buddy/scripts/update.sh",
+    "updateScript": "/opt/lotus-light/scripts/update.sh",
     "uninstallScript": "scripts/uninstall.sh",
     "components": {
       "engine": {
         "type": "node",
         "entrypoint": "engine/index.js",
-        "service": "sonos-buddy-engine",
+        "service": "lotus-light-engine",
         "alwaysOn": true
       },
       "ui": {
         "type": "static",
         "entrypoint": "dist/",
-        "service": "sonos-buddy-ui",
+        "service": "lotus-light-ui",
         "alwaysOn": false
       }
     }
