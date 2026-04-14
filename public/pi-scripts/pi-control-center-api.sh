@@ -1229,7 +1229,7 @@ handle_request() {
           sudo dphys-swapfile setup || true
           sudo dphys-swapfile swapon || true
         fi
-        sudo systemd-run --scope --quiet -p MemoryMax=384M bash -lc "cd '$ddir' && NODE_OPTIONS='--max-old-space-size=320' nice -n 15 ionice -c 3 npm install --no-audit --no-fund" >> "$reset_log" 2>&1 || true
+        sudo systemd-run --scope --quiet -p MemoryMax=512M bash -lc "cd '$ddir' && NODE_OPTIONS='--max-old-space-size=384' nice -n 15 ionice -c 3 npm install --omit=dev --no-audit --no-fund" >> "$reset_log" 2>&1 || true
 
         echo '{"status":"resetting","phase":"Bygger dashboard..."}' > "$STATUS_DIR/factory-reset.json"
         echo "Bygger dashboard..." >> "$reset_log"
@@ -1310,7 +1310,7 @@ handle_request() {
 
         if [ ! -d node_modules ] || [ "$prev_hash" != "$curr_hash" ]; then
           dashboard_progress "Installerar dependencies..."
-          if ! sudo systemd-run --scope --quiet -p MemoryMax=384M bash -lc "cd '$ddir' && NODE_OPTIONS='--max-old-space-size=320' nice -n 15 ionice -c 3 npm install --no-audit --no-fund"; then
+          if ! sudo systemd-run --scope --quiet -p MemoryMax=512M bash -lc "cd '$ddir' && NODE_OPTIONS='--max-old-space-size=384' nice -n 15 ionice -c 3 npm install --omit=dev --no-audit --no-fund"; then
             dashboard_fail "npm install misslyckades eller dödades (troligen minnesbrist)"
             exit 1
           fi
