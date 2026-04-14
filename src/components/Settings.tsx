@@ -50,6 +50,10 @@ export function Settings({ onSave }: { onSave: (s: DashboardSettings) => void })
   const [open, setOpen] = useState(false);
   const [resetting, setResetting] = useState(false);
   const [resetDone, setResetDone] = useState(false);
+  const [resetPhase, setResetPhase] = useState('');
+  const [piResetting, setPiResetting] = useState(false);
+  const [piResetDone, setPiResetDone] = useState(false);
+  const [piResetPhase, setPiResetPhase] = useState('');
 
   useEffect(() => {
     setSettings(loadSettings());
