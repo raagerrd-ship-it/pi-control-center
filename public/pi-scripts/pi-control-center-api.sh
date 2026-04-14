@@ -194,7 +194,7 @@ health_poll_loop() {
         [ -z "$engine_svc" ] && continue
         engine_active=$(service_is_active "$engine_svc")
         [ "$engine_active" != "true" ] && { echo '{"status":"offline"}' > "$HEALTH_DIR/${app}.json"; continue; }
-        engine_port=$((port + 50))
+        engine_port=$(engine_port_for_core "$core")
         poll_engine_health "$app" "$engine_port"
 
         local ui_svc
