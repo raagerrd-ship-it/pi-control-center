@@ -70,7 +70,6 @@ export function Settings({ onSave }: { onSave: (s: DashboardSettings) => void })
     setResetDone(false);
     try {
       await triggerFactoryReset();
-      // Poll for completion
       const poll = async () => {
         try {
           const result = await fetchFactoryResetStatus();
@@ -91,6 +90,37 @@ export function Settings({ onSave }: { onSave: (s: DashboardSettings) => void })
       setTimeout(poll, 2000);
     } catch {
       setResetting(false);
+    }
+  }, []);
+
+  const handlePiReset = useCallback(async () => {
+    setPiResetting(true);
+    setPiResetDone(false);
+    setPiResetPhase('Startar...');
+    try {
+      await triggerPiReset();
+      const poll = async () => {
+        try {
+          const result = await fetchFactoryResetStatus();
+          if (result.status === 'success') {
+            setPiResetting(false);
+            setPiResetDone(true);
+            localStorage.removeItem('pi-control-center-log');
+            setTimeout(() => window.location.reload(), 2000);
+          } else if (result.status === 'resetting') {
+            const phase = (result as any).phase;
+            if (phase) setPiResetPhase(phase);
+            setTimeout(poll, 2000);
+          } else {
+            setPiResetting(false);
+          }
+        } catch {
+          setTimeout(poll, 3000);
+        }
+      };
+      setTimeout(poll, 2000);
+    } catch {
+      setPiResetting(false);
     }
   }, []);
 
