@@ -97,21 +97,26 @@ registry_is_managed() {
   [ "$val" != "false" ] && echo "true" || echo "false"
 }
 
-# Get assignment field: assignment_get <key> <field>
-assignment_get() {
-  jq -r --arg k "$1" --arg f "$2" '.[$k][$f] // empty' "$ASSIGNMENTS_FILE" 2>/dev/null
+# Get assignment core: assignment_get_core <key>
+assignment_get_core() {
+  local val
+  val=$(jq -r --arg k "$1" '.[$k] // empty' "$ASSIGNMENTS_FILE" 2>/dev/null)
+  # Support both new format (bare number) and legacy format (object with .core)
+  if [ -n "$val" ] && echo "$val" | jq -e 'type == "number"' >/dev/null 2>&1; then
+    echo "$val"
+  elif [ -n "$val" ] && echo "$val" | jq -e 'type == "object"' >/dev/null 2>&1; then
+    echo "$val" | jq -r '.core // empty' 2>/dev/null
+  fi
 }
 
-# Save assignment: assignment_set <key> <port> <core>
+# Save assignment: assignment_set <key> <core>
 assignment_set() {
   local tmp tmpfile
   tmpfile="/tmp/pi-control-center/assignments.tmp.$$"
-  # Ensure source file is valid JSON; fall back to empty object
   if ! jq empty "$ASSIGNMENTS_FILE" 2>/dev/null; then
     echo '{}' | sudo tee "$ASSIGNMENTS_FILE" > /dev/null
   fi
-  tmp=$(jq --arg k "$1" --argjson p "$2" --argjson c "$3" '.[$k] = {"port": $p, "core": $c}' "$ASSIGNMENTS_FILE" 2>/dev/null)
-  # Validate output before writing
+  tmp=$(jq --arg k "$1" --argjson c "$2" '.[$k] = $c' "$ASSIGNMENTS_FILE" 2>/dev/null)
   if [ -n "$tmp" ] && echo "$tmp" | jq empty 2>/dev/null; then
     echo "$tmp" > "$tmpfile"
     sudo mv "$tmpfile" "$ASSIGNMENTS_FILE"
@@ -185,7 +190,7 @@ health_poll_loop() {
     for app in $(registry_keys); do
       local has_comp core port engine_port engine_svc engine_active
       has_comp=$(registry_has_components "$app")
-      core=$(assignment_get "$app" "core")
+      core=$(assignment_get_core "$app")
       [ -z "$core" ] || [ "$core" -lt 1 ] 2>/dev/null && continue
       port=$(port_for_core "$core")
 
@@ -399,7 +404,7 @@ build_status_json() {
     local svc install_dir port core online installed ver s_cpu s_ram s_core pid aff running has_comp
     svc=$(registry_get "$app" "service")
     install_dir=$(eval echo "$(registry_get "$app" "installDir")")
-    core=$(assignment_get "$app" "core")
+    core=$(assignment_get_core "$app")
     has_comp=$(registry_has_components "$app")
 
     [ -z "$core" ] && core=-1
@@ -894,7 +899,7 @@ do_install() {
   progress "$sf" "$app" "Sparar konfiguration..." "$start_time"
 
   # Save assignment
-  assignment_set "$app" "$req_port" "$req_core"  # port stored for compat but always derived from core
+  assignment_set "$app" "$req_core"
 
   rm -f "$CACHE_FILE"
   local total_elapsed=$(( $(date +%s) - start_time ))
@@ -1044,7 +1049,7 @@ handle_request() {
       (
         for fapp in $(registry_keys); do
           local fassign
-          fassign=$(assignment_get "$fapp" "port")
+          fassign=$(assignment_get_core "$fapp")
           if [ -n "$fassign" ]; then
             echo "Avinstallerar $fapp..." >> "$reset_log"
             do_uninstall "$fapp" >> "$reset_log" 2>&1
