@@ -31,7 +31,7 @@ fi
 # 2. Install dependencies
 echo "[2/7] Installing packages..."
 sudo apt-get update -qq
-sudo apt-get install -y -qq nginx socat git jq
+sudo apt-get install -y -qq nginx socat git jq bluez policykit-1 dbus
 
 if ! command -v node &>/dev/null; then
   echo "  Installing Node.js 20 LTS..."
@@ -40,9 +40,33 @@ if ! command -v node &>/dev/null; then
 fi
 echo "  Node: $(node -v), npm: $(npm -v)"
 
-# 3. Enable lingering — user services survive logout
-echo "[3/7] Enabling user service lingering..."
+# 3. Enable lingering + BLE prerequisites
+echo "[3/7] Enabling user service lingering + BLE prerequisites..."
 sudo loginctl enable-linger "$USER"
+sudo usermod -aG bluetooth "$USER" 2>/dev/null || true
+sudo mkdir -p /etc/polkit-1/rules.d
+sudo tee /etc/polkit-1/rules.d/49-allow-pi-bluez.rules > /dev/null <<'EOF'
+polkit.addRule(function(action, subject) {
+  if (subject.user == "pi" && action.id.indexOf("org.bluez.") == 0) {
+    return polkit.Result.YES;
+  }
+});
+EOF
+
+if [ -f /etc/bluetooth/main.conf ]; then
+  if sudo grep -q '^DisablePlugins=' /etc/bluetooth/main.conf; then
+    sudo sed -i 's/^DisablePlugins=.*/DisablePlugins=pnat/' /etc/bluetooth/main.conf
+  elif sudo grep -q '^\[General\]' /etc/bluetooth/main.conf; then
+    sudo sed -i '/^\[General\]/a DisablePlugins=pnat' /etc/bluetooth/main.conf
+  else
+    printf '\n[General]\nDisablePlugins=pnat\n' | sudo tee -a /etc/bluetooth/main.conf > /dev/null
+  fi
+else
+  printf '[General]\nDisablePlugins=pnat\n' | sudo tee /etc/bluetooth/main.conf > /dev/null
+fi
+
+sudo systemctl enable --now bluetooth 2>/dev/null || true
+sudo systemctl restart bluetooth 2>/dev/null || true
 
 # 4. Clone (shallow)
 echo "[4/7] Cloning Pi Control Center..."
