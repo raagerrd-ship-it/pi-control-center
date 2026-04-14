@@ -1321,6 +1321,7 @@ handle_request() {
         fi
 
         dashboard_progress "Bygger dashboard..."
+        sudo rm -rf "$ddir/dist"
         if ! sudo systemd-run --scope --quiet -p MemoryMax=384M bash -lc "cd '$ddir' && NODE_OPTIONS='--max-old-space-size=320' nice -n 15 ionice -c 3 npx vite build"; then
           dashboard_fail "Build misslyckades eller dödades (troligen minnesbrist)"
           exit 1
