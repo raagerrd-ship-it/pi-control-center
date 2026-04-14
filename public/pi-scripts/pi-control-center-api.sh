@@ -1233,11 +1233,13 @@ handle_request() {
 
         echo '{"status":"resetting","phase":"Bygger dashboard..."}' > "$STATUS_DIR/factory-reset.json"
         echo "Bygger dashboard..." >> "$reset_log"
+        sudo rm -rf "$ddir/dist"
         sudo systemd-run --scope --quiet -p MemoryMax=384M bash -lc "cd '$ddir' && NODE_OPTIONS='--max-old-space-size=320' nice -n 15 ionice -c 3 npx vite build" >> "$reset_log" 2>&1 || true
 
         echo '{"status":"resetting","phase":"Deployar..."}' > "$STATUS_DIR/factory-reset.json"
         sudo mkdir -p "$ndir"
         sudo cp -r dist/* "$ndir/" 2>> "$reset_log" || true
+        sudo chown -R pi:pi "$ddir/dist" 2>/dev/null || true
         [ -f "$ddir/public/services.json" ] && sudo cp "$ddir/public/services.json" "$ndir/" || true
         [ -f "$ddir/public/pi-scripts/pi-control-center-api.sh" ] && sudo install -m 755 "$ddir/public/pi-scripts/pi-control-center-api.sh" /usr/local/bin/pi-control-center-api.sh || true
 
@@ -1319,6 +1321,7 @@ handle_request() {
         fi
 
         dashboard_progress "Bygger dashboard..."
+        sudo rm -rf "$ddir/dist"
         if ! sudo systemd-run --scope --quiet -p MemoryMax=384M bash -lc "cd '$ddir' && NODE_OPTIONS='--max-old-space-size=320' nice -n 15 ionice -c 3 npx vite build"; then
           dashboard_fail "Build misslyckades eller dödades (troligen minnesbrist)"
           exit 1
@@ -1327,6 +1330,7 @@ handle_request() {
         dashboard_progress "Deployar..."
         sudo mkdir -p "$ndir"
         sudo cp -r dist/* "$ndir/" || { dashboard_fail "Deploy misslyckades"; exit 1; }
+        sudo chown -R pi:pi "$ddir/dist" 2>/dev/null || true
         [ -f "$ddir/public/services.json" ] && sudo cp "$ddir/public/services.json" "$ndir/" || true
         if [ -f "$ddir/public/pi-scripts/pi-control-center-api.sh" ]; then
           sudo install -m 755 "$ddir/public/pi-scripts/pi-control-center-api.sh" /usr/local/bin/pi-control-center-api.sh || true
