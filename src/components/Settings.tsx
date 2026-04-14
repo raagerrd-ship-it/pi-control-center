@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Settings as SettingsIcon, AlertTriangle, Loader2 } from 'lucide-react';
+import { Settings as SettingsIcon, AlertTriangle, Loader2, RotateCcw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -22,7 +22,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog';
-import { triggerFactoryReset, fetchFactoryResetStatus } from '@/lib/api';
+import { triggerFactoryReset, triggerPiReset, fetchFactoryResetStatus } from '@/lib/api';
 
 export interface DashboardSettings {
   deviceLabel: string;
@@ -50,6 +50,10 @@ export function Settings({ onSave }: { onSave: (s: DashboardSettings) => void })
   const [open, setOpen] = useState(false);
   const [resetting, setResetting] = useState(false);
   const [resetDone, setResetDone] = useState(false);
+  const [resetPhase, setResetPhase] = useState('');
+  const [piResetting, setPiResetting] = useState(false);
+  const [piResetDone, setPiResetDone] = useState(false);
+  const [piResetPhase, setPiResetPhase] = useState('');
 
   useEffect(() => {
     setSettings(loadSettings());
@@ -66,7 +70,6 @@ export function Settings({ onSave }: { onSave: (s: DashboardSettings) => void })
     setResetDone(false);
     try {
       await triggerFactoryReset();
-      // Poll for completion
       const poll = async () => {
         try {
           const result = await fetchFactoryResetStatus();
@@ -87,6 +90,37 @@ export function Settings({ onSave }: { onSave: (s: DashboardSettings) => void })
       setTimeout(poll, 2000);
     } catch {
       setResetting(false);
+    }
+  }, []);
+
+  const handlePiReset = useCallback(async () => {
+    setPiResetting(true);
+    setPiResetDone(false);
+    setPiResetPhase('Startar...');
+    try {
+      await triggerPiReset();
+      const poll = async () => {
+        try {
+          const result = await fetchFactoryResetStatus();
+          if (result.status === 'success') {
+            setPiResetting(false);
+            setPiResetDone(true);
+            localStorage.removeItem('pi-control-center-log');
+            setTimeout(() => window.location.reload(), 2000);
+          } else if (result.status === 'resetting') {
+            const phase = (result as any).phase;
+            if (phase) setPiResetPhase(phase);
+            setTimeout(poll, 2000);
+          } else {
+            setPiResetting(false);
+          }
+        } catch {
+          setTimeout(poll, 3000);
+        }
+      };
+      setTimeout(poll, 2000);
+    } catch {
+      setPiResetting(false);
     }
   }, []);
 
@@ -117,15 +151,68 @@ export function Settings({ onSave }: { onSave: (s: DashboardSettings) => void })
 
           <Button onClick={save} className="font-mono text-sm">Spara</Button>
 
-          <div className="border-t border-border pt-4 mt-2">
-            <Label className="text-xs text-muted-foreground font-mono mb-2 block">Farlig zon</Label>
+          <div className="border-t border-border pt-4 mt-2 flex flex-col gap-2">
+            <Label className="text-xs text-muted-foreground font-mono mb-1 block">Farlig zon</Label>
+
+            {/* Återställ Pi — full reset + reinstall PCC */}
             <AlertDialog>
               <AlertDialogTrigger asChild>
                 <Button
                   variant="outline"
                   size="sm"
-                  disabled={resetting}
+                  disabled={piResetting || resetting}
                   className="w-full font-mono text-xs text-destructive border-destructive/30 hover:bg-destructive/10 hover:text-destructive"
+                >
+                  {piResetting ? (
+                    <>
+                      <Loader2 className="h-3 w-3 animate-spin mr-1.5" />
+                      <span className="truncate">{piResetPhase || 'Återställer...'}</span>
+                    </>
+                  ) : piResetDone ? (
+                    'Återställd ✓'
+                  ) : (
+                    <>
+                      <RotateCcw className="h-3 w-3 mr-1.5" />
+                      Återställ Pi
+                    </>
+                  )}
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent className="max-w-sm">
+                <AlertDialogHeader>
+                  <AlertDialogTitle className="font-mono flex items-center gap-2">
+                    <RotateCcw className="h-4 w-4 text-destructive" />
+                    Återställ Pi
+                  </AlertDialogTitle>
+                  <AlertDialogDescription className="text-xs leading-relaxed">
+                    Detta <strong>avinstallerar alla tjänster</strong> och installerar sedan om
+                    senaste versionen av Pi Control Center.
+                    <br /><br />
+                    Efteråt kan du installera rena versioner av tjänsterna.
+                    <br /><br />
+                    <span className="text-destructive font-medium">Åtgärden kan inte ångras.</span>
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel className="font-mono text-xs">Avbryt</AlertDialogCancel>
+                  <AlertDialogAction
+                    onClick={handlePiReset}
+                    className="font-mono text-xs bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                  >
+                    Återställ Pi
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+
+            {/* Fabriksåterställning — bara avinstallera tjänster */}
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  disabled={resetting || piResetting}
+                  className="w-full font-mono text-[11px] text-muted-foreground hover:text-destructive"
                 >
                   {resetting ? (
                     <>
@@ -137,7 +224,7 @@ export function Settings({ onSave }: { onSave: (s: DashboardSettings) => void })
                   ) : (
                     <>
                       <AlertTriangle className="h-3 w-3 mr-1.5" />
-                      Fabriksåterställning
+                      Fabriksåterställning (bara tjänster)
                     </>
                   )}
                 </Button>
@@ -150,7 +237,7 @@ export function Settings({ onSave }: { onSave: (s: DashboardSettings) => void })
                   </AlertDialogTitle>
                   <AlertDialogDescription className="text-xs leading-relaxed">
                     Detta avinstallerar <strong>alla tjänster</strong> och rensar alla tilldelningar.
-                    Pi OS och Pi Control Center bevaras.
+                    Pi OS och Pi Control Center bevaras oförändrade.
                     <br /><br />
                     <span className="text-destructive font-medium">Åtgärden kan inte ångras.</span>
                   </AlertDialogDescription>

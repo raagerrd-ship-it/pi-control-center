@@ -222,6 +222,7 @@ export async function fetchLogs(app: string, type: 'update' | 'install' | 'servi
 
 export interface FactoryResetResult {
   status: 'resetting' | 'success' | 'error' | 'idle';
+  phase?: string;
   timestamp?: string;
 }
 
@@ -231,6 +232,15 @@ export async function triggerFactoryReset(): Promise<FactoryResetResult> {
     signal: AbortSignal.timeout(120000),
   });
   if (!res.ok) throw new Error('Failed to trigger factory reset');
+  return res.json();
+}
+
+export async function triggerPiReset(): Promise<FactoryResetResult> {
+  const res = await fetch(`${getBaseUrl()}/api/pi-reset`, {
+    method: 'POST',
+    signal: AbortSignal.timeout(120000),
+  });
+  if (!res.ok) throw new Error('Failed to trigger Pi reset');
   return res.json();
 }
 
