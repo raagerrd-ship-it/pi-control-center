@@ -6,56 +6,7 @@
     "releaseUrl": "https://api.github.com/repos/raagerrd-ship-it/lotus-light-link/releases/latest",
     "releaseAsset": "dist.tar.gz",
     "installDir": "/opt/lotus-light",
-    "runInstallOnRelease": true,
-    "installScript": "pi/setup-lotus.sh",
-    "updateScript": "/opt/lotus-light/pi/update-services.sh",
-    "uninstallScript": "pi/uninstall-lotus.sh",
-    "components": {
-      "engine": {
-        "type": "node",
-        "entrypoint": "pi/dist/index.js",
-        "service": "lotus-light-engine",
-        "alwaysOn": true
-      },
-      "ui": {
-        "type": "static",
-        "entrypoint": "dist/",
-        "service": "lotus-light-ui",
-        "alwaysOn": false
-      }
-    }
-  },
-  {
-    "key": "cast-away",
-    "name": "Cast Away",
-    "repo": "https://github.com/raagerrd-ship-it/hromecast.git",
-    "releaseUrl": "https://api.github.com/repos/raagerrd-ship-it/hromecast/releases/latest",
-    "installDir": "/opt/cast-away",
-    "installScript": "scripts/install.sh",
-    "updateScript": "/opt/cast-away/scripts/update.sh",
-    "uninstallScript": "scripts/uninstall.sh",
-    "components": {
-      "engine": {
-        "type": "node",
-        "entrypoint": "engine/index.js",
-        "service": "cast-away-engine",
-        "alwaysOn": true
-      },
-      "ui": {
-        "type": "static",
-        "entrypoint": "dist/",
-        "service": "cast-away-ui",
-        "alwaysOn": false
-      }
-    }
-  },
-  {
-    "key": "sonos-buddy",
-    "name": "Sonos Buddy",
-    "repo": "https://github.com/raagerrd-ship-it/sonos-gateway.git",
-    "releaseUrl": "https://api.github.com/repos/raagerrd-ship-it/sonos-gateway/releases/latest",
-    "installDir": "/opt/sonos-buddy",
-    "runInstallOnRelease": true,
+"runInstallOnRelease": false,
     "installScript": "scripts/install.sh",
     "updateScript": "/opt/sonos-buddy/scripts/update.sh",
     "uninstallScript": "scripts/uninstall.sh",
