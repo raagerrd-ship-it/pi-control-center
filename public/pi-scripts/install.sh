@@ -31,7 +31,7 @@ fi
 # 2. Install dependencies
 echo "[2/7] Installing packages..."
 sudo apt-get update -qq
-sudo apt-get install -y -qq nginx socat git jq bluez dbus
+sudo apt-get install -y -qq nginx socat git jq bluez dbus build-essential python3 libudev-dev libusb-1.0-0-dev
 sudo apt-get install -y -qq polkitd 2>/dev/null || sudo apt-get install -y -qq policykit-1 2>/dev/null || true
 
 if ! command -v node &>/dev/null; then
