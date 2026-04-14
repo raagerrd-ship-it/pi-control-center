@@ -1239,6 +1239,7 @@ handle_request() {
         echo '{"status":"resetting","phase":"Deployar..."}' > "$STATUS_DIR/factory-reset.json"
         sudo mkdir -p "$ndir"
         sudo cp -r dist/* "$ndir/" 2>> "$reset_log" || true
+        sudo chown -R pi:pi "$ddir/dist" 2>/dev/null || true
         [ -f "$ddir/public/services.json" ] && sudo cp "$ddir/public/services.json" "$ndir/" || true
         [ -f "$ddir/public/pi-scripts/pi-control-center-api.sh" ] && sudo install -m 755 "$ddir/public/pi-scripts/pi-control-center-api.sh" /usr/local/bin/pi-control-center-api.sh || true
 
