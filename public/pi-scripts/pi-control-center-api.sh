@@ -415,7 +415,7 @@ build_status_json() {
       local engine_svc ui_svc engine_online ui_online engine_cpu engine_ram ui_cpu ui_ram engine_ver ui_ver engine_port
       engine_svc=$(registry_get_component "$app" "engine" "service")
       ui_svc=$(registry_get_component "$app" "ui" "service")
-      engine_port=$((port + 50))
+      engine_port=$(engine_port_for_core "$core")
       engine_online="false"; ui_online="false"
       engine_cpu=0; engine_ram=0; ui_cpu=0; ui_ram=0
       engine_ver=""; ui_ver=""
