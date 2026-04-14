@@ -393,8 +393,8 @@ export const CoreCard = memo(function CoreCard({
         </div>
       )}
 
-      {/* Actions */}
-      <div className="grid grid-cols-2 gap-1 mt-auto">
+      {/* Actions - full width buttons on separate rows */}
+      <div className="flex flex-col gap-1.5 mt-auto">
         {!isComponentBased && (
           <>
             {!online ? (
@@ -407,7 +407,7 @@ export const CoreCard = memo(function CoreCard({
               </Button>
             )}
             <Button variant="secondary" size="sm" className="font-mono text-[11px] gap-1 h-8 px-2 w-full" disabled={!!isPending || !online} onClick={() => onServiceAction(def.key, 'restart')}>
-              <RotateCcw className="h-3 w-3" /> Omstart
+              <RotateCcw className="h-3 w-3" /> Starta om
             </Button>
           </>
         )}
@@ -416,14 +416,14 @@ export const CoreCard = memo(function CoreCard({
             <ExternalLink className="h-3 w-3" /> Öppna
           </a>
         ) : (
-          <div className="h-8 rounded-md bg-secondary/30 flex items-center justify-center font-mono text-[11px] text-muted-foreground/50">
+          <div className="h-8 rounded-md bg-secondary/30 flex items-center justify-center font-mono text-[11px] text-muted-foreground/50 w-full">
             <ExternalLink className="h-3 w-3 mr-1" /> Öppna
           </div>
         )}
         <AlertDialog>
           <AlertDialogTrigger asChild>
             <Button variant="secondary" size="sm" className="font-mono text-[11px] gap-1 h-8 px-2 w-full text-destructive hover:text-destructive">
-              <Trash2 className="h-3 w-3" /> Avinst.
+              <Trash2 className="h-3 w-3" /> Avinstallera
             </Button>
           </AlertDialogTrigger>
           <AlertDialogContent>
