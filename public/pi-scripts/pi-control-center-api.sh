@@ -253,6 +253,39 @@ get_cpu() {
   [ "$td" -gt 0 ] && echo $(((td - id) * 100 / td)) || echo 0
 }
 
+get_cpu_per_core() {
+  # Read per-core stats from /proc/stat (cpu0, cpu1, cpu2, ...)
+  local cores_before=()
+  local i=0
+  while IFS=' ' read -r label u n s idle w x y _rest; do
+    [[ "$label" =~ ^cpu[0-9]+$ ]] || continue
+    local total=$((u + n + s + idle + w + x + y))
+    cores_before+=("$total:$idle")
+    i=$((i + 1))
+  done < /proc/stat
+
+  sleep 0.2
+
+  local cores_after=()
+  while IFS=' ' read -r label u n s idle w x y _rest; do
+    [[ "$label" =~ ^cpu[0-9]+$ ]] || continue
+    local total=$((u + n + s + idle + w + x + y))
+    cores_after+=("$total:$idle")
+  done < /proc/stat
+
+  local result=""
+  for j in $(seq 0 $((${#cores_before[@]} - 1))); do
+    local t1=${cores_before[$j]%%:*} i1=${cores_before[$j]##*:}
+    local t2=${cores_after[$j]%%:*} i2=${cores_after[$j]##*:}
+    local td=$((t2 - t1)) id=$((i2 - i1))
+    local pct=0
+    [ "$td" -gt 0 ] && pct=$(((td - id) * 100 / td))
+    [ -n "$result" ] && result="${result},"
+    result="${result}${pct}"
+  done
+  echo "[${result}]"
+}
+
 get_temp() {
   if [ -f /sys/class/thermal/thermal_zone0/temp ]; then
     local raw=$(< /sys/class/thermal/thermal_zone0/temp)
@@ -387,8 +420,9 @@ get_service_ram() {
 }
 
 build_status_json() {
-  local cpu temp ram disk uptime_str ram_used ram_total disk_used disk_total svc_json
+  local cpu temp ram disk uptime_str ram_used ram_total disk_used disk_total svc_json cpu_cores
   cpu=$(get_cpu)
+  cpu_cores=$(get_cpu_per_core)
   temp=$(get_temp)
   ram=$(get_ram)
   disk=$(get_disk)
@@ -517,7 +551,7 @@ build_status_json() {
   dash_pid=$(systemctl show "pi-control-center-api.service" --property=MainPID 2>/dev/null | cut -d= -f2)
   [ -n "$dash_pid" ] && [ "$dash_pid" != "0" ] && dash_cpu=$(ps -p "$dash_pid" -o %cpu= 2>/dev/null | tr -d ' ' || echo "0")
 
-  echo "{\"cpu\":${cpu:-0},\"temp\":${temp:-0},\"ramUsed\":${ram_used:-0},\"ramTotal\":${ram_total:-0},\"diskUsed\":${disk_used:-0},\"diskTotal\":${disk_total:-0},\"uptime\":\"${uptime_str}\",\"dashboardCpu\":${dash_cpu:-0},\"dashboardRamMb\":${dash_ram:-0},\"commit\":\"${DASHBOARD_COMMIT_SHORT}\",\"branch\":\"${DASHBOARD_BRANCH}\",\"services\":{${svc_json}}}"
+  echo "{\"cpu\":${cpu:-0},\"cpuCores\":${cpu_cores:-[]},\"temp\":${temp:-0},\"ramUsed\":${ram_used:-0},\"ramTotal\":${ram_total:-0},\"diskUsed\":${disk_used:-0},\"diskTotal\":${disk_total:-0},\"uptime\":\"${uptime_str}\",\"dashboardCpu\":${dash_cpu:-0},\"dashboardRamMb\":${dash_ram:-0},\"commit\":\"${DASHBOARD_COMMIT_SHORT}\",\"branch\":\"${DASHBOARD_BRANCH}\",\"services\":{${svc_json}}}"
 }
 
 get_cached_status() {
