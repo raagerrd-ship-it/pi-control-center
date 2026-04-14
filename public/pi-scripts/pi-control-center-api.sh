@@ -648,8 +648,8 @@ do_install_release() {
 
   if [ "$has_comp" = "true" ]; then
     # Component-based: create separate services for engine and ui
-    # Engine port = UI port + 50 (e.g. UI=3002 → Engine=3052)
-    local engine_port=$((req_port + 50))
+    # Fixed ports: UI = 3000 + core, Engine = 3050 + core
+    local engine_port=$(engine_port_for_core "$req_core")
     mkdir -p "$PI_HOME/.config/systemd/user" || return 1
     mkdir -p "${install_dir}/.npm-cache" || return 1
 
