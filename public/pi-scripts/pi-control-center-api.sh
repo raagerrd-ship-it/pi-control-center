@@ -1512,6 +1512,29 @@ startup_cleanup_system_services() {
 }
 startup_cleanup_system_services
 
+# --- Migrate legacy assignments.json format ---
+# Old: {"app": {"port": 3001, "core": 1}}  →  New: {"app": 1}
+migrate_assignments() {
+  [ -f "$ASSIGNMENTS_FILE" ] || return
+  local needs_migrate=false
+  for key in $(jq -r 'keys[]' "$ASSIGNMENTS_FILE" 2>/dev/null); do
+    if jq -e --arg k "$key" '.[$k] | type == "object"' "$ASSIGNMENTS_FILE" >/dev/null 2>&1; then
+      needs_migrate=true
+      break
+    fi
+  done
+  [ "$needs_migrate" = "false" ] && return
+  echo "Migrating assignments.json to new format (core-only)..."
+  local migrated
+  migrated=$(jq 'with_entries(if .value | type == "object" then .value = .value.core else . end)' "$ASSIGNMENTS_FILE" 2>/dev/null)
+  if [ -n "$migrated" ] && echo "$migrated" | jq empty 2>/dev/null; then
+    echo "$migrated" > "/tmp/pi-control-center/assignments.migrate.$$"
+    sudo mv "/tmp/pi-control-center/assignments.migrate.$$" "$ASSIGNMENTS_FILE"
+    echo "Migration complete: $(cat "$ASSIGNMENTS_FILE")"
+  fi
+}
+migrate_assignments
+
 echo "Pi Control Center API listening on port $PORT"
 
 # Start health polling in background
