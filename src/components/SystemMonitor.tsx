@@ -82,12 +82,37 @@ export function SystemMonitor({
         </div>
       )}
       {/* System gauges */}
-      <div className="grid grid-cols-2 gap-3">
-        <Gauge icon={<Cpu className="h-3.5 w-3.5" />} label="CPU" value={cpuVal} percent={noData ? undefined : status.cpu} warning={!noData && status.cpu > 85} />
-        <Gauge icon={<Thermometer className="h-3.5 w-3.5" />} label="Temp" value={tempVal} percent={noData ? undefined : Math.min(status.temp, 85)} warning={!noData && status.temp > 70} />
-        <Gauge icon={<MemoryStick className="h-3.5 w-3.5" />} label="RAM" value={ramVal} percent={noData ? undefined : ramPercent} warning={!noData && ramPercent > 85} />
-        <Gauge icon={<HardDrive className="h-3.5 w-3.5" />} label="Disk" value={diskVal} percent={noData ? undefined : diskPercent} warning={!noData && diskPercent > 90} />
-        <div className="col-span-2">
+      <div className="flex flex-col gap-3">
+        {/* CPU: total + per-core */}
+        <div className="flex flex-col gap-1.5">
+          <div className="flex items-center gap-2 text-muted-foreground">
+            <Cpu className="h-3.5 w-3.5" />
+            <span className="text-xs uppercase tracking-wider">CPU</span>
+            <span className={`ml-auto font-mono text-sm font-semibold ${!noData && status.cpu > 85 ? 'text-destructive' : 'text-foreground'}`}>
+              {cpuVal}
+            </span>
+          </div>
+          <Progress value={noData ? 0 : status.cpu} className="h-1.5 bg-secondary" />
+          {!noData && status.cpuCores && status.cpuCores.length > 0 && (
+            <div className="grid grid-cols-4 gap-1.5 mt-1">
+              {status.cpuCores.map((core, i) => (
+                <div key={i} className="flex flex-col gap-0.5">
+                  <div className="flex items-center justify-between">
+                    <span className="font-mono text-[10px] text-muted-foreground">Core {i}</span>
+                    <span className={`font-mono text-[10px] font-medium ${core > 85 ? 'text-destructive' : 'text-foreground'}`}>{core}%</span>
+                  </div>
+                  <Progress value={core} className="h-1 bg-secondary" />
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Other gauges */}
+        <div className="grid grid-cols-2 gap-3">
+          <Gauge icon={<Thermometer className="h-3.5 w-3.5" />} label="Temp" value={tempVal} percent={noData ? undefined : Math.min(status.temp, 85)} warning={!noData && status.temp > 70} />
+          <Gauge icon={<MemoryStick className="h-3.5 w-3.5" />} label="RAM" value={ramVal} percent={noData ? undefined : ramPercent} warning={!noData && ramPercent > 85} />
+          <Gauge icon={<HardDrive className="h-3.5 w-3.5" />} label="Disk" value={diskVal} percent={noData ? undefined : diskPercent} warning={!noData && diskPercent > 90} />
           <Gauge icon={<Clock className="h-3.5 w-3.5" />} label="Drifttid" value={uptimeVal} />
         </div>
       </div>
