@@ -183,10 +183,11 @@ health_poll_loop() {
   local cleanup_counter=0
   while true; do
     for app in $(registry_keys); do
-      local has_comp port engine_port engine_svc engine_active
+      local has_comp core port engine_port engine_svc engine_active
       has_comp=$(registry_has_components "$app")
-      port=$(assignment_get "$app" "port")
-      [ -z "$port" ] || [ "$port" = "0" ] && continue
+      core=$(assignment_get "$app" "core")
+      [ -z "$core" ] || [ "$core" -lt 1 ] 2>/dev/null && continue
+      port=$(port_for_core "$core")
 
       if [ "$has_comp" = "true" ]; then
         engine_svc=$(registry_get_component "$app" "engine" "service")
