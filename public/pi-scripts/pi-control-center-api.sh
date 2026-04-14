@@ -1074,6 +1074,77 @@ handle_request() {
 
       ;;
 
+    "POST /api/pi-reset")
+      # Full Pi reset: uninstall all services + reinstall latest Pi Control Center
+      local reset_log="$STATUS_DIR/factory-reset.log"
+      : > "$reset_log"
+      echo '{"status":"resetting","phase":"services"}' > "$STATUS_DIR/factory-reset.json"
+      response='{"status":"resetting","phase":"services"}'
+      (
+        echo "=== Återställ Pi ===" >> "$reset_log"
+
+        # 1) Uninstall all services
+        echo '{"status":"resetting","phase":"Avinstallerar tjänster..."}' > "$STATUS_DIR/factory-reset.json"
+        for fapp in $(registry_keys); do
+          local fassign
+          fassign=$(assignment_get_core "$fapp")
+          if [ -n "$fassign" ]; then
+            echo "Avinstallerar $fapp..." >> "$reset_log"
+            do_uninstall "$fapp" >> "$reset_log" 2>&1
+          fi
+        done
+        for fapp in $(registry_keys); do
+          local fdir
+          fdir=$(eval echo "$(registry_get "$fapp" "installDir")" 2>/dev/null)
+          [ -n "$fdir" ] && [ -d "$fdir" ] && sudo rm -rf "$fdir" >> "$reset_log" 2>&1
+        done
+        echo '{}' | sudo tee "$ASSIGNMENTS_FILE" > /dev/null
+        rm -rf "$HEALTH_DIR"/* "$STATUS_DIR"/*.json "$INSTALL_DIR"/*.json "$INSTALL_DIR"/*.log 2>/dev/null
+        mkdir -p "$HEALTH_DIR"
+        rm -f "$CACHE_FILE"
+
+        # 2) Reinstall latest Pi Control Center
+        echo '{"status":"resetting","phase":"Uppdaterar Pi Control Center..."}' > "$STATUS_DIR/factory-reset.json"
+        local ddir="$PI_HOME/pi-control-center"
+        local ndir="/var/www/pi-control-center"
+        local remote_ref="origin/main"
+        cd "$ddir" 2>/dev/null || { echo '{"status":"error","message":"Dashboard-katalog saknas"}' > "$STATUS_DIR/factory-reset.json"; exit 1; }
+
+        echo "Hämtar senaste kod..." >> "$reset_log"
+        git checkout -- . 2>/dev/null || true
+        git clean -fd -e node_modules >/dev/null 2>&1 || true
+        nice -n 15 git fetch origin main --depth=1 --quiet 2>/dev/null || nice -n 15 git fetch origin master --depth=1 --quiet 2>/dev/null || true
+        git rev-parse origin/main >/dev/null 2>&1 || remote_ref="origin/master"
+        git reset --hard "$remote_ref" --quiet 2>> "$reset_log" || true
+        git clean -fd -e node_modules >/dev/null 2>&1 || true
+        sed -i 's/\r$//' "$ddir/public/pi-scripts/"*.sh
+        chmod +x "$ddir/public/pi-scripts/"*.sh
+
+        echo '{"status":"resetting","phase":"Installerar dependencies..."}' > "$STATUS_DIR/factory-reset.json"
+        echo "Installerar dependencies..." >> "$reset_log"
+        if [ "$(swapon --show | wc -l)" -lt 2 ] && [ -f /etc/dphys-swapfile ]; then
+          sudo sed -i 's/^CONF_SWAPSIZE=.*/CONF_SWAPSIZE=512/' /etc/dphys-swapfile
+          sudo dphys-swapfile setup || true
+          sudo dphys-swapfile swapon || true
+        fi
+        sudo systemd-run --scope --quiet -p MemoryMax=384M bash -lc "cd '$ddir' && NODE_OPTIONS='--max-old-space-size=320' nice -n 15 ionice -c 3 npm install --no-audit --no-fund" >> "$reset_log" 2>&1 || true
+
+        echo '{"status":"resetting","phase":"Bygger dashboard..."}' > "$STATUS_DIR/factory-reset.json"
+        echo "Bygger dashboard..." >> "$reset_log"
+        sudo systemd-run --scope --quiet -p MemoryMax=384M bash -lc "cd '$ddir' && NODE_OPTIONS='--max-old-space-size=320' nice -n 15 ionice -c 3 npx vite build" >> "$reset_log" 2>&1 || true
+
+        echo '{"status":"resetting","phase":"Deployar..."}' > "$STATUS_DIR/factory-reset.json"
+        sudo mkdir -p "$ndir"
+        sudo cp -r dist/* "$ndir/" 2>> "$reset_log" || true
+        [ -f "$ddir/public/services.json" ] && sudo cp "$ddir/public/services.json" "$ndir/" || true
+        [ -f "$ddir/public/pi-scripts/pi-control-center-api.sh" ] && sudo install -m 755 "$ddir/public/pi-scripts/pi-control-center-api.sh" /usr/local/bin/pi-control-center-api.sh || true
+
+        echo '{"status":"success","timestamp":"'"$(date -Iseconds)"'"}' > "$STATUS_DIR/factory-reset.json"
+        echo "Återställning klar. Startar om API..." >> "$reset_log"
+        sudo systemctl restart pi-control-center-api >/dev/null 2>&1 || true
+      ) >> "$reset_log" 2>&1 &
+      ;;
+
     "GET /api/factory-reset-status")
       [ -f "$STATUS_DIR/factory-reset.json" ] && response=$(< "$STATUS_DIR/factory-reset.json") || response='{"status":"idle"}'
       ;;
