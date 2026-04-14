@@ -253,6 +253,39 @@ get_cpu() {
   [ "$td" -gt 0 ] && echo $(((td - id) * 100 / td)) || echo 0
 }
 
+get_cpu_per_core() {
+  # Read per-core stats from /proc/stat (cpu0, cpu1, cpu2, ...)
+  local cores_before=()
+  local i=0
+  while IFS=' ' read -r label u n s idle w x y _rest; do
+    [[ "$label" =~ ^cpu[0-9]+$ ]] || continue
+    local total=$((u + n + s + idle + w + x + y))
+    cores_before+=("$total:$idle")
+    i=$((i + 1))
+  done < /proc/stat
+
+  sleep 0.2
+
+  local cores_after=()
+  while IFS=' ' read -r label u n s idle w x y _rest; do
+    [[ "$label" =~ ^cpu[0-9]+$ ]] || continue
+    local total=$((u + n + s + idle + w + x + y))
+    cores_after+=("$total:$idle")
+  done < /proc/stat
+
+  local result=""
+  for j in $(seq 0 $((${#cores_before[@]} - 1))); do
+    local t1=${cores_before[$j]%%:*} i1=${cores_before[$j]##*:}
+    local t2=${cores_after[$j]%%:*} i2=${cores_after[$j]##*:}
+    local td=$((t2 - t1)) id=$((i2 - i1))
+    local pct=0
+    [ "$td" -gt 0 ] && pct=$(((td - id) * 100 / td))
+    [ -n "$result" ] && result="${result},"
+    result="${result}${pct}"
+  done
+  echo "[${result}]"
+}
+
 get_temp() {
   if [ -f /sys/class/thermal/thermal_zone0/temp ]; then
     local raw=$(< /sys/class/thermal/thermal_zone0/temp)
