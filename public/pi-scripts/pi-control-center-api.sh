@@ -1084,8 +1084,8 @@ handle_request() {
           sudo -u pi XDG_RUNTIME_DIR="/run/user/$(id -u pi)" systemctl --user daemon-reload 2>/dev/null || true
         fi
 
-        # Kill any stray processes on service ports (3001-3003, 3051-3053)
-        for port in 3001 3002 3003 3051 3052 3053; do
+        # Kill any stray processes on service ports (3000-3010, 3050-3060)
+        for port in $(seq 3000 3010) $(seq 3050 3060); do
           local pid
           pid=$(sudo lsof -ti ":$port" 2>/dev/null || true)
           if [ -n "$pid" ]; then
@@ -1156,8 +1156,8 @@ handle_request() {
           sudo -u pi XDG_RUNTIME_DIR="/run/user/$(id -u pi)" systemctl --user daemon-reload 2>/dev/null || true
         fi
 
-        # Kill any stray node/python processes on service ports (3001-3003, 3051-3053)
-        for port in 3001 3002 3003 3051 3052 3053; do
+        # Kill any stray processes on service ports (3000-3010, 3050-3060)
+        for port in $(seq 3000 3010) $(seq 3050 3060); do
           local pid
           pid=$(sudo lsof -ti ":$port" 2>/dev/null || true)
           if [ -n "$pid" ]; then
