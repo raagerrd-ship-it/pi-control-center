@@ -169,6 +169,25 @@ export function SystemMonitor({
             )}
           </div>
         </div>
+
+        {/* Update progress bar */}
+        {isUpdatingDashboard && (
+          <div className="flex flex-col gap-1.5 mt-1">
+            <div className="h-1.5 w-full bg-secondary rounded-full overflow-hidden">
+              <div className="h-full bg-primary rounded-full animate-pulse" style={{ width: '100%', opacity: 0.7 }} />
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="font-mono text-[10px] text-muted-foreground truncate max-w-[70%]">
+                {dashboardUpdate?.progress || 'Startar uppdatering...'}
+              </span>
+              {dashboardUpdate?.elapsed && (
+                <span className="font-mono text-[10px] text-muted-foreground shrink-0">
+                  {dashboardUpdate.elapsed}
+                </span>
+              )}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
