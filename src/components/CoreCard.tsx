@@ -45,6 +45,9 @@ interface CoreCardProps {
   };
   availableServices: ServiceDefinition[];
   allInstalls: Record<string, InstallResult>;
+  memLimitMb: number | null;
+  otherAllocatedMb: number;
+  onMemLimitChange: (app: string, mb: number) => void;
   onUpdate: (app: string) => void;
   onCheckVersion: (app: string) => Promise<void>;
   onInstall: (app: string, port: number, core: number) => void;
