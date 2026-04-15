@@ -42,11 +42,17 @@ const Index = () => {
   // Fetch memory limits for installed services
   useEffect(() => {
     if (!status?.services) return;
-    Object.entries(status.services).forEach(([key, svc]) => {
-      if (svc.installed && !memLimits[key]) {
+    const installedKeys = Object.entries(status.services)
+      .filter(([, svc]) => svc.installed)
+      .map(([key]) => key);
+    const defaultPerApp = installedKeys.length > 0
+      ? Math.floor(332 / installedKeys.length)
+      : 111;
+    installedKeys.forEach(key => {
+      if (!memLimits[key]) {
         fetchMemoryLimit(key)
           .then(r => setMemLimits(prev => ({ ...prev, [key]: r.limitMb })))
-          .catch(() => setMemLimits(prev => ({ ...prev, [key]: 128 })));
+          .catch(() => setMemLimits(prev => ({ ...prev, [key]: defaultPerApp })));
       }
     });
   }, [status?.services]);

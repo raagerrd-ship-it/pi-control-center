@@ -782,7 +782,7 @@ Environment=ENGINE_PORT=${engine_port}
 Environment=UI_PORT=${req_port}
 ${comp_env_lines}
 ${cpu_pin_lines}
-MemoryMax=128M
+MemoryMax=111M
 ProtectSystem=strict
 ProtectHome=read-only
 ReadWritePaths=${install_dir}
@@ -862,7 +862,7 @@ Environment=PORT=${req_port}
 ${legacy_env_lines}
 CPUAffinity=${req_core}
 AllowedCPUs=${req_core}
-MemoryMax=128M
+MemoryMax=111M
 ProtectSystem=strict
 ProtectHome=read-only
 ReadWritePaths=${install_dir}
