@@ -69,6 +69,10 @@ export function SystemMonitor({
   const ramPercent = noData ? 0 : Math.round((status.ramUsed / status.ramTotal) * 100);
   const diskPercent = noData ? 0 : Math.round((status.diskUsed / status.diskTotal) * 100);
   const dashboardPhase = dashboardUpdate?.progress || dashboardUpdate?.message || (busy ? 'Pi upptagen — väntar på svar...' : 'Startar uppdatering...');
+  const dashboardVersionLabel = dashboardVersion?.local || (status?.commit ? status.commit.slice(0, 7) : '—');
+  const dashboardUpdatedVersion = dashboardUpdate?.status === 'success' && dashboardVersion?.local
+    ? dashboardVersion.local
+    : null;
 
   return (
     <div className={`rounded-lg border p-4 flex flex-col gap-4 ${dashboardVersion?.hasUpdate ? 'border-[hsl(var(--status-warning)/0.3)] bg-[hsl(var(--status-warning)/0.05)]' : 'bg-card'}`}>
@@ -132,10 +136,10 @@ export function SystemMonitor({
 
         <div className="flex items-center gap-2">
           <span className="font-mono text-[10px] text-muted-foreground">
-            Version {dashboardVersion?.local || (status?.commit ? status.commit.slice(0, 7) : '—')}
+            Version {dashboardVersionLabel}
           </span>
           {dashboardUpdate?.status === 'success' && (
-            <span className="flex items-center gap-1 text-[11px] text-[hsl(var(--status-online))] font-mono">
+            <span className="inline-flex items-center gap-1 rounded-md border border-[hsl(var(--status-online)/0.35)] bg-[hsl(var(--status-online)/0.12)] px-2 py-1 text-[11px] text-[hsl(var(--status-online))] font-mono">
               <CheckCircle2 className="h-3 w-3" /> Klar
             </span>
           )}
@@ -189,6 +193,20 @@ export function SystemMonitor({
               <p className="mt-1 font-mono text-[11px] leading-relaxed text-foreground break-words">
                 {dashboardPhase}
               </p>
+            </div>
+          </div>
+        )}
+
+        {dashboardUpdate?.status === 'success' && (
+          <div className="mt-1 rounded-md border border-[hsl(var(--status-online)/0.35)] bg-[hsl(var(--status-online)/0.08)] px-2.5 py-2">
+            <div className="flex items-start gap-2">
+              <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-[hsl(var(--status-online))]" />
+              <div className="min-w-0">
+                <p className="font-mono text-[11px] text-[hsl(var(--status-online))]">Dashboard uppdaterad</p>
+                <p className="mt-0.5 font-mono text-[10px] text-muted-foreground break-words">
+                  Kör nu version {dashboardUpdatedVersion || dashboardVersionLabel}
+                </p>
+              </div>
             </div>
           </div>
         )}
