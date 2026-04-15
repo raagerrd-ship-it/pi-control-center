@@ -1,5 +1,5 @@
-import { useState, memo } from 'react';
-import { ExternalLink, RefreshCw, CheckCircle2, AlertCircle, Loader2, Play, Square, RotateCcw, Trash2, Server, Monitor, Download } from 'lucide-react';
+import { useState, useEffect, memo } from 'react';
+import { ExternalLink, RefreshCw, CheckCircle2, AlertCircle, Loader2, Play, Square, RotateCcw, Trash2, Server, Monitor, Download, MemoryStick } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import {
@@ -21,7 +21,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import type { UpdateResult, InstallResult, ServiceActionResult, VersionInfo, ServiceDefinition, ComponentStatus, HealthStatus } from '@/lib/api';
-import { hasComponents } from '@/lib/api';
+import { hasComponents, fetchMemoryLimit, setMemoryLimit } from '@/lib/api';
 
 interface CoreCardProps {
   coreIndex: number;
