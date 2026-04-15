@@ -60,6 +60,7 @@ export interface UpdateResult {
   app: string;
   status: 'idle' | 'updating' | 'success' | 'error';
   message?: string;
+  progress?: string;
   timestamp?: string;
 }
 
