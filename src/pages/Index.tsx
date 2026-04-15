@@ -304,6 +304,7 @@ const Index = () => {
                   allInstalls={installs}
                   memLimitMb={serviceKey ? (memLimits[serviceKey] ?? null) : null}
                   otherAllocatedMb={otherAllocated}
+                  ramBudgetMb={Math.max((status?.ramTotal ?? 416) - 200, 100)}
                   onMemLimitChange={handleMemLimitChange}
                   onUpdate={startUpdate}
                   onCheckVersion={handleCheckVersion}
