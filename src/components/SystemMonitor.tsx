@@ -68,6 +68,7 @@ export function SystemMonitor({
 
   const ramPercent = noData ? 0 : Math.round((status.ramUsed / status.ramTotal) * 100);
   const diskPercent = noData ? 0 : Math.round((status.diskUsed / status.diskTotal) * 100);
+  const dashboardPhase = dashboardUpdate?.progress || dashboardUpdate?.message || (busy ? 'Pi upptagen — väntar på svar...' : 'Startar uppdatering...');
 
   return (
     <div className={`rounded-lg border p-4 flex flex-col gap-4 ${dashboardVersion?.hasUpdate ? 'border-[hsl(var(--status-warning)/0.3)] bg-[hsl(var(--status-warning)/0.05)]' : 'bg-card'}`}>
@@ -176,15 +177,18 @@ export function SystemMonitor({
             <div className="h-1.5 w-full bg-secondary rounded-full overflow-hidden">
               <div className="h-full bg-primary rounded-full animate-pulse" style={{ width: '100%', opacity: 0.7 }} />
             </div>
-            <div className="flex items-center justify-between">
-              <span className="font-mono text-[10px] text-muted-foreground truncate max-w-[70%]">
-                {dashboardUpdate?.progress || 'Startar uppdatering...'}
-              </span>
-              {dashboardUpdate?.elapsed && (
-                <span className="font-mono text-[10px] text-muted-foreground shrink-0">
-                  {dashboardUpdate.elapsed}
-                </span>
-              )}
+            <div className="rounded-md border border-border bg-secondary/30 px-2.5 py-2">
+              <div className="flex items-center justify-between gap-2">
+                <span className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">Status</span>
+                {dashboardUpdate?.elapsed && (
+                  <span className="font-mono text-[10px] text-muted-foreground shrink-0">
+                    {dashboardUpdate.elapsed}
+                  </span>
+                )}
+              </div>
+              <p className="mt-1 font-mono text-[11px] leading-relaxed text-foreground break-words">
+                {dashboardPhase}
+              </p>
             </div>
           </div>
         )}

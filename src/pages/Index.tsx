@@ -97,7 +97,7 @@ const Index = () => {
   const handleDashboardUpdate = useCallback(async () => {
     const commitBefore = status?.commit || '';
     addEntry('DASHBOARD', 'Uppdatering startad', 'info');
-    setDashboardUpdate({ app: 'dashboard', status: 'updating' });
+    setDashboardUpdate({ app: 'dashboard', status: 'updating', progress: 'Initierar uppdatering...' });
     try { await triggerUpdate('dashboard'); } catch {}
     let retries = 0;
     let lostContact = false;
@@ -105,13 +105,13 @@ const Index = () => {
     const poll = async () => {
       try {
         const result = await fetchUpdateStatus('dashboard');
-        setDashboardUpdate(result);
         if (lostContact) {
           addEntry('DASHBOARD', 'Åter kontakt — fortsätter spåra uppdatering', 'success');
           lostContact = false;
         }
         if (result.status === 'updating') {
           retries = 0;
+          let latestProgress = result.progress || result.message || '';
           try {
             const log = await fetchLogs('dashboard', 'update');
             if (log && log !== 'Tom logg' && log !== 'Inga loggar tillgängliga') {
@@ -120,8 +120,13 @@ const Index = () => {
                 lastLogLine = latest;
                 addEntry('DASHBOARD', latest, 'info');
               }
+              if (latest) latestProgress = latest;
             }
           } catch {}
+          setDashboardUpdate({
+            ...result,
+            progress: latestProgress || lastLogLine || 'Uppdatering pågår...',
+          });
           setTimeout(poll, 3000);
         }
         else if (result.status === 'success') { addEntry('DASHBOARD', 'Uppdaterad', 'success'); }
@@ -146,14 +151,32 @@ const Index = () => {
               void handleCheckVersions();
             } else {
               // Same commit — might still be building, retry a few more times
-              if (retries < 10) { retries++; setTimeout(poll, 5000); }
+              if (retries < 10) {
+                retries++;
+                setDashboardUpdate(prev => ({
+                  app: 'dashboard',
+                  status: 'updating',
+                  progress: prev?.progress || 'Startar om dashboard-tjänsten...',
+                  elapsed: prev?.elapsed,
+                }));
+                setTimeout(poll, 5000);
+              }
               else {
                 addEntry('DASHBOARD', 'Uppdatering slutförd (ingen ny version hittades)', 'info');
                 setDashboardUpdate({ app: 'dashboard', status: 'success' });
               }
             }
           } catch {
-            if (retries < 10) { retries++; setTimeout(poll, 5000); }
+            if (retries < 10) {
+              retries++;
+              setDashboardUpdate(prev => ({
+                app: 'dashboard',
+                status: 'updating',
+                progress: prev?.progress || 'Väntar på att dashboard kommer tillbaka...',
+                elapsed: prev?.elapsed,
+              }));
+              setTimeout(poll, 5000);
+            }
           }
         }
       } catch {
@@ -162,7 +185,15 @@ const Index = () => {
           lostContact = true;
           addEntry('DASHBOARD', 'Pi upptagen — inväntar status...', 'info');
         }
-        if (retries < 60) { setTimeout(poll, 3000); }
+        if (retries < 60) {
+          setDashboardUpdate(prev => ({
+            app: 'dashboard',
+            status: 'updating',
+            progress: 'Pi upptagen — väntar på status från API:t...',
+            elapsed: prev?.elapsed,
+          }));
+          setTimeout(poll, 3000);
+        }
         else {
           // Last resort: check if commit changed
           try {
