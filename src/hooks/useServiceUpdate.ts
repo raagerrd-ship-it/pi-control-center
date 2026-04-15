@@ -40,7 +40,7 @@ export function useServiceUpdate(serviceNames: Record<string, string>) {
         setUpdates(prev => ({ ...prev, [app]: result }));
         if (result.status === 'updating') {
           const phase = result.progress || result.message || '';
-          const elapsed = (result as any).elapsed ? ` (${(result as any).elapsed})` : '';
+          const elapsed = result.elapsed ? ` (${result.elapsed})` : '';
           if (phase && phase !== lastPhase) {
             lastPhase = phase;
             samePhaseCount = 0;
