@@ -39,6 +39,22 @@ const Index = () => {
     handleCheckVersions();
   }, []);
 
+  // Fetch memory limits for installed services
+  useEffect(() => {
+    if (!status?.services) return;
+    Object.entries(status.services).forEach(([key, svc]) => {
+      if (svc.installed && !memLimits[key]) {
+        fetchMemoryLimit(key)
+          .then(r => setMemLimits(prev => ({ ...prev, [key]: r.limitMb })))
+          .catch(() => setMemLimits(prev => ({ ...prev, [key]: 128 })));
+      }
+    });
+  }, [status?.services]);
+
+  const handleMemLimitChange = useCallback((app: string, mb: number) => {
+    setMemLimits(prev => ({ ...prev, [app]: mb }));
+  }, []);
+
   // Map: core index → service key installed on that core
   const coreServiceMap = useMemo(() => {
     const map: Record<number, string> = {};
