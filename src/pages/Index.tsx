@@ -9,6 +9,7 @@ import { useServiceUpdate } from '@/hooks/useServiceUpdate';
 import { useActivityLog } from '@/hooks/useActivityLog';
 import {
   triggerUpdate, fetchUpdateStatus, fetchVersions, fetchVersion, fetchAvailableServices,
+  fetchMemoryLimit,
   type UpdateResult, type VersionMap, type ServiceDefinition, fetchLogs,
 } from '@/lib/api';
 
@@ -23,6 +24,7 @@ const Index = () => {
   const [dashboardUpdate, setDashboardUpdate] = useState<UpdateResult | null>(null);
   const [versions, setVersions] = useState<VersionMap | null>(null);
   const [checkingVersions, setCheckingVersions] = useState(false);
+  const [memLimits, setMemLimits] = useState<Record<string, number>>({});
 
   const serviceNames = useMemo(() => {
     const map: Record<string, string> = {};
@@ -35,6 +37,22 @@ const Index = () => {
   useEffect(() => {
     fetchAvailableServices().then(setAvailableServices).catch(() => {});
     handleCheckVersions();
+  }, []);
+
+  // Fetch memory limits for installed services
+  useEffect(() => {
+    if (!status?.services) return;
+    Object.entries(status.services).forEach(([key, svc]) => {
+      if (svc.installed && !memLimits[key]) {
+        fetchMemoryLimit(key)
+          .then(r => setMemLimits(prev => ({ ...prev, [key]: r.limitMb })))
+          .catch(() => setMemLimits(prev => ({ ...prev, [key]: 128 })));
+      }
+    });
+  }, [status?.services]);
+
+  const handleMemLimitChange = useCallback((app: string, mb: number) => {
+    setMemLimits(prev => ({ ...prev, [app]: mb }));
   }, []);
 
   // Map: core index → service key installed on that core
@@ -220,6 +238,11 @@ const Index = () => {
                 health: svcStatus.health,
               } : undefined;
 
+              // Calculate other cores' allocated RAM
+              const otherAllocated = Object.entries(memLimits)
+                .filter(([k]) => k !== serviceKey)
+                .reduce((sum, [, mb]) => sum + mb, 0);
+
               return (
                 <CoreCard
                   key={coreIdx}
@@ -227,6 +250,9 @@ const Index = () => {
                   service={service}
                   availableServices={uninstalledServices}
                   allInstalls={installs}
+                  memLimitMb={serviceKey ? (memLimits[serviceKey] ?? null) : null}
+                  otherAllocatedMb={otherAllocated}
+                  onMemLimitChange={handleMemLimitChange}
                   onUpdate={startUpdate}
                   onCheckVersion={handleCheckVersion}
                   onInstall={startInstall}
