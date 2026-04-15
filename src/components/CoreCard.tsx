@@ -117,6 +117,9 @@ export const CoreCard = memo(function CoreCard({
   service,
   availableServices,
   allInstalls,
+  memLimitMb,
+  otherAllocatedMb,
+  onMemLimitChange,
   onUpdate,
   onCheckVersion,
   onInstall,
@@ -126,7 +129,6 @@ export const CoreCard = memo(function CoreCard({
   const [selectedService, setSelectedService] = useState<string>('');
   const [installingService, setInstallingService] = useState<string>('');
   const [checkingVersion, setCheckingVersion] = useState(false);
-  const [memLimit, setMemLimit] = useState<number | null>(null);
   const [memLimitSaving, setMemLimitSaving] = useState(false);
   const [showMemLimit, setShowMemLimit] = useState(false);
 
@@ -138,23 +140,16 @@ export const CoreCard = memo(function CoreCard({
     onInstall(app, uiPort, coreIndex);
   };
 
-  // Fetch memory limit when service is installed
-  useEffect(() => {
-    if (service?.installed && service?.definition?.key) {
-      fetchMemoryLimit(service.definition.key)
-        .then(r => setMemLimit(r.limitMb))
-        .catch(() => setMemLimit(128));
-    }
-  }, [service?.installed, service?.definition?.key]);
-
+  const TOTAL_BUDGET = 332; // 512 - 150 system - 30 core 0
   const RAM_PRESETS = [32, 64, 96, 128, 192, 256];
+  const availableMb = TOTAL_BUDGET - otherAllocatedMb;
 
   const handleSetMemLimit = async (mb: number) => {
     if (!service?.definition?.key) return;
     setMemLimitSaving(true);
     try {
       await setMemoryLimit(service.definition.key, mb);
-      setMemLimit(mb);
+      onMemLimitChange(service.definition.key, mb);
     } catch {
       // ignore
     } finally {
