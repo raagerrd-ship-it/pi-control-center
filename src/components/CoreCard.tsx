@@ -135,6 +135,30 @@ export const CoreCard = memo(function CoreCard({
     onInstall(app, uiPort, coreIndex);
   };
 
+  // Fetch memory limit when service is installed
+  useEffect(() => {
+    if (service?.installed && service?.definition?.key) {
+      fetchMemoryLimit(service.definition.key)
+        .then(r => setMemLimit(r.limitMb))
+        .catch(() => setMemLimit(128));
+    }
+  }, [service?.installed, service?.definition?.key]);
+
+  const RAM_PRESETS = [32, 64, 96, 128, 192, 256];
+
+  const handleSetMemLimit = async (mb: number) => {
+    if (!service?.definition?.key) return;
+    setMemLimitSaving(true);
+    try {
+      await setMemoryLimit(service.definition.key, mb);
+      setMemLimit(mb);
+    } catch {
+      // ignore
+    } finally {
+      setMemLimitSaving(false);
+    }
+  };
+
   // Empty core — show add service UI
   if (!service || !service.installed) {
     const trackingKey = installingService || selectedService;
