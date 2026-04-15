@@ -129,9 +129,23 @@ const Index = () => {
           });
           setTimeout(poll, 3000);
         }
-        else if (result.status === 'success') { addEntry('DASHBOARD', 'Uppdaterad', 'success'); }
+        else if (result.status === 'success') {
+          addEntry('DASHBOARD', 'Uppdaterad', 'success');
+          setDashboardUpdate({
+            ...result,
+            status: 'success',
+            message: result.message || 'Dashboard uppdaterad',
+          });
+          void refresh();
+          void handleCheckVersions();
+        }
         else if (result.status === 'error') {
           addEntry('DASHBOARD', `Uppdatering misslyckades: ${result.message || 'okänt fel'}`, 'error');
+          setDashboardUpdate({
+            ...result,
+            status: 'error',
+            message: result.message || 'Uppdatering misslyckades',
+          });
           try {
             const log = await fetchLogs('dashboard', 'update');
             if (log && log !== 'Tom logg' && log !== 'Inga loggar tillgängliga') {
