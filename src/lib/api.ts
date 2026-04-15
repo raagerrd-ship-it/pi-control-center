@@ -61,6 +61,7 @@ export interface UpdateResult {
   status: 'idle' | 'updating' | 'success' | 'error';
   message?: string;
   progress?: string;
+  elapsed?: string;
   timestamp?: string;
 }
 
