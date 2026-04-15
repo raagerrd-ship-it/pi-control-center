@@ -24,6 +24,7 @@ const Index = () => {
   const [dashboardUpdate, setDashboardUpdate] = useState<UpdateResult | null>(null);
   const [versions, setVersions] = useState<VersionMap | null>(null);
   const [checkingVersions, setCheckingVersions] = useState(false);
+  const [memLimits, setMemLimits] = useState<Record<string, number>>({});
 
   const serviceNames = useMemo(() => {
     const map: Record<string, string> = {};
