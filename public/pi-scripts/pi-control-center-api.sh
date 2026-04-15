@@ -1238,12 +1238,12 @@ handle_request() {
           sudo dphys-swapfile swapon || true
         fi
         sudo chown -R pi:pi "$ddir/node_modules" 2>/dev/null || true
-        sudo systemd-run --scope --quiet -p MemoryMax=512M bash -lc "cd '$ddir' && NODE_OPTIONS='--max-old-space-size=384' nice -n 15 ionice -c 3 npm install --omit=dev --no-audit --no-fund" >> "$reset_log" 2>&1 || true
+        sudo systemd-run --scope --quiet -p MemoryMax=512M bash -lc "cd '$ddir' && NODE_OPTIONS='--max-old-space-size=384' npm install --omit=dev --no-audit --no-fund" >> "$reset_log" 2>&1 || true
 
         echo '{"status":"resetting","phase":"Bygger dashboard..."}' > "$STATUS_DIR/factory-reset.json"
         echo "Bygger dashboard..." >> "$reset_log"
         sudo rm -rf "$ddir/dist"
-        sudo systemd-run --scope --quiet -p MemoryMax=384M bash -lc "cd '$ddir' && NODE_OPTIONS='--max-old-space-size=320' nice -n 15 ionice -c 3 npx vite build" >> "$reset_log" 2>&1 || true
+        sudo systemd-run --scope --quiet -p MemoryMax=384M bash -lc "cd '$ddir' && NODE_OPTIONS='--max-old-space-size=320' npx vite build" >> "$reset_log" 2>&1 || true
 
         echo '{"status":"resetting","phase":"Deployar..."}' > "$STATUS_DIR/factory-reset.json"
         sudo mkdir -p "$ndir"
