@@ -238,6 +238,11 @@ const Index = () => {
                 health: svcStatus.health,
               } : undefined;
 
+              // Calculate other cores' allocated RAM
+              const otherAllocated = Object.entries(memLimits)
+                .filter(([k]) => k !== serviceKey)
+                .reduce((sum, [, mb]) => sum + mb, 0);
+
               return (
                 <CoreCard
                   key={coreIdx}
@@ -245,6 +250,9 @@ const Index = () => {
                   service={service}
                   availableServices={uninstalledServices}
                   allInstalls={installs}
+                  memLimitMb={serviceKey ? (memLimits[serviceKey] ?? null) : null}
+                  otherAllocatedMb={otherAllocated}
+                  onMemLimitChange={handleMemLimitChange}
                   onUpdate={startUpdate}
                   onCheckVersion={handleCheckVersion}
                   onInstall={startInstall}
