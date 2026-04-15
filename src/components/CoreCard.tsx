@@ -130,7 +130,7 @@ export const CoreCard = memo(function CoreCard({
   const [installingService, setInstallingService] = useState<string>('');
   const [checkingVersion, setCheckingVersion] = useState(false);
   const [memLimitSaving, setMemLimitSaving] = useState(false);
-  const [showMemLimit, setShowMemLimit] = useState(false);
+  const [localMemLimit, setLocalMemLimit] = useState<number | null>(null);
 
   const uiPort = 3000 + coreIndex;
   const enginePort = 3050 + coreIndex;
@@ -140,20 +140,34 @@ export const CoreCard = memo(function CoreCard({
     onInstall(app, uiPort, coreIndex);
   };
 
-  const TOTAL_BUDGET = 332; // 512 - 150 system - 30 core 0
-  const RAM_PRESETS = [32, 64, 96, 128, 192, 256];
+  const TOTAL_BUDGET = 332;
   const maxForThis = TOTAL_BUDGET - otherAllocatedMb;
 
-  const handleSetMemLimit = async (mb: number) => {
-    if (!service?.definition?.key) return;
+  // Sync local slider value with prop
+  const sliderValue = localMemLimit ?? memLimitMb ?? 0;
+
+  const handleSliderChange = (val: number) => {
+    const clamped = Math.min(Math.max(val, 16), maxForThis);
+    setLocalMemLimit(clamped);
+    // Optimistic update so other sliders react instantly
+    if (service?.definition?.key) {
+      onMemLimitChange(service.definition.key, clamped);
+    }
+  };
+
+  const handleSliderCommit = async () => {
+    if (!service?.definition?.key || localMemLimit === null) return;
     setMemLimitSaving(true);
     try {
-      await setMemoryLimit(service.definition.key, mb);
-      onMemLimitChange(service.definition.key, mb);
+      await setMemoryLimit(service.definition.key, localMemLimit);
     } catch {
-      // ignore
+      // revert on failure
+      if (memLimitMb !== null) {
+        onMemLimitChange(service.definition.key, memLimitMb);
+      }
     } finally {
       setMemLimitSaving(false);
+      setLocalMemLimit(null);
     }
   };
 
@@ -340,39 +354,37 @@ export const CoreCard = memo(function CoreCard({
         </div>
       )}
 
-      {/* RAM limit */}
+      {/* RAM slider */}
       {memLimitMb !== null && (
         <div className="flex flex-col gap-1">
-          <button
-            onClick={() => setShowMemLimit(!showMemLimit)}
-            className="flex items-center gap-1.5 font-mono text-[10px] text-muted-foreground hover:text-foreground transition-colors w-fit"
-          >
-            <MemoryStick className="h-3 w-3" />
-            <span>RAM: {memLimitMb}MB</span>
+          <div className="flex items-center gap-1.5 font-mono text-[10px] text-muted-foreground">
+            <MemoryStick className="h-3 w-3 shrink-0" />
+            <span className="font-medium text-foreground">{sliderValue}MB</span>
             {online && ramMb > 0 && (
-              <span className={`${ramMb / memLimitMb > 0.8 ? 'text-[hsl(var(--status-warning))]' : 'text-muted-foreground/50'}`}>
-                ({Math.round(ramMb / memLimitMb * 100)}%)
+              <span className={ramMb / sliderValue > 0.8 ? 'text-[hsl(var(--status-warning))]' : ''}>
+                ({ramMb}MB used)
               </span>
             )}
-          </button>
-          {showMemLimit && (
-            <div className="flex flex-wrap gap-1 pl-4">
-              {RAM_PRESETS.filter(mb => mb <= maxForThis).map(mb => (
-                <button
-                  key={mb}
-                  disabled={memLimitSaving}
-                  onClick={() => handleSetMemLimit(mb)}
-                  className={`font-mono text-[10px] px-1.5 py-0.5 rounded border transition-colors ${
-                    mb === memLimitMb
-                      ? 'bg-primary/15 border-primary/40 text-primary'
-                      : 'bg-secondary/30 border-border/30 text-muted-foreground hover:bg-secondary/60'
-                  } ${memLimitSaving ? 'opacity-50' : ''}`}
-                >
-                  {mb}MB
-                </button>
-              ))}
-            </div>
-          )}
+            {memLimitSaving && <Loader2 className="h-2.5 w-2.5 animate-spin" />}
+          </div>
+          <input
+            type="range"
+            min={16}
+            max={maxForThis}
+            step={1}
+            value={sliderValue}
+            onChange={e => handleSliderChange(Number(e.target.value))}
+            onMouseUp={handleSliderCommit}
+            onTouchEnd={handleSliderCommit}
+            className="w-full h-1.5 accent-primary bg-secondary/50 rounded-full appearance-none cursor-pointer
+              [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:h-3.5 [&::-webkit-slider-thumb]:w-3.5
+              [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-primary [&::-webkit-slider-thumb]:border-2
+              [&::-webkit-slider-thumb]:border-background [&::-webkit-slider-thumb]:shadow-sm"
+          />
+          <div className="flex justify-between font-mono text-[9px] text-muted-foreground/40">
+            <span>16</span>
+            <span>{maxForThis}</span>
+          </div>
         </div>
       )}
 
