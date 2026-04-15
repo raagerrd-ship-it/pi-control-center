@@ -47,6 +47,7 @@ interface CoreCardProps {
   allInstalls: Record<string, InstallResult>;
   memLimitMb: number | null;
   otherAllocatedMb: number;
+  ramBudgetMb: number;
   onMemLimitChange: (app: string, mb: number) => void;
   onUpdate: (app: string) => void;
   onCheckVersion: (app: string) => Promise<void>;
@@ -119,6 +120,7 @@ export const CoreCard = memo(function CoreCard({
   allInstalls,
   memLimitMb,
   otherAllocatedMb,
+  ramBudgetMb,
   onMemLimitChange,
   onUpdate,
   onCheckVersion,
@@ -140,8 +142,7 @@ export const CoreCard = memo(function CoreCard({
     onInstall(app, uiPort, coreIndex);
   };
 
-  const TOTAL_BUDGET = 332;
-  const maxForThis = TOTAL_BUDGET - otherAllocatedMb;
+  const maxForThis = ramBudgetMb - otherAllocatedMb;
 
   // Sync local slider value with prop
   const sliderValue = localMemLimit ?? memLimitMb ?? 0;

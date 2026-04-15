@@ -45,9 +45,10 @@ const Index = () => {
     const installedKeys = Object.entries(status.services)
       .filter(([, svc]) => svc.installed)
       .map(([key]) => key);
+    const budget = Math.max((status?.ramTotal ?? 416) - 200, 100);
     const defaultPerApp = installedKeys.length > 0
-      ? Math.floor(332 / installedKeys.length)
-      : 111;
+      ? Math.floor(budget / installedKeys.length)
+      : Math.floor(budget / 3);
     installedKeys.forEach(key => {
       if (!memLimits[key]) {
         fetchMemoryLimit(key)
@@ -303,6 +304,7 @@ const Index = () => {
                   allInstalls={installs}
                   memLimitMb={serviceKey ? (memLimits[serviceKey] ?? null) : null}
                   otherAllocatedMb={otherAllocated}
+                  ramBudgetMb={Math.max((status?.ramTotal ?? 416) - 200, 100)}
                   onMemLimitChange={handleMemLimitChange}
                   onUpdate={startUpdate}
                   onCheckVersion={handleCheckVersion}
