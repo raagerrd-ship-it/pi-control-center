@@ -1485,6 +1485,76 @@ handle_request() {
       fi
       ;;
 
+    "GET /api/memory-limit/"*)
+      local ml_app ml_services ml_limit ml_svc_file
+      ml_app=${path#/api/memory-limit/}
+      ml_app="${ml_app%%[?#]*}"
+      ml_app="${ml_app//[^a-zA-Z0-9_-]/}"
+      ml_limit=""
+      # Find systemd service file(s) and read MemoryMax
+      if [ "$(registry_has_components "$ml_app")" = "true" ]; then
+        local ml_esvc
+        ml_esvc=$(registry_get_component "$ml_app" "engine" "service")
+        [ -n "$ml_esvc" ] && ml_svc_file="$PI_HOME/.config/systemd/user/${ml_esvc}.service"
+      else
+        local ml_svc
+        ml_svc=$(registry_get "$ml_app" "service")
+        [ -n "$ml_svc" ] && ml_svc_file="$PI_HOME/.config/systemd/user/${ml_svc}.service"
+      fi
+      if [ -n "$ml_svc_file" ] && [ -f "$ml_svc_file" ]; then
+        ml_limit=$(grep -oP '^MemoryMax=\K.*' "$ml_svc_file" 2>/dev/null)
+      fi
+      [ -z "$ml_limit" ] && ml_limit="128M"
+      # Extract numeric MB value
+      local ml_mb
+      ml_mb=$(echo "$ml_limit" | grep -oP '^\d+')
+      response="{\"app\":\"${ml_app}\",\"limitMb\":${ml_mb:-128},\"raw\":\"${ml_limit}\"}"
+      ;;
+
+    "POST /api/memory-limit/"*)
+      local ml_app ml_body ml_new_limit ml_mb
+      ml_app=${path#/api/memory-limit/}
+      ml_app="${ml_app%%[?#]*}"
+      ml_app="${ml_app//[^a-zA-Z0-9_-]/}"
+      ml_body="$body"
+      ml_new_limit=$(echo "$ml_body" | grep -oP '"limitMb"\s*:\s*\K\d+')
+      if [ -z "$ml_new_limit" ] || [ "$ml_new_limit" -lt 16 ] 2>/dev/null || [ "$ml_new_limit" -gt 480 ] 2>/dev/null; then
+        status_line="HTTP/1.1 400 Bad Request"
+        response="{\"error\":\"limitMb måste vara 16-480\"}"
+      else
+        local ml_updated=0
+        # Update all service files for this app
+        if [ "$(registry_has_components "$ml_app")" = "true" ]; then
+          for ml_comp in engine ui; do
+            local ml_csvc
+            ml_csvc=$(registry_get_component "$ml_app" "$ml_comp" "service")
+            [ -z "$ml_csvc" ] && continue
+            local ml_sf="$PI_HOME/.config/systemd/user/${ml_csvc}.service"
+            if [ -f "$ml_sf" ]; then
+              sed -i "s/^MemoryMax=.*/MemoryMax=${ml_new_limit}M/" "$ml_sf"
+              ml_updated=1
+            fi
+          done
+        else
+          local ml_svc
+          ml_svc=$(registry_get "$ml_app" "service")
+          local ml_sf="$PI_HOME/.config/systemd/user/${ml_svc}.service"
+          if [ -n "$ml_svc" ] && [ -f "$ml_sf" ]; then
+            sed -i "s/^MemoryMax=.*/MemoryMax=${ml_new_limit}M/" "$ml_sf"
+            ml_updated=1
+          fi
+        fi
+        if [ "$ml_updated" -eq 1 ]; then
+          user_systemctl daemon-reload 2>/dev/null || true
+          rm -f "$CACHE_FILE"
+          response="{\"app\":\"${ml_app}\",\"limitMb\":${ml_new_limit},\"status\":\"success\"}"
+        else
+          status_line="HTTP/1.1 404 Not Found"
+          response="{\"error\":\"Ingen tjänstfil hittad för ${ml_app}\"}"
+        fi
+      fi
+      ;;
+
     GET\ /api/service-log/*)
       local app svc lc tmp_err
       app=${path#/api/service-log/}

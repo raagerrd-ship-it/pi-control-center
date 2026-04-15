@@ -245,6 +245,30 @@ export async function triggerPiReset(): Promise<FactoryResetResult> {
   return res.json();
 }
 
+export interface MemoryLimitResult {
+  app: string;
+  limitMb: number;
+  raw?: string;
+  status?: string;
+}
+
+export async function fetchMemoryLimit(app: string): Promise<MemoryLimitResult> {
+  const res = await fetch(`${getBaseUrl()}/api/memory-limit/${app}`, { signal: AbortSignal.timeout(4000) });
+  if (!res.ok) throw new Error('Failed to fetch memory limit');
+  return res.json();
+}
+
+export async function setMemoryLimit(app: string, limitMb: number): Promise<MemoryLimitResult> {
+  const res = await fetch(`${getBaseUrl()}/api/memory-limit/${app}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ limitMb }),
+    signal: AbortSignal.timeout(10000),
+  });
+  if (!res.ok) throw new Error('Failed to set memory limit');
+  return res.json();
+}
+
 export async function fetchFactoryResetStatus(): Promise<FactoryResetResult> {
   const res = await fetch(`${getBaseUrl()}/api/factory-reset-status`, { signal: AbortSignal.timeout(4000) });
   if (!res.ok) throw new Error('Failed to fetch reset status');
