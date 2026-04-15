@@ -123,6 +123,9 @@ export const CoreCard = memo(function CoreCard({
   const [selectedService, setSelectedService] = useState<string>('');
   const [installingService, setInstallingService] = useState<string>('');
   const [checkingVersion, setCheckingVersion] = useState(false);
+  const [memLimit, setMemLimit] = useState<number | null>(null);
+  const [memLimitSaving, setMemLimitSaving] = useState(false);
+  const [showMemLimit, setShowMemLimit] = useState(false);
 
   const uiPort = 3000 + coreIndex;
   const enginePort = 3050 + coreIndex;
