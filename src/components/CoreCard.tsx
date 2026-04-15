@@ -142,7 +142,7 @@ export const CoreCard = memo(function CoreCard({
 
   const TOTAL_BUDGET = 332; // 512 - 150 system - 30 core 0
   const RAM_PRESETS = [32, 64, 96, 128, 192, 256];
-  const availableMb = TOTAL_BUDGET - otherAllocatedMb;
+  const maxForThis = TOTAL_BUDGET - otherAllocatedMb;
 
   const handleSetMemLimit = async (mb: number) => {
     if (!service?.definition?.key) return;
@@ -348,38 +348,29 @@ export const CoreCard = memo(function CoreCard({
             className="flex items-center gap-1.5 font-mono text-[10px] text-muted-foreground hover:text-foreground transition-colors w-fit"
           >
             <MemoryStick className="h-3 w-3" />
-            <span>RAM-gräns: {memLimitMb}MB</span>
+            <span>RAM: {memLimitMb}MB</span>
             {online && ramMb > 0 && (
               <span className={`${ramMb / memLimitMb > 0.8 ? 'text-[hsl(var(--status-warning))]' : 'text-muted-foreground/50'}`}>
                 ({Math.round(ramMb / memLimitMb * 100)}%)
               </span>
             )}
-            <span className="text-muted-foreground/30 text-[9px]">
-              ({availableMb}MB ledigt)
-            </span>
           </button>
           {showMemLimit && (
             <div className="flex flex-wrap gap-1 pl-4">
-              {RAM_PRESETS.map(mb => {
-                const wouldExceed = mb > availableMb + (memLimitMb ?? 0);
-                return (
-                  <button
-                    key={mb}
-                    disabled={memLimitSaving || wouldExceed}
-                    onClick={() => handleSetMemLimit(mb)}
-                    className={`font-mono text-[10px] px-1.5 py-0.5 rounded border transition-colors ${
-                      mb === memLimitMb
-                        ? 'bg-primary/15 border-primary/40 text-primary'
-                        : wouldExceed
-                          ? 'bg-secondary/10 border-border/20 text-muted-foreground/30 cursor-not-allowed'
-                          : 'bg-secondary/30 border-border/30 text-muted-foreground hover:bg-secondary/60'
-                    } ${memLimitSaving ? 'opacity-50' : ''}`}
-                    title={wouldExceed ? `Överskrider budget (${availableMb + (memLimitMb ?? 0)}MB max)` : `Sätt ${mb}MB`}
-                  >
-                    {mb}MB
-                  </button>
-                );
-              })}
+              {RAM_PRESETS.filter(mb => mb <= maxForThis).map(mb => (
+                <button
+                  key={mb}
+                  disabled={memLimitSaving}
+                  onClick={() => handleSetMemLimit(mb)}
+                  className={`font-mono text-[10px] px-1.5 py-0.5 rounded border transition-colors ${
+                    mb === memLimitMb
+                      ? 'bg-primary/15 border-primary/40 text-primary'
+                      : 'bg-secondary/30 border-border/30 text-muted-foreground hover:bg-secondary/60'
+                  } ${memLimitSaving ? 'opacity-50' : ''}`}
+                >
+                  {mb}MB
+                </button>
+              ))}
             </div>
           )}
         </div>
