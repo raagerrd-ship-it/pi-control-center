@@ -342,6 +342,42 @@ export const CoreCard = memo(function CoreCard({
         </div>
       )}
 
+      {/* RAM limit */}
+      {memLimit !== null && (
+        <div className="flex flex-col gap-1">
+          <button
+            onClick={() => setShowMemLimit(!showMemLimit)}
+            className="flex items-center gap-1.5 font-mono text-[10px] text-muted-foreground hover:text-foreground transition-colors w-fit"
+          >
+            <MemoryStick className="h-3 w-3" />
+            <span>RAM-gräns: {memLimit}MB</span>
+            {online && ramMb > 0 && (
+              <span className={`${ramMb / memLimit > 0.8 ? 'text-[hsl(var(--status-warning))]' : 'text-muted-foreground/50'}`}>
+                ({Math.round(ramMb / memLimit * 100)}%)
+              </span>
+            )}
+          </button>
+          {showMemLimit && (
+            <div className="flex flex-wrap gap-1 pl-4">
+              {RAM_PRESETS.map(mb => (
+                <button
+                  key={mb}
+                  disabled={memLimitSaving}
+                  onClick={() => handleSetMemLimit(mb)}
+                  className={`font-mono text-[10px] px-1.5 py-0.5 rounded border transition-colors ${
+                    mb === memLimit
+                      ? 'bg-primary/15 border-primary/40 text-primary'
+                      : 'bg-secondary/30 border-border/30 text-muted-foreground hover:bg-secondary/60'
+                  } ${memLimitSaving ? 'opacity-50' : ''}`}
+                >
+                  {mb}MB
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Action feedback */}
       {actionStatus && 'action' in actionStatus && (
         <div className="font-mono text-[11px]">
