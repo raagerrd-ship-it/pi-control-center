@@ -88,11 +88,14 @@ export function useServiceUpdate(serviceNames: Record<string, string>) {
     const timerKey = `install:${app}`;
     let lastProgress = '';
     let retryCount = 0;
+    let disconnectLogged = false;
+    let heartbeatCount = 0;
     const poll = async () => {
       try {
         const result = await fetchInstallStatus(app);
-        if (retryCount > 2) {
-          addEntryRef.current(label(app), 'Åter kontakt — fortsätter spåra installation', 'success');
+        if (disconnectLogged) {
+          addEntryRef.current(label(app), 'Åter kontakt', 'success');
+          disconnectLogged = false;
         }
         retryCount = 0;
         setInstalls(prev => ({ ...prev, [app]: result }));
@@ -102,7 +105,14 @@ export function useServiceUpdate(serviceNames: Record<string, string>) {
           const progressMsg = `${msg}${elapsed}`;
           if (progressMsg !== lastProgress) {
             lastProgress = progressMsg;
+            heartbeatCount = 0;
             addEntryRef.current(label(app), progressMsg, 'info');
+          } else {
+            heartbeatCount++;
+            // Log a heartbeat every 30s (10 polls × 3s) so user knows it's alive
+            if (heartbeatCount % 10 === 0) {
+              addEntryRef.current(label(app), `${msg} — pågår fortfarande${elapsed}`, 'info');
+            }
           }
           pollTimers.current[timerKey] = window.setTimeout(poll, 3000);
         } else {
@@ -116,12 +126,11 @@ export function useServiceUpdate(serviceNames: Record<string, string>) {
         }
       } catch {
         retryCount++;
-        if (retryCount === 3) {
-          addEntryRef.current(label(app), 'Pi upptagen — inväntar status...', 'info');
-        } else if (retryCount % 20 === 0) {
-          addEntryRef.current(label(app), `Fortfarande ingen status (försök ${retryCount})`, 'info');
+        if (retryCount === 3 && !disconnectLogged) {
+          addEntryRef.current(label(app), 'Pi upptagen — väntar på svar...', 'info');
+          disconnectLogged = true;
         }
-        pollTimers.current[timerKey] = window.setTimeout(poll, 5000);
+        pollTimers.current[timerKey] = window.setTimeout(poll, 3000);
       }
     };
     poll();
