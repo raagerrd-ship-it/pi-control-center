@@ -26,29 +26,36 @@ export function useServiceUpdate(serviceNames: Record<string, string>) {
   const pollUpdateStatus = useCallback((app: string) => {
     const timerKey = `update:${app}`;
     let retryCount = 0;
+    let lastPhase = '';
+    let disconnectLogged = false;
     const poll = async () => {
       try {
         const result = await fetchUpdateStatus(app);
-        if (retryCount > 2) {
-          addEntryRef.current(label(app), 'Åter kontakt — fortsätter spåra uppdatering', 'success');
+        if (disconnectLogged) {
+          addEntryRef.current(label(app), 'Åter kontakt', 'success');
+          disconnectLogged = false;
         }
         retryCount = 0;
         setUpdates(prev => ({ ...prev, [app]: result }));
         if (result.status === 'updating') {
-          pollTimers.current[timerKey] = window.setTimeout(poll, 3000);
+          const phase = result.progress || result.message || '';
+          if (phase && phase !== lastPhase) {
+            lastPhase = phase;
+            addEntryRef.current(label(app), phase, 'info');
+          }
+          pollTimers.current[timerKey] = window.setTimeout(poll, 2000);
         } else {
           delete pollTimers.current[timerKey];
-          if (result.status === 'success') addEntryRef.current(label(app), 'Uppdaterad', 'success');
-          if (result.status === 'error') addEntryRef.current(label(app), 'Uppdatering misslyckades', 'error');
+          if (result.status === 'success') addEntryRef.current(label(app), result.message || 'Uppdaterad', 'success');
+          if (result.status === 'error') addEntryRef.current(label(app), result.message || 'Uppdatering misslyckades', 'error');
         }
       } catch {
         retryCount++;
-        if (retryCount === 3) {
-          addEntryRef.current(label(app), 'Pi upptagen — inväntar status...', 'info');
-        } else if (retryCount % 20 === 0) {
-          addEntryRef.current(label(app), `Fortfarande ingen status (försök ${retryCount})`, 'info');
+        if (retryCount === 3 && !disconnectLogged) {
+          addEntryRef.current(label(app), 'Pi startar om — väntar...', 'info');
+          disconnectLogged = true;
         }
-        pollTimers.current[timerKey] = window.setTimeout(poll, 5000);
+        pollTimers.current[timerKey] = window.setTimeout(poll, 3000);
       }
     };
     poll();
