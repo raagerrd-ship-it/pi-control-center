@@ -28,8 +28,8 @@
   {
     "key": "cast-away",
     "name": "Cast Away",
-    "repo": "https://github.com/raagerrd-ship-it/cast-away.git",
-    "releaseUrl": "https://api.github.com/repos/raagerrd-ship-it/cast-away/releases/latest",
+    "repo": "https://github.com/raagerrd-ship-it/hromecast.git",
+    "releaseUrl": "https://api.github.com/repos/raagerrd-ship-it/hromecast/releases/latest",
     "releaseAsset": "dist.tar.gz",
     "installDir": "/opt/cast-away",
     "runInstallOnRelease": false,
