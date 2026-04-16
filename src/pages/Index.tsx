@@ -25,12 +25,6 @@ const Index = () => {
   const [checkingVersions, setCheckingVersions] = useState(false);
   const [memLimits, setMemLimits] = useState<Record<string, number>>({});
 
-  const [availableServices, setAvailableServices] = useState<ServiceDefinition[]>([]);
-  const [dashboardUpdate, setDashboardUpdate] = useState<UpdateResult | null>(null);
-  const [versions, setVersions] = useState<VersionMap | null>(null);
-  const [checkingVersions, setCheckingVersions] = useState(false);
-  const [memLimits, setMemLimits] = useState<Record<string, number>>({});
-
   const serviceNames = useMemo(() => {
     const map: Record<string, string> = {};
     availableServices.forEach(s => { map[s.key] = s.name; });
@@ -38,6 +32,16 @@ const Index = () => {
   }, [availableServices]);
 
   const { updates, startUpdate, installs, startInstall, uninstalls, startUninstall, actions, runServiceAction } = useServiceUpdate(serviceNames);
+
+  // Determine if any operation is active (install/update/dashboard update)
+  const isBusy = useMemo(() => {
+    const hasActiveUpdate = Object.values(updates).some(u => u.status === 'updating');
+    const hasActiveInstall = Object.values(installs).some(i => i.status === 'installing');
+    const isDashUpdating = dashboardUpdate?.status === 'updating';
+    return hasActiveUpdate || hasActiveInstall || isDashUpdating;
+  }, [updates, installs, dashboardUpdate]);
+
+  const { status, error, loading, connection, refresh } = useSystemStatus(isBusy);
 
   useEffect(() => {
     fetchAvailableServices().then(setAvailableServices).catch(() => {});
