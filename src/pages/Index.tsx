@@ -17,8 +17,13 @@ const CORES = [1, 2, 3];
 
 const Index = () => {
   const [settings, setSettings] = useState<DashboardSettings>(loadSettings);
-  const { status, error, loading, connection, refresh } = useSystemStatus();
   const { addEntry } = useActivityLog();
+
+  const [availableServices, setAvailableServices] = useState<ServiceDefinition[]>([]);
+  const [dashboardUpdate, setDashboardUpdate] = useState<UpdateResult | null>(null);
+  const [versions, setVersions] = useState<VersionMap | null>(null);
+  const [checkingVersions, setCheckingVersions] = useState(false);
+  const [memLimits, setMemLimits] = useState<Record<string, number>>({});
 
   const [availableServices, setAvailableServices] = useState<ServiceDefinition[]>([]);
   const [dashboardUpdate, setDashboardUpdate] = useState<UpdateResult | null>(null);
