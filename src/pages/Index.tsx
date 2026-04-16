@@ -17,7 +17,6 @@ const CORES = [1, 2, 3];
 
 const Index = () => {
   const [settings, setSettings] = useState<DashboardSettings>(loadSettings);
-  const { status, error, loading, connection, refresh } = useSystemStatus();
   const { addEntry } = useActivityLog();
 
   const [availableServices, setAvailableServices] = useState<ServiceDefinition[]>([]);
@@ -33,6 +32,16 @@ const Index = () => {
   }, [availableServices]);
 
   const { updates, startUpdate, installs, startInstall, uninstalls, startUninstall, actions, runServiceAction } = useServiceUpdate(serviceNames);
+
+  // Determine if any operation is active (install/update/dashboard update)
+  const isBusy = useMemo(() => {
+    const hasActiveUpdate = Object.values(updates).some(u => u.status === 'updating');
+    const hasActiveInstall = Object.values(installs).some(i => i.status === 'installing');
+    const isDashUpdating = dashboardUpdate?.status === 'updating';
+    return hasActiveUpdate || hasActiveInstall || isDashUpdating;
+  }, [updates, installs, dashboardUpdate]);
+
+  const { status, error, loading, connection, refresh } = useSystemStatus(isBusy);
 
   useEffect(() => {
     fetchAvailableServices().then(setAvailableServices).catch(() => {});

@@ -1,55 +1,59 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { fetchSystemStatus, fetchPing, type SystemStatus } from '@/lib/api';
-import { useActivityLog } from '@/hooks/useActivityLog';
 
 const BASE_INTERVAL = 5000;
+const BUSY_INTERVAL = 10000;
 const MAX_INTERVAL = 60000;
+const GRACE_THRESHOLD = 3;
 
 export type ConnectionState = 'connected' | 'busy' | 'offline';
 
-export function useSystemStatus() {
+export function useSystemStatus(isBusy = false) {
   const [status, setStatus] = useState<SystemStatus | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [connection, setConnection] = useState<ConnectionState>('offline');
   const intervalRef = useRef<number | null>(null);
-  const wasConnected = useRef(false);
   const failCount = useRef(0);
-  const loadingRef = useRef(true);
-  const { addEntry } = useActivityLog();
-  const addEntryRef = useRef(addEntry);
-  addEntryRef.current = addEntry;
+  const isBusyRef = useRef(isBusy);
+  isBusyRef.current = isBusy;
 
   const pollRef = useRef<() => Promise<void>>();
 
   const scheduleNext = useCallback(() => {
     if (intervalRef.current) clearTimeout(intervalRef.current);
-    const delay = Math.min(BASE_INTERVAL * Math.pow(2, failCount.current), MAX_INTERVAL);
+    const base = isBusyRef.current ? BUSY_INTERVAL : BASE_INTERVAL;
+    const delay = Math.min(base * Math.pow(2, failCount.current), MAX_INTERVAL);
     intervalRef.current = window.setTimeout(() => pollRef.current?.(), delay);
   }, []);
 
   const poll = useCallback(async () => {
     try {
-      const data = await fetchSystemStatus();
+      const timeoutMs = isBusyRef.current ? 8000 : 4000;
+      const data = await fetchSystemStatus(timeoutMs);
       setStatus(data);
       setError(null);
       setConnection('connected');
       failCount.current = 0;
-      if (!wasConnected.current) {
-        wasConnected.current = true;
-      }
     } catch (e) {
       const msg = e instanceof Error ? e.message : 'Anslutning misslyckades';
       setError(msg);
       failCount.current++;
-      // Ping to distinguish busy vs offline
-      let reachable = false;
-      try { reachable = await fetchPing(); } catch {}
-      setConnection(reachable ? 'busy' : 'offline');
-      wasConnected.current = false;
+
+      // Grace period: keep current connection state until GRACE_THRESHOLD consecutive fails
+      if (failCount.current < GRACE_THRESHOLD) {
+        // Don't change connection state — could be a transient timeout
+      } else if (isBusyRef.current) {
+        // Known operation active — mark busy, skip ping to reduce load
+        setConnection('busy');
+      } else {
+        // No known operation — ping to distinguish busy vs offline
+        let reachable = false;
+        try { reachable = await fetchPing(); } catch {}
+        setConnection(reachable ? 'busy' : 'offline');
+      }
     } finally {
       setLoading(false);
-      loadingRef.current = false;
       scheduleNext();
     }
   }, [scheduleNext]);
@@ -57,7 +61,6 @@ export function useSystemStatus() {
   pollRef.current = poll;
 
   useEffect(() => {
-    // Silent connect — no log spam
     poll();
 
     const handleVisibility = () => {

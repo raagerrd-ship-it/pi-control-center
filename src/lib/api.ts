@@ -138,8 +138,8 @@ export async function fetchPing(): Promise<boolean> {
   return res.ok;
 }
 
-export async function fetchSystemStatus(): Promise<SystemStatus> {
-  const res = await fetch(`${getBaseUrl()}/api/status`, { signal: AbortSignal.timeout(4000) });
+export async function fetchSystemStatus(timeoutMs = 4000): Promise<SystemStatus> {
+  const res = await fetch(`${getBaseUrl()}/api/status`, { signal: AbortSignal.timeout(timeoutMs) });
   if (!res.ok) throw new Error('Failed to fetch status');
   return res.json();
 }
