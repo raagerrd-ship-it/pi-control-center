@@ -54,8 +54,8 @@
   {
     "key": "sonos-buddy",
     "name": "Sonos Buddy",
-    "repo": "https://github.com/raagerrd-ship-it/sonos-buddy.git",
-    "releaseUrl": "https://api.github.com/repos/raagerrd-ship-it/sonos-buddy/releases/latest",
+    "repo": "https://github.com/raagerrd-ship-it/sonos-gateway.git",
+    "releaseUrl": "https://api.github.com/repos/raagerrd-ship-it/sonos-gateway/releases/latest",
     "releaseAsset": "dist.tar.gz",
     "installDir": "/opt/sonos-buddy",
     "runInstallOnRelease": true,
