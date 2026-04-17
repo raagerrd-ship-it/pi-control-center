@@ -121,6 +121,16 @@ kill "$BLINK_PID" 2>/dev/null || true
 led_blink 0.15 &
 BLINK_PID=$!
 
+# 0. sudo health (must run before any apt/sudo calls)
+echo "[0b/9] Verifying sudo health..."
+SUDO_FIX_SCRIPT="$(dirname "$0")/fix-sudo.sh"
+if [ -f "$SUDO_FIX_SCRIPT" ]; then
+  chmod +x "$SUDO_FIX_SCRIPT" 2>/dev/null || true
+  bash "$SUDO_FIX_SCRIPT" || echo "  WARN: fix-sudo.sh reported issues, continuing anyway"
+else
+  echo "  WARN: fix-sudo.sh not found at $SUDO_FIX_SCRIPT"
+fi
+
 # 1. Swap (critical for 512MB Pi Zero 2)
 echo "[1/9] Setting up swap..."
 if [ "$(swapon --show | wc -l)" -lt 2 ]; then
