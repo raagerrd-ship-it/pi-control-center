@@ -164,7 +164,7 @@ echo "  Node: $(node -v), npm: $(npm -v)"
 # 4. Enable lingering + BLE prerequisites
 echo "[4/9] Enabling user service lingering + BLE prerequisites..."
 sudo loginctl enable-linger "$PI_USER"
-sudo usermod -aG bluetooth "$PI_USER" 2>/dev/null || true
+sudo usermod -aG bluetooth "$PI_USER"
 sudo mkdir -p /etc/polkit-1/rules.d
 sudo tee /etc/polkit-1/rules.d/49-allow-pi-bluez.rules > /dev/null <<'EOF'
 polkit.addRule(function(action, subject) {
