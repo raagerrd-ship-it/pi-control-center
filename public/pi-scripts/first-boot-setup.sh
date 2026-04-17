@@ -174,20 +174,12 @@ polkit.addRule(function(action, subject) {
 });
 EOF
 
-if [ -f /etc/bluetooth/main.conf ]; then
-  if sudo grep -q '^DisablePlugins=' /etc/bluetooth/main.conf; then
-    sudo sed -i 's/^DisablePlugins=.*/DisablePlugins=pnat/' /etc/bluetooth/main.conf
-  elif sudo grep -q '^\[General\]' /etc/bluetooth/main.conf; then
-    sudo sed -i '/^\[General\]/a DisablePlugins=pnat' /etc/bluetooth/main.conf
-  else
-    printf '\n[General]\nDisablePlugins=pnat\n' | sudo tee -a /etc/bluetooth/main.conf > /dev/null
-  fi
-else
-  printf '[General]\nDisablePlugins=pnat\n' | sudo tee /etc/bluetooth/main.conf > /dev/null
+if ! grep -q '^DisablePlugins=pnat' /etc/bluetooth/main.conf 2>/dev/null; then
+  printf '\n[General]\nDisablePlugins=pnat\n' | sudo tee -a /etc/bluetooth/main.conf > /dev/null
 fi
 
-sudo systemctl enable --now bluetooth 2>/dev/null || true
-sudo systemctl restart bluetooth 2>/dev/null || true
+sudo systemctl enable --now bluetooth
+sudo systemctl restart bluetooth
 
 # 5. Clone & build
 echo "[5/9] Cloning Pi Control Center..."
