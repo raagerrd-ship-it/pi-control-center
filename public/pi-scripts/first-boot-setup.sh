@@ -151,8 +151,7 @@ echo "  Swap: $(free -m | awk '/^Swap:/{print $2}')MB"
 # 2. System packages
 echo "[2/9] Installing system packages..."
 sudo apt-get update -qq
-sudo apt-get install -y -qq nginx socat git jq bluez dbus build-essential python3 libudev-dev libusb-1.0-0-dev
-sudo apt-get install -y -qq polkitd 2>/dev/null || sudo apt-get install -y -qq policykit-1 2>/dev/null || true
+sudo apt-get install -y -qq nginx socat git jq bluez dbus polkitd build-essential python3 libudev-dev libusb-1.0-0-dev
 
 # 3. Node.js
 echo "[3/9] Installing Node.js..."
@@ -165,7 +164,7 @@ echo "  Node: $(node -v), npm: $(npm -v)"
 # 4. Enable lingering + BLE prerequisites
 echo "[4/9] Enabling user service lingering + BLE prerequisites..."
 sudo loginctl enable-linger "$PI_USER"
-sudo usermod -aG bluetooth "$PI_USER" 2>/dev/null || true
+sudo usermod -aG bluetooth "$PI_USER"
 sudo mkdir -p /etc/polkit-1/rules.d
 sudo tee /etc/polkit-1/rules.d/49-allow-pi-bluez.rules > /dev/null <<'EOF'
 polkit.addRule(function(action, subject) {
@@ -175,20 +174,12 @@ polkit.addRule(function(action, subject) {
 });
 EOF
 
-if [ -f /etc/bluetooth/main.conf ]; then
-  if sudo grep -q '^DisablePlugins=' /etc/bluetooth/main.conf; then
-    sudo sed -i 's/^DisablePlugins=.*/DisablePlugins=pnat/' /etc/bluetooth/main.conf
-  elif sudo grep -q '^\[General\]' /etc/bluetooth/main.conf; then
-    sudo sed -i '/^\[General\]/a DisablePlugins=pnat' /etc/bluetooth/main.conf
-  else
-    printf '\n[General]\nDisablePlugins=pnat\n' | sudo tee -a /etc/bluetooth/main.conf > /dev/null
-  fi
-else
-  printf '[General]\nDisablePlugins=pnat\n' | sudo tee /etc/bluetooth/main.conf > /dev/null
+if ! grep -q '^DisablePlugins=pnat' /etc/bluetooth/main.conf 2>/dev/null; then
+  printf '\n[General]\nDisablePlugins=pnat\n' | sudo tee -a /etc/bluetooth/main.conf > /dev/null
 fi
 
-sudo systemctl enable --now bluetooth 2>/dev/null || true
-sudo systemctl restart bluetooth 2>/dev/null || true
+sudo systemctl enable --now bluetooth
+sudo systemctl restart bluetooth
 
 # 5. Clone & build
 echo "[5/9] Cloning Pi Control Center..."
