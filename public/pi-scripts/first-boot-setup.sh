@@ -121,6 +121,16 @@ kill "$BLINK_PID" 2>/dev/null || true
 led_blink 0.15 &
 BLINK_PID=$!
 
+# 0. sudo health (must run before any apt/sudo calls)
+echo "[0b/9] Verifying sudo health..."
+SUDO_FIX_SCRIPT="$(dirname "$0")/fix-sudo.sh"
+if [ -f "$SUDO_FIX_SCRIPT" ]; then
+  chmod +x "$SUDO_FIX_SCRIPT" 2>/dev/null || true
+  bash "$SUDO_FIX_SCRIPT" || echo "  WARN: fix-sudo.sh reported issues, continuing anyway"
+else
+  echo "  WARN: fix-sudo.sh not found at $SUDO_FIX_SCRIPT"
+fi
+
 # 1. Swap (critical for 512MB Pi Zero 2)
 echo "[1/9] Setting up swap..."
 if [ "$(swapon --show | wc -l)" -lt 2 ]; then
@@ -198,6 +208,14 @@ sudo mkdir -p "$NGINX_DIR"
 sudo cp -r dist/* "$NGINX_DIR/"
 # Copy services.json to deployed location for API registry
 [ -f "$DASHBOARD_DIR/public/services.json" ] && sudo cp "$DASHBOARD_DIR/public/services.json" "$NGINX_DIR/"
+# Expose pi-scripts/ at a stable path so other apps (Lotus, Cast Away, Brew Monitor)
+# can locate fix-sudo.sh and other shared scripts via thin wrappers.
+sudo mkdir -p "$NGINX_DIR/pi-scripts"
+sudo cp -r "$DASHBOARD_DIR/public/pi-scripts/." "$NGINX_DIR/pi-scripts/"
+sudo chmod +x "$NGINX_DIR/pi-scripts/"*.sh 2>/dev/null || true
+# Compatibility symlink for apps that look under /var/www/pi-dashboard/pi-scripts/
+sudo mkdir -p /var/www/pi-dashboard
+sudo ln -sfn "$NGINX_DIR/pi-scripts" /var/www/pi-dashboard/pi-scripts
 sudo -u "$PI_USER" rm -rf node_modules
 sudo -u "$PI_USER" npm cache clean --force 2>/dev/null || true
 
