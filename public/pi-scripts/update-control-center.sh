@@ -5,6 +5,13 @@
 
 set -euo pipefail
 
+# Guard: if current working directory is gone (e.g. deleted/renamed during a previous run),
+# pwd/getcwd will fail and break every relative command. Jump to / before doing anything.
+if ! pwd >/dev/null 2>&1; then
+  echo "[guard] cwd is invalid — switching to /"
+  cd /
+fi
+
 DASHBOARD_DIR="$HOME/pi-control-center"
 NGINX_DIR="/var/www/pi-control-center"
 API_SCRIPT="$DASHBOARD_DIR/public/pi-scripts/pi-control-center-api.sh"
