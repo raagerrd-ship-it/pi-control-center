@@ -1,120 +1,112 @@
 #!/bin/bash
-# ============================================================
-# Pi Control Center — sudo health repair
-# ============================================================
-# Verifies and repairs ownership/permissions for sudo-related
-# files. PCC owns sudo-health on the Pi; other apps (Lotus,
-# Cast Away, Brew Monitor) rely on this script via thin wrappers.
+# fix-sudo.sh — Verifierar och reparerar sudo-relaterade filers ägare och permissions.
 #
-# Exit codes:
-#   0 = OK or successfully repaired
-#   1 = problems remain
-# ============================================================
+# OS-nivå reparation (inte tjänst-specifikt). Ägs av Pi Control Center och
+# används av alla tjänster (Lotus, Cast Away, Brew Monitor) som behöver sudo
+# för apt/systemctl/reboot.
+#
+# Användning:
+#   - Lokalt på Pi:n:  bash /opt/pi-dashboard/public/pi-scripts/fix-sudo.sh
+#   - Via curl:        curl -sL <PCC>/pi-scripts/fix-sudo.sh | bash
+#   - Från en tjänst:  bash $PCC_DIR/public/pi-scripts/fix-sudo.sh
+#
+# Försöker reparera som root direkt, eller via pkexec om vi är vanlig användare.
+# Skriver tydlig manuell fallback (su -c ...) om båda misslyckas.
+#
+# Kontrollerar:
+#   - /etc/sudo.conf      root:root 644 (om filen finns)
+#   - /usr/bin/sudo       root:root 4755 (setuid)
+#   - /etc/sudoers        root:root 440
+#   - /etc/sudoers.d/     root:root 750 (dir), 440 (filer)
+#
+# Exit-koder:
+#   0 = allt OK eller alla problem reparerade
+#   1 = problem hittades men kunde inte repareras
 
 set -u
 
-LOG_PREFIX="[fix-sudo]"
-log() { echo "$LOG_PREFIX $*"; }
-warn() { echo "$LOG_PREFIX WARN: $*" >&2; }
-err() { echo "$LOG_PREFIX ERROR: $*" >&2; }
+SUDO_FIX_NEEDED=false
 
-# Desired state: path|owner|mode|type(file|dir|optional-file)
-EXPECTED=(
-  "/etc/sudo.conf|root:root|644|optional-file"
-  "/usr/bin/sudo|root:root|4755|file"
-  "/etc/sudoers|root:root|440|file"
-  "/etc/sudoers.d|root:root|750|dir"
-)
+# ─── Helper: verifiera och reparera ägare/mode för en path ─────
+fix_perms() {
+  # $1 = path, $2 = expected owner, $3 = expected mode
+  local path="$1" exp_owner="$2" exp_mode="$3"
+  [ -e "$path" ] || return 0
+  local owner mode
+  owner=$(stat -c '%U:%G' "$path" 2>/dev/null || echo "?")
+  mode=$(stat -c '%a' "$path" 2>/dev/null || echo "?")
+  if [ "$owner" = "$exp_owner" ] && [ "$mode" = "$exp_mode" ]; then
+    echo "  ✓ $path OK ($exp_owner, $exp_mode)"
+    return 0
+  fi
+  echo "  ⚠ $path har fel ägare/mode: $owner ($mode) — försöker reparera (förväntat: $exp_owner $exp_mode)"
+  SUDO_FIX_NEEDED=true
+  if [ "$(id -u)" = "0" ]; then
+    chown "$exp_owner" "$path" && chmod "$exp_mode" "$path" && echo "  ✓ Fixade $path som root"
+  elif command -v pkexec >/dev/null 2>&1; then
+    pkexec sh -c "chown '$exp_owner' '$path' && chmod '$exp_mode' '$path'" \
+      && echo "  ✓ Fixade $path via pkexec" \
+      || echo "  ✗ pkexec misslyckades — kör manuellt: su -c \"chown $exp_owner $path && chmod $exp_mode $path\""
+  else
+    echo "  ✗ Kan inte reparera (kör inte som root och saknar pkexec)"
+    echo "    Kör manuellt: su -c \"chown $exp_owner $path && chmod $exp_mode $path\""
+  fi
+  local new_owner new_mode
+  new_owner=$(stat -c '%U:%G' "$path" 2>/dev/null || echo "?")
+  new_mode=$(stat -c '%a' "$path" 2>/dev/null || echo "?")
+  if [ "$new_owner" = "$exp_owner" ] && [ "$new_mode" = "$exp_mode" ]; then
+    echo "  ✓ $path nu korrekt ($exp_owner, $exp_mode)"
+    SUDO_FIX_NEEDED=false
+  fi
+}
 
-# Build the repair command as a single shell snippet so it can be
-# run via root, pkexec, or su -c fallback.
-build_repair_cmd() {
-  cat <<'REPAIR'
-set -e
-chown root:root /etc/sudo.conf 2>/dev/null && chmod 644 /etc/sudo.conf 2>/dev/null || true
-[ -e /usr/bin/sudo ] && chown root:root /usr/bin/sudo && chmod 4755 /usr/bin/sudo
-[ -e /etc/sudoers ] && chown root:root /etc/sudoers && chmod 440 /etc/sudoers
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo "  Sudo pre-flight check (Pi Control Center)"
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
+# /etc/sudo.conf — måste vara root:root 644 (om filen existerar)
+if [ -f /etc/sudo.conf ]; then
+  fix_perms /etc/sudo.conf root:root 644
+else
+  echo "  ℹ /etc/sudo.conf saknas — sudo använder kompilerade defaults (OK)"
+fi
+
+# /usr/bin/sudo — måste vara root:root 4755 (setuid)
+SUDO_BIN=$(command -v sudo 2>/dev/null || echo /usr/bin/sudo)
+if [ -f "$SUDO_BIN" ]; then
+  fix_perms "$SUDO_BIN" root:root 4755
+else
+  echo "  ⚠ sudo-binären hittas inte ($SUDO_BIN) — installera med: apt install sudo"
+fi
+
+# /etc/sudoers — måste vara root:root 440
+if [ -f /etc/sudoers ]; then
+  fix_perms /etc/sudoers root:root 440
+else
+  echo "  ⚠ /etc/sudoers saknas — sudo kommer inte fungera"
+fi
+
+# /etc/sudoers.d/ — katalog 750, filer 440
 if [ -d /etc/sudoers.d ]; then
-  chown root:root /etc/sudoers.d
-  chmod 750 /etc/sudoers.d
-  find /etc/sudoers.d -mindepth 1 -maxdepth 1 -type f -exec chown root:root {} \; -exec chmod 440 {} \;
-fi
-REPAIR
-}
-
-check_one() {
-  local path="$1" owner="$2" mode="$3" type="$4"
-  if [ ! -e "$path" ]; then
-    [ "$type" = "optional-file" ] && return 0
-    warn "missing: $path"
-    return 1
-  fi
-  local actual_owner actual_mode
-  actual_owner="$(stat -c '%U:%G' "$path" 2>/dev/null || echo '?')"
-  actual_mode="$(stat -c '%a' "$path" 2>/dev/null || echo '?')"
-  if [ "$actual_owner" != "$owner" ] || [ "$actual_mode" != "$mode" ]; then
-    warn "$path: owner=$actual_owner mode=$actual_mode (expected $owner $mode)"
-    return 1
-  fi
-  return 0
-}
-
-check_all() {
-  local ok=0
-  for entry in "${EXPECTED[@]}"; do
-    IFS='|' read -r p o m t <<<"$entry"
-    check_one "$p" "$o" "$m" "$t" || ok=1
+  fix_perms /etc/sudoers.d root:root 750
+  for f in /etc/sudoers.d/*; do
+    [ -e "$f" ] || continue
+    fix_perms "$f" root:root 440
   done
-  # sudoers.d files
-  if [ -d /etc/sudoers.d ]; then
-    while IFS= read -r f; do
-      local ao am
-      ao="$(stat -c '%U:%G' "$f" 2>/dev/null || echo '?')"
-      am="$(stat -c '%a' "$f" 2>/dev/null || echo '?')"
-      if [ "$ao" != "root:root" ] || [ "$am" != "440" ]; then
-        warn "$f: owner=$ao mode=$am (expected root:root 440)"
-        ok=1
-      fi
-    done < <(find /etc/sudoers.d -mindepth 1 -maxdepth 1 -type f 2>/dev/null)
-  fi
-  return $ok
-}
+else
+  echo "  ℹ /etc/sudoers.d/ saknas — endast /etc/sudoers används (OK)"
+fi
 
-log "checking sudo health..."
-if check_all; then
-  log "sudo health OK"
+# Snabbtest: går sudo att köra alls?
+echo ""
+if sudo -n true 2>/dev/null || sudo -v 2>/dev/null; then
+  echo "  ✓ sudo fungerar"
   exit 0
-fi
-
-log "attempting repair..."
-REPAIR_CMD="$(build_repair_cmd)"
-
-REPAIRED=0
-if [ "$(id -u)" = "0" ]; then
-  log "running as root"
-  if bash -c "$REPAIR_CMD"; then REPAIRED=1; fi
-elif command -v pkexec >/dev/null 2>&1; then
-  log "trying pkexec"
-  if pkexec bash -c "$REPAIR_CMD"; then REPAIRED=1; fi
-fi
-
-if [ "$REPAIRED" -ne 1 ]; then
-  log "falling back to su -c (will prompt for root password)"
-  if su -c "$REPAIR_CMD"; then REPAIRED=1; fi
-fi
-
-if [ "$REPAIRED" -ne 1 ]; then
-  err "could not execute repair (no root, no pkexec, su failed)"
-  err "manual fallback — run as root:"
-  err "  su -c '$(echo "$REPAIR_CMD" | tr '\n' ';' )'"
+elif [ "$SUDO_FIX_NEEDED" = true ]; then
+  echo "  ⚠ sudo verkar fortfarande trasigt efter reparationsförsök"
   exit 1
-fi
-
-log "re-checking after repair..."
-if check_all; then
-  log "sudo health repaired"
+else
+  # Sudo kan vägra av andra skäl (lösenord krävs, ingen TTY, etc.) — inte vårt problem
+  echo "  ℹ sudo fil-permissions OK (lösenordskrav/TTY kan blockera annars)"
   exit 0
 fi
-
-err "problems remain after repair"
-exit 1
