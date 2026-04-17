@@ -1,37 +1,51 @@
 
 
-## Problem: Dashboard tappar anslutning under operationer
+## Bedömning: Ja, en ren ominstallation är rätt väg
 
-### Orsak
-När Pi:n kör tunga operationer (npm install, vite build) spikar CPU/RAM. API:ts `/api/status`-endpoint svarar inte inom 4-sekunders-timeouten. Status-pollern markerar direkt "offline" efter ett enda misslyckat anrop, och skickar dessutom en extra ping-request som belastar Pi:n ytterligare.
+De senaste felen (root-ägt `node_modules`, trasig cwd, sudoers mode 750/755, saknade pi-scripts-symlinks) är alla **ackumulerad drift** från manuella SSH-fix under utvecklingen. En ren Pi OS + `first-boot-setup.sh` ger:
 
-### Plan
+- Korrekt ägarskap från start (`pi:pi` överallt)
+- Korrekta sudoers-permissions (750)
+- `fix-sudo.sh` körs proaktivt innan första `apt`
+- Symlinks för Lotus/Cast Away/Sonos läggs på rätt plats direkt
+- Inga lager av gamla `node_modules`, npm-cacher, eller halvkörda builds
 
-**1. Grace period innan offline-status**
-Kräv 3 misslyckade polls i rad innan connection ändras från `connected` till `offline`/`busy`. Ett enstaka timeout ska inte flippa UI:t.
+**Det löser troligen alla nuvarande symptom.** Det enda som kan kvarstå är buggar i själva `first-boot-setup.sh` — men de upptäcks då i en ren miljö istället för att maskeras av drift.
 
-**2. Längre timeout under aktiva operationer**
-Öka `fetchSystemStatus`-timeout från 4s till 8s när en installation eller uppdatering pågår. Exponera en `isBusy`-signal från `useServiceUpdate` som `useSystemStatus` kan använda.
+## Vad jag föreslår att vi rensar i koden
 
-**3. Långsammare polling under last**  
-Öka `BASE_INTERVAL` till 10s när en operation är aktiv. Pi:n behöver inte rapportera status var 5:e sekund under en build.
+Eftersom en ren install gör vissa "self-healing" guards onödiga, kan vi förenkla:
 
-**4. Skippa ping vid känd operation**
-Om vi vet att en install/update körs, skippa extra `fetchPing()`-anropet vid statusfel — vi vet redan att Pi:n är upptagen.
+### 1. `update-control-center.sh` — ta bort drift-guards
+- **Ta bort cwd-guarden** (`if ! pwd ...; then cd /`) — behövs bara om man kör scriptet från en raderad mapp, vilket inte händer i ren install
+- **Ta bort "PREV_HASH" / `.package-hash`-logiken** — onödig komplexitet, gör alltid ren `npm install` om `package.json` ändrats via enkel `git diff`-koll, eller ännu enklare: alltid `npm ci` om lockfilen ändrats
+- **Ta bort low-disk node_modules-cleanup** — Pi Zero 2 har alltid ont om disk, alltid städa
 
-### Filer som ändras
+### 2. `first-boot-setup.sh` — granska om något är defensivt utan anledning
+- Behåll `fix-sudo.sh`-anropet (det är legitim OS-hygien)
+- Behåll LED-feedback
+- Behåll swap-setup
+- Granska om vissa fallbacks (t.ex. `polkitd` || `policykit-1`) faktiskt behövs på senaste Pi OS — om inte, förenkla
 
-- **`src/hooks/useSystemStatus.ts`** — Grace period (3 fails), dynamiskt intervall, skippa ping vid busy
-- **`src/lib/api.ts`** — Acceptera valfri timeout-parameter i `fetchSystemStatus`
-- **`src/pages/Index.tsx`** — Skicka `isBusy`-flagga från useServiceUpdate till useSystemStatus
+### 3. Dokumentera "ren install"-flödet
+Kort sektion i `README.md` eller ny `INSTALL.md`:
+1. Flasha Pi OS Lite (Bookworm) med Pi Imager — sätt user `pi`, WiFi, SSH
+2. SSH in och kör one-liner med `first-boot-setup.sh`
+3. Vänta ~10 min, öppna `http://<pi-ip>`
+4. Installera Lotus / Cast Away / Sonos via dashboarden
 
-### Teknisk detalj
+## Vad jag INTE föreslår att vi rör
 
-```text
-Poll OK  → connection = connected, failCount = 0
-Poll FAIL #1 → behåll senaste connection-state  
-Poll FAIL #2 → behåll senaste connection-state
-Poll FAIL #3 → ping → busy/offline
-Operation aktiv → interval 10s, timeout 8s, skippa ping
-```
+- `fix-sudo.sh` — den är ny och korrekt, behövs både i ren install och som självläkning för befintliga installationer
+- `pi-control-center-api.sh` — fungerar som det ska
+- `services.json` — pekar rätt
+- Symlink-skapandet i `first-boot-setup.sh` (`/var/www/pi-dashboard/pi-scripts`) — krävs för Lotus-wrappern
+
+## Plan att utföra (när du godkänner)
+
+1. **Förenkla `update-control-center.sh`**: ta bort cwd-guard, hash-cache, disk-conditional cleanup → kortare, deterministisk
+2. **Lägg till `INSTALL.md`** i repo-roten med ren-install-flödet och rekommendation att alltid börja från ren Pi OS vid problem
+3. **Lägg till en kort "Reset to clean state"-sektion** med kommandona för att nuke `node_modules` + `chown -R pi:pi` om någon ändå vill reparera utan ominstallation
+
+Sedan: du flashar SD-kortet, kör one-linern, och vi verifierar att allt funkar i ren miljö.
 
