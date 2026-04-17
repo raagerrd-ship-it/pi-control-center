@@ -5,13 +5,6 @@
 
 set -euo pipefail
 
-# Guard: if current working directory is gone (e.g. deleted/renamed during a previous run),
-# pwd/getcwd will fail and break every relative command. Jump to / before doing anything.
-if ! pwd >/dev/null 2>&1; then
-  echo "[guard] cwd is invalid — switching to /"
-  cd /
-fi
-
 DASHBOARD_DIR="$HOME/pi-control-center"
 NGINX_DIR="/var/www/pi-control-center"
 API_SCRIPT="$DASHBOARD_DIR/public/pi-scripts/pi-control-center-api.sh"
@@ -21,66 +14,39 @@ export NODE_OPTIONS="--max-old-space-size=256"
 
 echo "=== Updating Pi Control Center ==="
 
-# Ensure swap is available (critical for 512MB)
-if [ "$(swapon --show | wc -l)" -lt 2 ]; then
-  echo "[0] Setting up swap..."
-  if [ -f /etc/dphys-swapfile ]; then
-    sudo sed -i 's/^CONF_SWAPSIZE=.*/CONF_SWAPSIZE=512/' /etc/dphys-swapfile
-    sudo dphys-swapfile setup 2>/dev/null
-    sudo dphys-swapfile swapon 2>/dev/null
-  fi
-fi
-
 cd "$DASHBOARD_DIR"
 
-echo "[1/7] Pulling latest code..."
-git checkout -- . 2>/dev/null
+echo "[1/6] Pulling latest code..."
+git checkout -- . 2>/dev/null || true
 git pull
 sed -i 's/\r$//' "$DASHBOARD_DIR/public/pi-scripts/"*.sh
 chmod +x "$DASHBOARD_DIR/public/pi-scripts/"*.sh
 
-echo "[2/7] Installing dependencies..."
-# Only do full reinstall if package.json changed
-PREV_HASH=""
-[ -f node_modules/.package-hash ] && PREV_HASH=$(cat node_modules/.package-hash)
-CURR_HASH=$(md5sum package.json | awk '{print $1}')
-if [ "$PREV_HASH" != "$CURR_HASH" ] || [ ! -d node_modules ]; then
-  echo "  package.json changed — full install"
-  rm -rf node_modules package-lock.json
-  nice -n 15 ionice -c 3 npm install --no-audit --no-fund
-  echo "$CURR_HASH" > node_modules/.package-hash
-  echo "[3/7] Updating browserslist..."
-  npx -y update-browserslist-db@latest 2>/dev/null || true
-else
-  echo "  dependencies unchanged — skipping install"
-fi
+echo "[2/6] Installing dependencies..."
+rm -rf node_modules
+nice -n 15 ionice -c 3 npm install --no-audit --no-fund
 
-echo "[4/7] Building (this may take a few minutes)..."
+echo "[3/6] Building (this may take a few minutes)..."
 nice -n 15 ionice -c 3 npm run build
 
-echo "[5/7] Deploying to Nginx..."
+echo "[4/6] Deploying to Nginx..."
 sudo mkdir -p "$NGINX_DIR"
 sudo cp -r dist/* "$NGINX_DIR/"
 
-echo "[6/7] Deploying services registry..."
+echo "[5/6] Deploying services registry & API..."
 if [ -f "$DASHBOARD_DIR/public/services.json" ]; then
   sudo cp "$DASHBOARD_DIR/public/services.json" "$NGINX_DIR/"
 fi
 if [ -f "$API_SCRIPT" ]; then
   sudo install -m 755 "$API_SCRIPT" "$SYSTEM_API_SCRIPT"
 fi
+sudo mkdir -p "$NGINX_DIR/pi-scripts"
+sudo cp -r "$DASHBOARD_DIR/public/pi-scripts/." "$NGINX_DIR/pi-scripts/"
+sudo chmod +x "$NGINX_DIR/pi-scripts/"*.sh 2>/dev/null || true
 
-echo "[7/7] Cleaning up..."
-# Keep node_modules for faster next update; only clean if disk < 200MB free
-AVAIL_MB=$(df -m "$DASHBOARD_DIR" | awk 'NR==2{print $4}')
-if [ "${AVAIL_MB:-0}" -lt 200 ]; then
-  echo "  Low disk (${AVAIL_MB}MB) — cleaning node_modules"
-  rm -rf node_modules
-  npm cache clean --force 2>/dev/null || true
-else
-  echo "  Disk OK (${AVAIL_MB}MB free) — keeping node_modules for next update"
-fi
-
+echo "[6/6] Cleaning up & restarting..."
+rm -rf node_modules
+npm cache clean --force 2>/dev/null || true
 sudo systemctl restart pi-control-center-api 2>/dev/null || true
 
 echo ""
