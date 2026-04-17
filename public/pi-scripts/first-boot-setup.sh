@@ -208,6 +208,14 @@ sudo mkdir -p "$NGINX_DIR"
 sudo cp -r dist/* "$NGINX_DIR/"
 # Copy services.json to deployed location for API registry
 [ -f "$DASHBOARD_DIR/public/services.json" ] && sudo cp "$DASHBOARD_DIR/public/services.json" "$NGINX_DIR/"
+# Expose pi-scripts/ at a stable path so other apps (Lotus, Cast Away, Brew Monitor)
+# can locate fix-sudo.sh and other shared scripts via thin wrappers.
+sudo mkdir -p "$NGINX_DIR/pi-scripts"
+sudo cp -r "$DASHBOARD_DIR/public/pi-scripts/." "$NGINX_DIR/pi-scripts/"
+sudo chmod +x "$NGINX_DIR/pi-scripts/"*.sh 2>/dev/null || true
+# Compatibility symlink for apps that look under /var/www/pi-dashboard/pi-scripts/
+sudo mkdir -p /var/www/pi-dashboard
+sudo ln -sfn "$NGINX_DIR/pi-scripts" /var/www/pi-dashboard/pi-scripts
 sudo -u "$PI_USER" rm -rf node_modules
 sudo -u "$PI_USER" npm cache clean --force 2>/dev/null || true
 
