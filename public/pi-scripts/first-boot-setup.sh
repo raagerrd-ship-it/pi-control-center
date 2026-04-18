@@ -293,6 +293,8 @@ CPUAffinity=0
 AllowedCPUs=0
 AmbientCapabilities=CAP_NET_RAW CAP_NET_ADMIN
 CapabilityBoundingSet=CAP_NET_RAW CAP_NET_ADMIN CAP_NET_BIND_SERVICE
+ExecStartPre=+/usr/sbin/rfkill unblock bluetooth
+ExecStartPre=+/bin/hciconfig hci0 up
 
 [Install]
 WantedBy=multi-user.target
