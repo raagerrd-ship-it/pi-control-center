@@ -142,7 +142,7 @@ export const CoreCard = memo(function CoreCard({
     onInstall(app, uiPort, coreIndex);
   };
 
-  const maxForThis = ramBudgetMb - otherAllocatedMb;
+  const maxForThis = Math.max(16, ramBudgetMb - otherAllocatedMb);
 
   // Sync local slider value with prop
   const sliderValue = localMemLimit ?? memLimitMb ?? 0;
