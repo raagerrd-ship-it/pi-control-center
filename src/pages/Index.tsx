@@ -48,24 +48,38 @@ const Index = () => {
     handleCheckVersions();
   }, []);
 
-  // Fetch memory limits for installed services
+  // Fetch memory limits for installed services and discard stale limits
   useEffect(() => {
-    if (!status?.services) return;
+    if (!status?.services) {
+      setMemLimits({});
+      return;
+    }
+
     const installedKeys = Object.entries(status.services)
       .filter(([, svc]) => svc.installed)
       .map(([key]) => key);
-    const budget = Math.max((status?.ramTotal ?? 416) - 80, 100);
+    const installedSet = new Set(installedKeys);
+
+    setMemLimits(prev => {
+      const next = Object.fromEntries(
+        Object.entries(prev).filter(([key]) => installedSet.has(key)),
+      );
+      return Object.keys(next).length === Object.keys(prev).length ? prev : next;
+    });
+
+    const budget = Math.max((status.ramTotal ?? 416) - 80, 100);
     const defaultPerApp = installedKeys.length > 0
       ? Math.floor(budget / installedKeys.length)
       : Math.floor(budget / 3);
+
     installedKeys.forEach(key => {
-      if (!memLimits[key]) {
+      if (memLimits[key] == null) {
         fetchMemoryLimit(key)
           .then(r => setMemLimits(prev => ({ ...prev, [key]: r.limitMb })))
           .catch(() => setMemLimits(prev => ({ ...prev, [key]: defaultPerApp })));
       }
     });
-  }, [status?.services]);
+  }, [memLimits, status?.ramTotal, status?.services]);
 
   const handleMemLimitChange = useCallback((app: string, mb: number) => {
     setMemLimits(prev => ({ ...prev, [app]: mb }));
@@ -299,9 +313,9 @@ const Index = () => {
                 health: svcStatus.health,
               } : undefined;
 
-              // Calculate other cores' allocated RAM
+              // Calculate other installed services' allocated RAM
               const otherAllocated = Object.entries(memLimits)
-                .filter(([k]) => k !== serviceKey)
+                .filter(([key]) => key !== serviceKey && status?.services?.[key]?.installed)
                 .reduce((sum, [, mb]) => sum + mb, 0);
 
               return (
