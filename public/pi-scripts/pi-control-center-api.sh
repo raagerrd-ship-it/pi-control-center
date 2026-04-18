@@ -605,8 +605,19 @@ progress() {
 }
 
 queue_install() {
-  local app=$1 req_port=$2 req_core=$3 unit_name
+  local app=$1 req_port=$2 req_core=$3 unit_name run_err
   unit_name="pi-control-center-install-${app}-$(date +%s)"
+  run_err="$INSTALL_DIR/${app}.queue.log"
+  : > "$run_err"
+
+  if XDG_RUNTIME_DIR="$USER_RUNTIME_DIR" DBUS_SESSION_BUS_ADDRESS="$USER_BUS_ADDRESS" \
+    systemd-run --user --quiet --collect --no-block --unit "$unit_name" \
+      --setenv=XDG_RUNTIME_DIR="$USER_RUNTIME_DIR" \
+      --setenv=DBUS_SESSION_BUS_ADDRESS="$USER_BUS_ADDRESS" \
+      "$SCRIPT_PATH" --run-install "$app" "$req_port" "$req_core" >> "$run_err" 2>&1; then
+    return 0
+  fi
+
   sudo systemd-run --quiet --collect --no-block --unit "$unit_name" \
     -p Type=exec \
     -p User="$(whoami)" \
@@ -614,7 +625,7 @@ queue_install() {
     -p MemoryMax=256M \
     -p Environment="XDG_RUNTIME_DIR=$USER_RUNTIME_DIR" \
     -p Environment="DBUS_SESSION_BUS_ADDRESS=$USER_BUS_ADDRESS" \
-    "$SCRIPT_PATH" --run-install "$app" "$req_port" "$req_core"
+    "$SCRIPT_PATH" --run-install "$app" "$req_port" "$req_core" >> "$run_err" 2>&1
 }
 
 do_install_release() {
