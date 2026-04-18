@@ -25,7 +25,25 @@ case "$REQUEST_MODE" in
     PORT="${1:-8585}"
     ;;
 esac
-SCRIPT_PATH="$(readlink -f "$0")"
+# Resolve script path robustly: BASH_SOURCE survives socat EXEC forks where $0 may differ.
+# Fallback to a known canonical path if BASH_SOURCE is also unreliable.
+SCRIPT_PATH="$(readlink -f "${BASH_SOURCE[0]:-$0}" 2>/dev/null || echo "${BASH_SOURCE[0]:-$0}")"
+# Sanity: if SCRIPT_PATH doesn't point to a real file, fall back to the canonical install path.
+if [ ! -f "$SCRIPT_PATH" ]; then
+  for candidate in \
+    "/home/pi/pi-control-center/public/pi-scripts/pi-control-center-api.sh" \
+    "/usr/local/bin/pi-control-center-api.sh"; do
+    if [ -f "$candidate" ]; then SCRIPT_PATH="$candidate"; break; fi
+  done
+fi
+# Ensure the canonical /usr/local/bin symlink always points to the active script,
+# so systemd-run jobs and other consumers can rely on a stable path.
+if [ -f "$SCRIPT_PATH" ] && [ "$SCRIPT_PATH" != "/usr/local/bin/pi-control-center-api.sh" ]; then
+  if [ ! -L /usr/local/bin/pi-control-center-api.sh ] || \
+     [ "$(readlink -f /usr/local/bin/pi-control-center-api.sh 2>/dev/null)" != "$SCRIPT_PATH" ]; then
+    sudo ln -sf "$SCRIPT_PATH" /usr/local/bin/pi-control-center-api.sh 2>/dev/null || true
+  fi
+fi
 PI_HOME="/home/pi"
 STATUS_DIR="/tmp/pi-control-center"
 INSTALL_DIR="/tmp/pi-control-center/install"
