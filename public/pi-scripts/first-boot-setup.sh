@@ -291,6 +291,8 @@ MemoryMax=30M
 Nice=10
 CPUAffinity=0
 AllowedCPUs=0
+AmbientCapabilities=CAP_NET_RAW CAP_NET_ADMIN
+CapabilityBoundingSet=CAP_NET_RAW CAP_NET_ADMIN CAP_NET_BIND_SERVICE
 
 [Install]
 WantedBy=multi-user.target
