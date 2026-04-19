@@ -74,24 +74,26 @@ function ComponentRow({
   const online = comp?.online ?? false;
 
   return (
-    <div className="flex items-center gap-2 py-1">
-      <div className={`h-1.5 w-1.5 rounded-full shrink-0 ${online ? 'bg-[hsl(var(--status-online))]' : 'bg-[hsl(var(--status-offline))]'}`} />
-      <Icon className="h-3 w-3 text-muted-foreground shrink-0" />
-      <span className="font-mono text-[11px] flex-1 truncate">{label}</span>
-      {comp?.port && (
-        <span className="font-mono text-[10px] text-muted-foreground/50 shrink-0">:{comp.port}</span>
-      )}
-      {comp && online && (
-        <span className="font-mono text-[10px] text-muted-foreground shrink-0">
-          {comp.cpu.toFixed(1)}% · {comp.ramMb}MB
-        </span>
-      )}
-      {comp?.cpuCore != null && (
-        <span className="font-mono text-[9px] text-muted-foreground/40 bg-secondary/50 rounded px-1 py-0.5 shrink-0">
-          C{comp.cpuCore}
-        </span>
-      )}
-      <div className="flex items-center gap-0.5 shrink-0">
+    <div className="flex flex-col py-1">
+      <div className="flex items-center gap-2">
+        <div className={`h-1.5 w-1.5 rounded-full shrink-0 ${online ? 'bg-[hsl(var(--status-online))]' : 'bg-[hsl(var(--status-offline))]'}`} />
+        <Icon className="h-3 w-3 text-muted-foreground shrink-0" />
+        <span className="font-mono text-[11px] flex-1 truncate">{label}</span>
+        {comp?.port && (
+          <span className="font-mono text-[10px] text-muted-foreground/50 shrink-0">:{comp.port}</span>
+        )}
+        {comp && online && (
+          <span className="font-mono text-[10px] text-muted-foreground shrink-0">
+            {comp.cpu.toFixed(1)}% · {comp.ramMb}MB
+          </span>
+        )}
+        {comp?.cpuCore != null && (
+          <span className="font-mono text-[9px] text-muted-foreground/40 bg-secondary/50 rounded px-1 py-0.5 shrink-0">
+            C{comp.cpuCore}
+          </span>
+        )}
+      </div>
+      <div className="flex items-center justify-end gap-0.5 pl-5 -mt-0.5">
         {!online ? (
           <Button variant="ghost" size="sm" className="h-5 w-5 p-0" disabled={isPending} onClick={() => onAction('start')} title="Starta">
             <Play className="h-2.5 w-2.5" />
