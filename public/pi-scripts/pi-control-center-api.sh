@@ -814,14 +814,12 @@ AllowedCPUs=${req_core}"
 AllowedCPUs=0"
       fi
 
-      local comp_security_lines="PrivateTmp=true
-NoNewPrivileges=true"
+      local comp_security_lines="PrivateTmp=true"
       local comp_env_lines=""
       if [ "$comp" = "engine" ] && [ "$comp_type" = "node" ]; then
-        comp_security_lines="PrivateTmp=true
-NoNewPrivileges=false
-AmbientCapabilities=CAP_NET_RAW CAP_NET_ADMIN
-CapabilityBoundingSet=CAP_NET_RAW CAP_NET_ADMIN"
+        # User-services kan inte sätta AmbientCapabilities/CapabilityBoundingSet
+        # (kräver root). UPnP/SSDP via plain UDP fungerar utan CAP_NET_RAW.
+        comp_security_lines="PrivateTmp=true"
         comp_env_lines="Environment=DBUS_SYSTEM_BUS_ADDRESS=unix:path=/run/dbus/system_bus_socket"
       fi
 
