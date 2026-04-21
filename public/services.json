@@ -7,6 +7,7 @@
     "releaseAsset": "dist.tar.gz",
     "installDir": "/opt/lotus-light",
     "runInstallOnRelease": false,
+    "managed": false,
     "installScript": "scripts/install.sh",
     "updateScript": "/opt/lotus-light/scripts/update.sh",
     "uninstallScript": "scripts/uninstall.sh",
