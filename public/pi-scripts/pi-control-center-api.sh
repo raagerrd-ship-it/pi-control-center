@@ -895,10 +895,7 @@ NoNewPrivileges=true"
         search_dir=$(dirname "$search_dir")
       done
       exec_start="/usr/bin/node ${install_dir}/${entrypoint}"
-      legacy_security_lines="PrivateTmp=true
-NoNewPrivileges=false
-AmbientCapabilities=CAP_NET_RAW CAP_NET_ADMIN
-CapabilityBoundingSet=CAP_NET_RAW CAP_NET_ADMIN"
+      legacy_security_lines="PrivateTmp=true"
       legacy_env_lines="Environment=DBUS_SYSTEM_BUS_ADDRESS=unix:path=/run/dbus/system_bus_socket"
     else
       exec_start="/usr/bin/python3 ${PI_HOME}/pi-control-center/public/pi-scripts/static-spa-server.py --root ${install_dir}/dist --port ${req_port} --host 0.0.0.0"
