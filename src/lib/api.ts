@@ -72,6 +72,9 @@ export interface InstallResult {
   progress?: string;
   elapsed?: string;
   timestamp?: string;
+  step?: number;
+  totalSteps?: number;
+  percent?: number;
 }
 
 export interface ServiceActionResult {

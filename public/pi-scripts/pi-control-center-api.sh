@@ -599,13 +599,51 @@ status_cache_loop() {
 }
 
 
+# Total antal steg i en typisk installation (används för procentberäkning)
+INSTALL_TOTAL_STEPS=10
+
+# Mappa progress-meddelande till stegnummer (1..INSTALL_TOTAL_STEPS)
+_progress_step_for_msg() {
+  case "$1" in
+    Startar*)                          echo 1 ;;
+    Hämtar\ release-info*)             echo 2 ;;
+    Förbereder\ katalog*)              echo 3 ;;
+    Klonar*)                           echo 3 ;;
+    Laddar\ ner*)                      echo 4 ;;
+    Packar\ upp*)                      echo 5 ;;
+    Verifierar*)                       echo 5 ;;
+    Bygger*|npm\ rebuild*)             echo 6 ;;
+    Kör\ installationsskript*)         echo 7 ;;
+    Skapar\ systemd*)                  echo 8 ;;
+    Aktiverar*|Startar\ tjänst*)       echo 9 ;;
+    Hanteras\ externt*)                echo 9 ;;
+    Klar*|Installation\ klar*)         echo 10 ;;
+    *)                                 echo "" ;;
+  esac
+}
+
 progress() {
   local sf=$1 app=$2 msg=$3 start=$4
   local elapsed=$(( $(date +%s) - start ))
   local min=$((elapsed / 60)) sec=$((elapsed % 60))
   local time_str
   if [ "$min" -gt 0 ]; then time_str="${min}m ${sec}s"; else time_str="${sec}s"; fi
-  echo "{\"app\":\"${app}\",\"status\":\"installing\",\"progress\":\"${msg}\",\"elapsed\":\"${time_str}\"}" > "$sf"
+
+  local step pct
+  step=$(_progress_step_for_msg "$msg")
+  if [ -n "$step" ]; then
+    pct=$(( step * 100 / INSTALL_TOTAL_STEPS ))
+  else
+    # Okänt meddelande: behåll föregående steg/procent om filen finns
+    if [ -f "$sf" ]; then
+      step=$(grep -oP '"step":\K\d+' "$sf" 2>/dev/null)
+      pct=$(grep -oP '"percent":\K\d+' "$sf" 2>/dev/null)
+    fi
+    [ -z "$step" ] && step=1
+    [ -z "$pct" ] && pct=10
+  fi
+
+  echo "{\"app\":\"${app}\",\"status\":\"installing\",\"progress\":\"${msg}\",\"elapsed\":\"${time_str}\",\"step\":${step},\"totalSteps\":${INSTALL_TOTAL_STEPS},\"percent\":${pct}}" > "$sf"
 }
 
 queue_install() {
@@ -1229,10 +1267,10 @@ handle_request() {
         response="{\"error\":\"Unknown app: ${app}\"}"
       else
         # Clear stale status and log before starting new install
-        echo "{\"app\":\"${app}\",\"status\":\"installing\",\"progress\":\"Startar installation...\"}" > "$INSTALL_DIR/${app}.json"
+        echo "{\"app\":\"${app}\",\"status\":\"installing\",\"progress\":\"Startar installation...\",\"elapsed\":\"0s\",\"step\":1,\"totalSteps\":${INSTALL_TOTAL_STEPS},\"percent\":10}" > "$INSTALL_DIR/${app}.json"
         rm -f "$INSTALL_DIR/${app}.log"
         if queue_install "$app" "$req_port" "$req_core"; then
-          response="{\"app\":\"${app}\",\"status\":\"installing\",\"progress\":\"Startar installation...\"}"
+          response=$(< "$INSTALL_DIR/${app}.json")
         else
           status_line="HTTP/1.1 500 Internal Server Error"
           echo "{\"app\":\"${app}\",\"status\":\"error\",\"message\":\"Kunde inte starta installationsjobb\",\"timestamp\":\"$(date -Iseconds)\"}" > "$INSTALL_DIR/${app}.json"
