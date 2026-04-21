@@ -915,6 +915,73 @@ UNIT
   return 0
 }
 
+# --- RAM-budget: omfördela MemoryMax mellan installerade tjänster ---
+RAM_BUDGET_MB=330
+
+rebalance_memory_budget() {
+  local installed_apps=()
+  local app
+  for app in $(registry_keys); do
+    [ -n "$(assignment_get_core "$app")" ] && installed_apps+=("$app")
+  done
+
+  local count=${#installed_apps[@]}
+  [ "$count" -eq 0 ] && return 0
+
+  local per_app=$(( RAM_BUDGET_MB / count ))
+  [ "$per_app" -lt 16 ] && per_app=16
+
+  local changed=0
+  local svc_files=()
+  for app in "${installed_apps[@]}"; do
+    if [ "$(registry_has_components "$app")" = "true" ]; then
+      for comp in engine ui; do
+        local cs
+        cs=$(registry_get_component "$app" "$comp" "service")
+        [ -n "$cs" ] && svc_files+=("$PI_HOME/.config/systemd/user/${cs}.service")
+      done
+    else
+      local s
+      s=$(registry_get "$app" "service")
+      [ -n "$s" ] && svc_files+=("$PI_HOME/.config/systemd/user/${s}.service")
+    fi
+  done
+
+  local f
+  for f in "${svc_files[@]}"; do
+    [ -f "$f" ] || continue
+    local current
+    current=$(grep -oP '^MemoryMax=\K\d+' "$f" 2>/dev/null)
+    if [ "$current" != "$per_app" ]; then
+      if grep -q '^MemoryMax=' "$f"; then
+        sed -i "s/^MemoryMax=.*/MemoryMax=${per_app}M/" "$f"
+      else
+        sed -i "/^\[Service\]/a MemoryMax=${per_app}M" "$f"
+      fi
+      changed=1
+    fi
+  done
+
+  if [ "$changed" -eq 1 ]; then
+    user_systemctl daemon-reload 2>/dev/null || true
+    for app in "${installed_apps[@]}"; do
+      if [ "$(registry_has_components "$app")" = "true" ]; then
+        for comp in engine ui; do
+          local cs
+          cs=$(registry_get_component "$app" "$comp" "service")
+          [ -n "$cs" ] && user_systemctl try-restart "${cs}.service" 2>/dev/null || true
+        done
+      else
+        local s
+        s=$(registry_get "$app" "service")
+        [ -n "$s" ] && user_systemctl try-restart "${s}.service" 2>/dev/null || true
+      fi
+    done
+    rm -f "$CACHE_FILE"
+    log "RAM-budget omfördelad: ${count} tjänster × ${per_app}MB = $((count * per_app))MB / ${RAM_BUDGET_MB}MB"
+  fi
+}
+
 do_install() {
   local app repo install_dir script svc sf install_message req_port req_core start_time
   app=$1
@@ -976,6 +1043,9 @@ do_install() {
   # Save assignment
   assignment_set "$app" "$req_core"
 
+  # Omfördela RAM-budgeten mellan alla installerade tjänster
+  rebalance_memory_budget
+
   rm -f "$CACHE_FILE"
   local total_elapsed=$(( $(date +%s) - start_time ))
   local t_min=$((total_elapsed / 60)) t_sec=$((total_elapsed % 60))
@@ -1026,6 +1096,10 @@ do_uninstall() {
 
   # Remove assignment
   assignment_remove "$app"
+
+  # Omfördela RAM-budgeten — kvarvarande tjänster får mer
+  rebalance_memory_budget
+
   rm -f "$CACHE_FILE"
   rm -f "$HEALTH_DIR/${app}.json"
 }
