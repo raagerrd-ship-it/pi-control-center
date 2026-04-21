@@ -1043,6 +1043,9 @@ do_install() {
   # Save assignment
   assignment_set "$app" "$req_core"
 
+  # Omfördela RAM-budgeten mellan alla installerade tjänster
+  rebalance_memory_budget
+
   rm -f "$CACHE_FILE"
   local total_elapsed=$(( $(date +%s) - start_time ))
   local t_min=$((total_elapsed / 60)) t_sec=$((total_elapsed % 60))
@@ -1093,6 +1096,10 @@ do_uninstall() {
 
   # Remove assignment
   assignment_remove "$app"
+
+  # Omfördela RAM-budgeten — kvarvarande tjänster får mer
+  rebalance_memory_budget
+
   rm -f "$CACHE_FILE"
   rm -f "$HEALTH_DIR/${app}.json"
 }
