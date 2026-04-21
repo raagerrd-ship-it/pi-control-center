@@ -38,7 +38,14 @@ if [ -f "$DASHBOARD_DIR/public/services.json" ]; then
   sudo cp "$DASHBOARD_DIR/public/services.json" "$NGINX_DIR/"
 fi
 if [ -f "$API_SCRIPT" ]; then
-  sudo install -m 755 "$API_SCRIPT" "$SYSTEM_API_SCRIPT"
+  # Hoppa över om målet redan är en symlänk till samma fil (cp/install skulle annars
+  # ge "are the same file" eller skriva över symlänken med en kopia).
+  if [ -L "$SYSTEM_API_SCRIPT" ] && \
+     [ "$(readlink -f "$SYSTEM_API_SCRIPT")" = "$(readlink -f "$API_SCRIPT")" ]; then
+    echo "  ↳ $SYSTEM_API_SCRIPT är redan en symlänk till källan — hoppar över kopiering"
+  else
+    sudo install -m 755 "$API_SCRIPT" "$SYSTEM_API_SCRIPT"
+  fi
 fi
 sudo mkdir -p "$NGINX_DIR/pi-scripts"
 sudo cp -r "$DASHBOARD_DIR/public/pi-scripts/." "$NGINX_DIR/pi-scripts/"
