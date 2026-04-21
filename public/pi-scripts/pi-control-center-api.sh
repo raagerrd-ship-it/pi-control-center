@@ -1308,6 +1308,8 @@ handle_request() {
       : > "$dashboard_log"
       response=$(< "$sf")
       (
+        STOPPED_SERVICES=""
+
         dashboard_progress() {
           local msg=$1
           local elapsed min sec time_str
@@ -1323,9 +1325,47 @@ handle_request() {
           echo "{\"app\":\"dashboard\",\"status\":\"error\",\"message\":\"${msg}\",\"timestamp\":\"$(date -Iseconds)\"}" > "$sf"
         }
 
-        trap 'code=$?; if [ "$code" -ne 0 ] && grep -q "\"status\":\"updating\"" "$sf" 2>/dev/null; then dashboard_fail "Uppdateringen avbröts oväntat"; fi' EXIT
+        # Collect service unit names for every installed app (apps with an assignment)
+        collect_app_services() {
+          local out="" app has_comp cs s assigned
+          for app in $(registry_keys); do
+            assigned=$(assignment_get_core "$app")
+            [ -z "$assigned" ] && continue
+            has_comp=$(registry_has_components "$app")
+            if [ "$has_comp" = "true" ]; then
+              for comp in engine ui; do
+                cs=$(registry_get_component "$app" "$comp" "service")
+                [ -n "$cs" ] && out="$out $cs"
+              done
+            else
+              s=$(registry_get "$app" "service")
+              [ -n "$s" ] && out="$out $s"
+            fi
+          done
+          echo "$out"
+        }
+
+        stop_app_services() {
+          STOPPED_SERVICES=$(collect_app_services)
+          local svc
+          for svc in $STOPPED_SERVICES; do
+            user_systemctl stop "${svc}.service" 2>/dev/null || true
+          done
+        }
+
+        restart_app_services() {
+          local svc
+          for svc in $STOPPED_SERVICES; do
+            user_systemctl start "${svc}.service" 2>/dev/null || true
+          done
+        }
+
+        trap 'code=$?; if [ "$code" -ne 0 ] && grep -q "\"status\":\"updating\"" "$sf" 2>/dev/null; then dashboard_fail "Uppdateringen avbröts oväntat"; fi; restart_app_services' EXIT
 
         cd "$ddir" 2>/dev/null || { dashboard_fail "Dashboard-katalog saknas"; exit 1; }
+
+        dashboard_progress "Stoppar tjänster..."
+        stop_app_services
 
         dashboard_progress "Återställer lokala ändringar..."
         git checkout -- . 2>/dev/null || true
@@ -1379,6 +1419,10 @@ handle_request() {
           sudo install -m 755 "$ddir/public/pi-scripts/pi-control-center-api.sh" /usr/local/bin/pi-control-center-api.sh || true
         fi
 
+        dashboard_progress "Startar om tjänster..."
+        restart_app_services
+        STOPPED_SERVICES=""  # förhindra dubbel-restart i EXIT-trap
+
         dashboard_progress "Städar upp..."
         avail_mb=$(df -m "$ddir" | awk 'NR==2{print $4}')
         if [ "${avail_mb:-0}" -lt 200 ]; then
@@ -1391,6 +1435,7 @@ handle_request() {
         t_sec=$((elapsed % 60))
         if [ "$t_min" -gt 0 ]; then total_str="${t_min}m ${t_sec}s"; else total_str="${t_sec}s"; fi
         echo "{\"app\":\"dashboard\",\"status\":\"success\",\"message\":\"Dashboard uppdaterad (${total_str})\",\"timestamp\":\"$(date -Iseconds)\"}" > "$sf"
+        sleep 1
         sudo systemctl restart pi-control-center-api >/dev/null 2>&1 || true
       ) >> "$dashboard_log" 2>&1 &
       ;;
