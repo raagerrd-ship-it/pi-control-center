@@ -67,7 +67,7 @@ const Index = () => {
       return Object.keys(next).length === Object.keys(prev).length ? prev : next;
     });
 
-    const budget = 350;
+    const budget = 330;
     const defaultPerApp = installedKeys.length > 0
       ? Math.floor(budget / installedKeys.length)
       : Math.floor(budget / 3);
@@ -327,7 +327,7 @@ const Index = () => {
                   allInstalls={installs}
                   memLimitMb={serviceKey ? (memLimits[serviceKey] ?? null) : null}
                   otherAllocatedMb={otherAllocated}
-                  ramBudgetMb={350}
+                  ramBudgetMb={330}
                   onMemLimitChange={handleMemLimitChange}
                   onUpdate={startUpdate}
                   onCheckVersion={handleCheckVersion}
