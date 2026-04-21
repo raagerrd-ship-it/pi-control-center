@@ -932,7 +932,6 @@ Environment=PORT=${req_port}
 ${legacy_env_lines}
 CPUAffinity=${req_core}
 AllowedCPUs=${req_core}
-MemoryMax=111M
 ProtectSystem=strict
 ProtectHome=read-only
 ReadWritePaths=${install_dir}
