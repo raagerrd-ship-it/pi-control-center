@@ -915,8 +915,75 @@ UNIT
   return 0
 }
 
-# --- RAM-budget: omfördela MemoryMax mellan installerade tjänster ---
+# --- RAM-budget: hantera MemoryMax per installerad tjänst ---
+# Manuellt satta värden respekteras. Endast tjänster utan limit (nyinstallerade)
+# får automatisk tilldelning av kvarvarande budget. Vid överskridande av budget
+# skalas alla limits ned proportionellt.
 RAM_BUDGET_MB=330
+
+# Hämta primär service-fil för en app (engine om components, annars legacy service)
+_app_primary_svc_file() {
+  local app="$1"
+  local s
+  if [ "$(registry_has_components "$app")" = "true" ]; then
+    s=$(registry_get_component "$app" "engine" "service")
+    [ -z "$s" ] && s=$(registry_get_component "$app" "ui" "service")
+  else
+    s=$(registry_get "$app" "service")
+  fi
+  [ -n "$s" ] && echo "$PI_HOME/.config/systemd/user/${s}.service"
+}
+
+# Läs aktuell MemoryMax (MB) för en app, tom sträng om ej satt
+_app_current_limit() {
+  local f
+  f=$(_app_primary_svc_file "$1")
+  [ -f "$f" ] || { echo ""; return; }
+  grep -oP '^MemoryMax=\K\d+' "$f" 2>/dev/null
+}
+
+# Sätt MemoryMax (MB) på alla service-filer som hör till en app
+_app_set_limit() {
+  local app="$1" limit_mb="$2"
+  local s f
+  if [ "$(registry_has_components "$app")" = "true" ]; then
+    for comp in engine ui; do
+      s=$(registry_get_component "$app" "$comp" "service")
+      [ -n "$s" ] || continue
+      f="$PI_HOME/.config/systemd/user/${s}.service"
+      [ -f "$f" ] || continue
+      if grep -q '^MemoryMax=' "$f"; then
+        sed -i "s/^MemoryMax=.*/MemoryMax=${limit_mb}M/" "$f"
+      else
+        sed -i "/^\[Service\]/a MemoryMax=${limit_mb}M" "$f"
+      fi
+    done
+  else
+    s=$(registry_get "$app" "service")
+    [ -n "$s" ] || return
+    f="$PI_HOME/.config/systemd/user/${s}.service"
+    [ -f "$f" ] || return
+    if grep -q '^MemoryMax=' "$f"; then
+      sed -i "s/^MemoryMax=.*/MemoryMax=${limit_mb}M/" "$f"
+    else
+      sed -i "/^\[Service\]/a MemoryMax=${limit_mb}M" "$f"
+    fi
+  fi
+}
+
+# Starta om alla service-filer för en app
+_app_try_restart() {
+  local app="$1" s
+  if [ "$(registry_has_components "$app")" = "true" ]; then
+    for comp in engine ui; do
+      s=$(registry_get_component "$app" "$comp" "service")
+      [ -n "$s" ] && user_systemctl try-restart "${s}.service" 2>/dev/null || true
+    done
+  else
+    s=$(registry_get "$app" "service")
+    [ -n "$s" ] && user_systemctl try-restart "${s}.service" 2>/dev/null || true
+  fi
+}
 
 rebalance_memory_budget() {
   local installed_apps=()
@@ -924,61 +991,64 @@ rebalance_memory_budget() {
   for app in $(registry_keys); do
     [ -n "$(assignment_get_core "$app")" ] && installed_apps+=("$app")
   done
-
   local count=${#installed_apps[@]}
   [ "$count" -eq 0 ] && return 0
 
-  local per_app=$(( RAM_BUDGET_MB / count ))
-  [ "$per_app" -lt 16 ] && per_app=16
-
-  local changed=0
-  local svc_files=()
+  # Steg 1: samla nuvarande limits, identifiera tjänster utan limit
+  local total_set=0
+  local unset_apps=()
+  declare -A current_limits
   for app in "${installed_apps[@]}"; do
-    if [ "$(registry_has_components "$app")" = "true" ]; then
-      for comp in engine ui; do
-        local cs
-        cs=$(registry_get_component "$app" "$comp" "service")
-        [ -n "$cs" ] && svc_files+=("$PI_HOME/.config/systemd/user/${cs}.service")
-      done
+    local cur
+    cur=$(_app_current_limit "$app")
+    if [ -n "$cur" ]; then
+      current_limits[$app]=$cur
+      total_set=$((total_set + cur))
     else
-      local s
-      s=$(registry_get "$app" "service")
-      [ -n "$s" ] && svc_files+=("$PI_HOME/.config/systemd/user/${s}.service")
+      unset_apps+=("$app")
     fi
   done
 
-  local f
-  for f in "${svc_files[@]}"; do
-    [ -f "$f" ] || continue
-    local current
-    current=$(grep -oP '^MemoryMax=\K\d+' "$f" 2>/dev/null)
-    if [ "$current" != "$per_app" ]; then
-      if grep -q '^MemoryMax=' "$f"; then
-        sed -i "s/^MemoryMax=.*/MemoryMax=${per_app}M/" "$f"
-      else
-        sed -i "/^\[Service\]/a MemoryMax=${per_app}M" "$f"
-      fi
-      changed=1
-    fi
-  done
+  local changed_apps=()
 
-  if [ "$changed" -eq 1 ]; then
-    user_systemctl daemon-reload 2>/dev/null || true
+  # Steg 2: tilldela osatta tjänster en del av kvarvarande budget
+  local unset_count=${#unset_apps[@]}
+  if [ "$unset_count" -gt 0 ]; then
+    local remaining=$(( RAM_BUDGET_MB - total_set ))
+    local per_unset=$(( remaining / unset_count ))
+    [ "$per_unset" -lt 16 ] && per_unset=16
+    for app in "${unset_apps[@]}"; do
+      _app_set_limit "$app" "$per_unset"
+      current_limits[$app]=$per_unset
+      total_set=$((total_set + per_unset))
+      changed_apps+=("$app")
+    done
+  fi
+
+  # Steg 3: om totalen överskrider budget, skala ned proportionellt
+  if [ "$total_set" -gt "$RAM_BUDGET_MB" ]; then
+    log "RAM-totalen ${total_set}MB > budget ${RAM_BUDGET_MB}MB — skalar ned proportionellt"
     for app in "${installed_apps[@]}"; do
-      if [ "$(registry_has_components "$app")" = "true" ]; then
-        for comp in engine ui; do
-          local cs
-          cs=$(registry_get_component "$app" "$comp" "service")
-          [ -n "$cs" ] && user_systemctl try-restart "${cs}.service" 2>/dev/null || true
-        done
-      else
-        local s
-        s=$(registry_get "$app" "service")
-        [ -n "$s" ] && user_systemctl try-restart "${s}.service" 2>/dev/null || true
+      local old=${current_limits[$app]}
+      local new=$(( old * RAM_BUDGET_MB / total_set ))
+      [ "$new" -lt 16 ] && new=16
+      if [ "$new" != "$old" ]; then
+        _app_set_limit "$app" "$new"
+        changed_apps+=("$app")
       fi
     done
+  fi
+
+  if [ ${#changed_apps[@]} -gt 0 ]; then
+    user_systemctl daemon-reload 2>/dev/null || true
+    local seen=" "
+    for app in "${changed_apps[@]}"; do
+      case "$seen" in *" $app "*) continue;; esac
+      seen="$seen$app "
+      _app_try_restart "$app"
+    done
     rm -f "$CACHE_FILE"
-    log "RAM-budget omfördelad: ${count} tjänster × ${per_app}MB = $((count * per_app))MB / ${RAM_BUDGET_MB}MB"
+    log "RAM-budget uppdaterad för ${#changed_apps[@]} tjänst(er) (budget ${RAM_BUDGET_MB}MB, ${count} installerade)"
   fi
 }
 
