@@ -1465,7 +1465,16 @@ handle_request() {
         sudo cp -r dist/* "$ndir/" 2>> "$reset_log" || true
         sudo chown -R pi:pi "$ddir/dist" 2>/dev/null || true
         [ -f "$ddir/public/services.json" ] && sudo cp "$ddir/public/services.json" "$ndir/" || true
-        [ -f "$ddir/public/pi-scripts/pi-control-center-api.sh" ] && sudo install -m 755 "$ddir/public/pi-scripts/pi-control-center-api.sh" /usr/local/bin/pi-control-center-api.sh || true
+        if [ -f "$ddir/public/pi-scripts/pi-control-center-api.sh" ]; then
+          src="$ddir/public/pi-scripts/pi-control-center-api.sh"
+          dst="/usr/local/bin/pi-control-center-api.sh"
+          if [ -L "$dst" ] && [ "$(readlink -f "$dst")" = "$(readlink -f "$src")" ]; then
+            : # symlänk pekar redan på källan — hoppa över
+          else
+            sudo install -m 755 "$src" "$dst" || true
+          fi
+          unset src dst
+        fi
 
         echo '{"status":"success","timestamp":"'"$(date -Iseconds)"'"}' > "$STATUS_DIR/factory-reset.json"
         echo "Återställning klar. Startar om API..." >> "$reset_log"
@@ -1598,7 +1607,14 @@ handle_request() {
         sudo chown -R pi:pi "$ddir/dist" 2>/dev/null || true
         [ -f "$ddir/public/services.json" ] && sudo cp "$ddir/public/services.json" "$ndir/" || true
         if [ -f "$ddir/public/pi-scripts/pi-control-center-api.sh" ]; then
-          sudo install -m 755 "$ddir/public/pi-scripts/pi-control-center-api.sh" /usr/local/bin/pi-control-center-api.sh || true
+          src="$ddir/public/pi-scripts/pi-control-center-api.sh"
+          dst="/usr/local/bin/pi-control-center-api.sh"
+          if [ -L "$dst" ] && [ "$(readlink -f "$dst")" = "$(readlink -f "$src")" ]; then
+            : # symlänk pekar redan på källan — hoppa över
+          else
+            sudo install -m 755 "$src" "$dst" || true
+          fi
+          unset src dst
         fi
 
         dashboard_progress "Startar om tjänster..."
