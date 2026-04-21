@@ -84,6 +84,10 @@ user_systemctl() {
   systemctl --user "$@"
 }
 
+log() {
+  echo "PCC API: $*" >&2
+}
+
 # --- Dynamic registry helpers ---
 
 # Get a field from services.json: registry_get <key> <field>
