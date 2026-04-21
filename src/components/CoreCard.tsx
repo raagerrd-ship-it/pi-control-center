@@ -191,15 +191,24 @@ export const CoreCard = memo(function CoreCard({
           </div>
           <h3 className="font-medium text-sm">{name}</h3>
           {installing && (
-            <div className="flex flex-col gap-1">
+            <div className="flex flex-col gap-1.5">
               <div className="flex items-center gap-1.5 text-[hsl(var(--status-warning))]">
-                <Loader2 className="h-3 w-3 animate-spin" />
-                <span className="font-mono text-[11px]">{activeInstall?.progress || 'Installerar...'}</span>
+                <Loader2 className="h-3 w-3 animate-spin shrink-0" />
+                <span className="font-mono text-[11px] truncate">{activeInstall?.progress || 'Installerar...'}</span>
               </div>
-              {activeInstall?.elapsed && (
-                <span className="font-mono text-[10px] text-muted-foreground pl-4.5">⏱ {activeInstall.elapsed}</span>
-              )}
-              <Progress value={undefined} className="h-1 bg-secondary animate-pulse" />
+              <div className="flex items-center justify-between font-mono text-[10px] text-muted-foreground pl-4.5">
+                <span>
+                  {activeInstall?.step && activeInstall?.totalSteps
+                    ? `Steg ${activeInstall.step}/${activeInstall.totalSteps}`
+                    : ''}
+                  {activeInstall?.percent != null ? ` · ${activeInstall.percent}%` : ''}
+                </span>
+                {activeInstall?.elapsed && <span>⏱ {activeInstall.elapsed}</span>}
+              </div>
+              <Progress
+                value={activeInstall?.percent ?? undefined}
+                className={`h-1 bg-secondary ${activeInstall?.percent == null ? 'animate-pulse' : ''}`}
+              />
             </div>
           )}
           {installSuccess && (
