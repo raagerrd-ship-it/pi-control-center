@@ -97,11 +97,22 @@ const Index = () => {
     return map;
   }, [status]);
 
-  // Services not installed on any core
+  // Orphaned: installed but no valid core assignment (cpuCore < 1)
+  const orphanedServices = useMemo(() => {
+    if (!status?.services) return [] as Array<{ key: string; status: typeof status.services[string] }>;
+    return Object.entries(status.services)
+      .filter(([, svc]) => svc.installed && svc.cpuCore < 1)
+      .map(([key, svcStatus]) => ({ key, status: svcStatus }));
+  }, [status]);
+
+  // Services not installed on any core (and not orphaned)
   const uninstalledServices = useMemo(() => {
-    const installedKeys = new Set(Object.values(coreServiceMap));
-    return availableServices.filter(s => !installedKeys.has(s.key));
-  }, [availableServices, coreServiceMap]);
+    const claimedKeys = new Set([
+      ...Object.values(coreServiceMap),
+      ...orphanedServices.map(o => o.key),
+    ]);
+    return availableServices.filter(s => !claimedKeys.has(s.key));
+  }, [availableServices, coreServiceMap, orphanedServices]);
 
   const handleCheckVersions = useCallback(async () => {
     setCheckingVersions(true);
