@@ -352,6 +352,29 @@ const Index = () => {
           </div>
         </section>
 
+        {orphanedServices.length > 0 && (
+          <section className="mt-6">
+            <h2 className="font-mono text-xs uppercase tracking-wider text-[hsl(var(--status-warning))] mb-3 flex items-center gap-1.5">
+              Föräldralösa tjänster
+              <span className="text-muted-foreground/50 normal-case tracking-normal">
+                — installerade men felaktigt registrerade
+              </span>
+            </h2>
+            <div className="grid gap-3 grid-cols-1 sm:grid-cols-3">
+              {orphanedServices.map(({ key, status: svcStatus }) => (
+                <OrphanedServiceCard
+                  key={key}
+                  serviceKey={key}
+                  displayName={serviceNames[key] || key}
+                  status={svcStatus}
+                  uninstallStatus={uninstalls[key]}
+                  onUninstall={startUninstall}
+                />
+              ))}
+            </div>
+          </section>
+        )}
+
         <ActivityLog />
 
         <footer className="mt-8 pb-4 text-center font-mono text-[10px] text-muted-foreground/40 space-y-0.5">
