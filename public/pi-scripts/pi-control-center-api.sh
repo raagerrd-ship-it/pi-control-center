@@ -2010,6 +2010,8 @@ fi
 startup_cleanup_system_services() {
   local cleaned=0
   for app in $(registry_keys); do
+    # Skip apps som hanteras externt (t.ex. Lotus Light som har egen system-service)
+    [ "$(registry_is_managed "$app")" = "false" ] && continue
     local has_comp svc_names=""
     has_comp=$(registry_has_components "$app")
     if [ "$has_comp" = "true" ]; then
