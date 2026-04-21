@@ -2,6 +2,7 @@ import { useState, useCallback, useEffect, useMemo } from 'react';
 import { SystemMonitor } from '@/components/SystemMonitor';
 import { PullToRefresh } from '@/components/PullToRefresh';
 import { CoreCard } from '@/components/CoreCard';
+import { OrphanedServiceCard } from '@/components/OrphanedServiceCard';
 import { ActivityLog } from '@/components/ActivityLog';
 import { Settings, loadSettings, type DashboardSettings } from '@/components/Settings';
 import { useSystemStatus } from '@/hooks/useSystemStatus';
