@@ -2,6 +2,7 @@ import { useState, useCallback, useEffect, useMemo } from 'react';
 import { SystemMonitor } from '@/components/SystemMonitor';
 import { PullToRefresh } from '@/components/PullToRefresh';
 import { CoreCard } from '@/components/CoreCard';
+import { OrphanedServiceCard } from '@/components/OrphanedServiceCard';
 import { ActivityLog } from '@/components/ActivityLog';
 import { Settings, loadSettings, type DashboardSettings } from '@/components/Settings';
 import { useSystemStatus } from '@/hooks/useSystemStatus';
@@ -97,11 +98,22 @@ const Index = () => {
     return map;
   }, [status]);
 
-  // Services not installed on any core
+  // Orphaned: installed but no valid core assignment (cpuCore < 1)
+  const orphanedServices = useMemo(() => {
+    if (!status?.services) return [] as Array<{ key: string; status: typeof status.services[string] }>;
+    return Object.entries(status.services)
+      .filter(([, svc]) => svc.installed && svc.cpuCore < 1)
+      .map(([key, svcStatus]) => ({ key, status: svcStatus }));
+  }, [status]);
+
+  // Services not installed on any core (and not orphaned)
   const uninstalledServices = useMemo(() => {
-    const installedKeys = new Set(Object.values(coreServiceMap));
-    return availableServices.filter(s => !installedKeys.has(s.key));
-  }, [availableServices, coreServiceMap]);
+    const claimedKeys = new Set([
+      ...Object.values(coreServiceMap),
+      ...orphanedServices.map(o => o.key),
+    ]);
+    return availableServices.filter(s => !claimedKeys.has(s.key));
+  }, [availableServices, coreServiceMap, orphanedServices]);
 
   const handleCheckVersions = useCallback(async () => {
     setCheckingVersions(true);
@@ -339,6 +351,29 @@ const Index = () => {
             })}
           </div>
         </section>
+
+        {orphanedServices.length > 0 && (
+          <section className="mt-6">
+            <h2 className="font-mono text-xs uppercase tracking-wider text-[hsl(var(--status-warning))] mb-3 flex items-center gap-1.5">
+              Föräldralösa tjänster
+              <span className="text-muted-foreground/50 normal-case tracking-normal">
+                — installerade men felaktigt registrerade
+              </span>
+            </h2>
+            <div className="grid gap-3 grid-cols-1 sm:grid-cols-3">
+              {orphanedServices.map(({ key, status: svcStatus }) => (
+                <OrphanedServiceCard
+                  key={key}
+                  serviceKey={key}
+                  displayName={serviceNames[key] || key}
+                  status={svcStatus}
+                  uninstallStatus={uninstalls[key]}
+                  onUninstall={startUninstall}
+                />
+              ))}
+            </div>
+          </section>
+        )}
 
         <ActivityLog />
 
