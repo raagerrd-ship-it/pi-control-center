@@ -243,7 +243,7 @@ health_poll_loop() {
     if [ $((cleanup_counter % 10)) -eq 0 ]; then
       find "$STATUS_DIR" -maxdepth 1 -name '*.json' ! -name 'status-cache.json' ! -name 'factory-reset.json' -mmin +10 -delete 2>/dev/null
       find "$INSTALL_DIR" -maxdepth 1 -name '*.json' -mmin +10 -delete 2>/dev/null
-      echo 0 > "$HEAL_FAIL_DIR"/* 2>/dev/null || true
+      find "$HEAL_FAIL_DIR" -maxdepth 1 -type f -exec sh -c 'for file do echo 0 > "$file"; done' sh {} + 2>/dev/null || true
     fi
   done
 }
