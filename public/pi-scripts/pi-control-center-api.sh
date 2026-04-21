@@ -1267,10 +1267,10 @@ handle_request() {
         response="{\"error\":\"Unknown app: ${app}\"}"
       else
         # Clear stale status and log before starting new install
-        echo "{\"app\":\"${app}\",\"status\":\"installing\",\"progress\":\"Startar installation...\"}" > "$INSTALL_DIR/${app}.json"
+        echo "{\"app\":\"${app}\",\"status\":\"installing\",\"progress\":\"Startar installation...\",\"elapsed\":\"0s\",\"step\":1,\"totalSteps\":${INSTALL_TOTAL_STEPS},\"percent\":10}" > "$INSTALL_DIR/${app}.json"
         rm -f "$INSTALL_DIR/${app}.log"
         if queue_install "$app" "$req_port" "$req_core"; then
-          response="{\"app\":\"${app}\",\"status\":\"installing\",\"progress\":\"Startar installation...\"}"
+          response=$(< "$INSTALL_DIR/${app}.json")
         else
           status_line="HTTP/1.1 500 Internal Server Error"
           echo "{\"app\":\"${app}\",\"status\":\"error\",\"message\":\"Kunde inte starta installationsjobb\",\"timestamp\":\"$(date -Iseconds)\"}" > "$INSTALL_DIR/${app}.json"
