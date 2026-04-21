@@ -73,14 +73,17 @@ const Index = () => {
       ? Math.floor(budget / installedKeys.length)
       : Math.floor(budget / 3);
 
-    installedKeys.forEach(key => {
-      if (memLimits[key] == null) {
+    setMemLimits(prev => {
+      const missing = installedKeys.filter(k => prev[k] == null);
+      if (missing.length === 0) return prev;
+      missing.forEach(key => {
         fetchMemoryLimit(key)
-          .then(r => setMemLimits(prev => ({ ...prev, [key]: r.limitMb })))
-          .catch(() => setMemLimits(prev => ({ ...prev, [key]: defaultPerApp })));
-      }
+          .then(r => setMemLimits(p => ({ ...p, [key]: r.limitMb })))
+          .catch(() => setMemLimits(p => ({ ...p, [key]: defaultPerApp })));
+      });
+      return prev;
     });
-  }, [memLimits, status?.ramTotal, status?.services]);
+  }, [status?.ramTotal, status?.services]);
 
   const handleMemLimitChange = useCallback((app: string, mb: number) => {
     setMemLimits(prev => ({ ...prev, [app]: mb }));
