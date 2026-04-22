@@ -1275,7 +1275,7 @@ _app_primary_svc_file() {
   else
     s=$(registry_get "$app" "service")
   fi
-  [ -n "$s" ] && echo "$PI_HOME/.config/systemd/user/${s}.service"
+  [ -n "$s" ] && service_unit_file "$s"
 }
 
 # Läs aktuell MemoryMax (MB) för en app, tom sträng om ej satt
