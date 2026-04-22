@@ -650,7 +650,7 @@ build_status_json() {
 
     # For component-based services, check if ANY component is active
     if [ "$has_comp" = "true" ]; then
-      local engine_svc ui_svc engine_online ui_online engine_cpu engine_ram ui_cpu ui_ram engine_ver ui_ver engine_port
+      local engine_svc ui_svc engine_online ui_online engine_cpu engine_ram ui_cpu ui_ram engine_ver ui_ver engine_port engine_watchdog ui_watchdog
       engine_svc=$(registry_get_component "$app" "engine" "service")
       ui_svc=$(registry_get_component "$app" "ui" "service")
       engine_port=$(engine_port_for_core "$core")
@@ -694,6 +694,8 @@ build_status_json() {
       # Use engine port for version check (UI port serves static HTML, not API)
       ver=$(get_version "$install_dir" "$engine_port")
       engine_ver="$ver"; ui_ver="$ver"
+      engine_watchdog=$(watchdog_json "$app" "engine")
+      ui_watchdog=$(watchdog_json "$app" "ui")
 
       local total_cpu total_ram
       total_cpu=$(echo "$engine_cpu + $ui_cpu" | bc 2>/dev/null || echo "0")
@@ -708,7 +710,7 @@ build_status_json() {
       health_mem_rss=$(echo "$health_json" | jq -r '.memory.rss // 0' 2>/dev/null)
 
       [ -n "$svc_json" ] && svc_json="${svc_json},"
-      svc_json="${svc_json}\"${app}\":{\"online\":${online},\"installed\":${installed},\"version\":\"${ver}\",\"cpu\":${total_cpu:-0},\"ramMb\":${total_ram:-0},\"cpuCore\":${core},\"port\":${port},\"health\":{\"status\":\"${health_status}\",\"uptime\":${health_uptime:-0},\"memoryRss\":${health_mem_rss:-0}},\"components\":{\"engine\":{\"online\":${engine_online},\"version\":\"${engine_ver}\",\"cpu\":${engine_cpu:-0},\"ramMb\":${engine_ram:-0},\"service\":\"${engine_svc}\",\"port\":${engine_port},\"cpuCore\":${core}},\"ui\":{\"online\":${ui_online},\"version\":\"${ui_ver}\",\"cpu\":${ui_cpu:-0},\"ramMb\":${ui_ram:-0},\"service\":\"${ui_svc}\",\"port\":${port},\"cpuCore\":0}}}"
+      svc_json="${svc_json}\"${app}\":{\"online\":${online},\"installed\":${installed},\"version\":\"${ver}\",\"cpu\":${total_cpu:-0},\"ramMb\":${total_ram:-0},\"cpuCore\":${core},\"port\":${port},\"watchdog\":${engine_watchdog},\"health\":{\"status\":\"${health_status}\",\"uptime\":${health_uptime:-0},\"memoryRss\":${health_mem_rss:-0}},\"components\":{\"engine\":{\"online\":${engine_online},\"version\":\"${engine_ver}\",\"cpu\":${engine_cpu:-0},\"ramMb\":${engine_ram:-0},\"service\":\"${engine_svc}\",\"port\":${engine_port},\"cpuCore\":${core},\"watchdog\":${engine_watchdog}},\"ui\":{\"online\":${ui_online},\"version\":\"${ui_ver}\",\"cpu\":${ui_cpu:-0},\"ramMb\":${ui_ram:-0},\"service\":\"${ui_svc}\",\"port\":${port},\"cpuCore\":0,\"watchdog\":${ui_watchdog}}}}"
     else
       # Legacy single-service
       running=$(service_is_active "$svc")
@@ -738,7 +740,9 @@ build_status_json() {
       fi
 
       [ -n "$svc_json" ] && svc_json="${svc_json},"
-      svc_json="${svc_json}\"${app}\":{\"online\":${online},\"installed\":${installed},\"version\":\"${ver}\",\"cpu\":${s_cpu:-0},\"ramMb\":${s_ram:-0},\"cpuCore\":${s_core},\"port\":${port}}"
+      local service_watchdog
+      service_watchdog=$(watchdog_json "$app" "service")
+      svc_json="${svc_json}\"${app}\":{\"online\":${online},\"installed\":${installed},\"version\":\"${ver}\",\"cpu\":${s_cpu:-0},\"ramMb\":${s_ram:-0},\"cpuCore\":${s_core},\"port\":${port},\"watchdog\":${service_watchdog}}"
     fi
   done
 
