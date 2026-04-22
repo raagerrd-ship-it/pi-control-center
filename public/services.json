@@ -10,6 +10,7 @@
       "defaultLevel": "balanced",
       "levels": { "low": 72, "balanced": 96, "high": 128 }
     },
+    "permissions": ["bluetooth"],
     "runInstallOnRelease": true,
     "managed": false,
     "installScript": "scripts/install.sh",
@@ -42,6 +43,7 @@
       "defaultLevel": "balanced",
       "levels": { "low": 64, "balanced": 88, "high": 120 }
     },
+    "permissions": ["network", "multicast"],
     "runInstallOnRelease": false,
     "installScript": "scripts/install.sh",
     "updateScript": "/opt/cast-away/scripts/update.sh",
@@ -72,6 +74,7 @@
       "defaultLevel": "balanced",
       "levels": { "low": 80, "balanced": 112, "high": 144 }
     },
+    "permissions": ["network", "multicast"],
     "runInstallOnRelease": true,
     "installScript": "scripts/install.sh",
     "updateScript": "/opt/sonos-buddy/scripts/update.sh",
