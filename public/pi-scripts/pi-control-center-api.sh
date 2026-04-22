@@ -142,6 +142,13 @@ registry_memory_profile_mb() {
   jq -r --arg k "$app" --arg l "$level" '.[] | select(.key == $k) | .memoryProfile.levels[$l] // empty' "$REGISTRY_FILE" 2>/dev/null
 }
 
+memory_level_for_mb() {
+  local app=$1 mb=$2
+  local level
+  level=$(jq -r --arg k "$app" --argjson mb "${mb:-0}" '.[] | select(.key == $k) | (.memoryProfile.levels // {}) | to_entries[]? | select(.value == $mb) | .key' "$REGISTRY_FILE" 2>/dev/null | head -1)
+  [ -n "$level" ] && echo "$level" || echo "custom"
+}
+
 # Check if service uses components format
 registry_has_components() {
   local val
