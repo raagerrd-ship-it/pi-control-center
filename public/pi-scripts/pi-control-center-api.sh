@@ -2133,7 +2133,7 @@ handle_request() {
       else
         _app_set_limit "$ml_app" "$ml_new_limit"
         if [ -n "$(_app_current_limit "$ml_app")" ]; then
-          user_systemctl daemon-reload 2>/dev/null || true
+          sudo systemctl daemon-reload 2>/dev/null || user_systemctl daemon-reload 2>/dev/null || true
           rm -f "$CACHE_FILE"
           [ -z "$ml_level" ] && ml_level=$(memory_level_for_mb "$ml_app" "$ml_new_limit")
           response="{\"app\":\"${ml_app}\",\"limitMb\":${ml_new_limit},\"level\":\"${ml_level}\",\"status\":\"success\"}"
