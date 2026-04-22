@@ -1487,7 +1487,7 @@ do_install() {
     chmod +x "$install_dir/$script"
 
     progress "$sf" "$app" "Kör installationsskript (kan ta flera minuter)..." "$start_time"
-    if ! sudo systemd-run --scope --quiet -p MemoryMax=256M \
+    if ! sudo_run systemd-run --scope --quiet -p MemoryMax=256M \
       nice -n 15 ionice -c 3 bash "$install_dir/$script" --port "$req_port" --core "$req_core" >> "$INSTALL_DIR/${app}.log" 2>&1; then
       echo "{\"app\":\"${app}\",\"status\":\"error\",\"message\":\"Installationsskript misslyckades\",\"timestamp\":\"$(date -Iseconds)\"}" > "$sf"
       return 1
@@ -1524,19 +1524,19 @@ do_uninstall() {
       local comp_svc
       comp_svc=$(registry_get_component "$app" "$comp" "service")
       [ -z "$comp_svc" ] && continue
-      sudo systemctl stop "${comp_svc}.service" 2>/dev/null || user_systemctl stop "${comp_svc}.service" 2>/dev/null || true
-      sudo systemctl disable "${comp_svc}.service" 2>/dev/null || user_systemctl disable "${comp_svc}.service" 2>/dev/null || true
-      sudo rm -f "/etc/systemd/system/${comp_svc}.service" 2>/dev/null || true
+      sudo_run_quiet systemctl stop "${comp_svc}.service" || user_systemctl stop "${comp_svc}.service" 2>/dev/null || true
+      sudo_run_quiet systemctl disable "${comp_svc}.service" || user_systemctl disable "${comp_svc}.service" 2>/dev/null || true
+      sudo_run_quiet rm -f "/etc/systemd/system/${comp_svc}.service" || true
       rm -f "$PI_HOME/.config/systemd/user/${comp_svc}.service" 2>/dev/null || true
     done
   else
     # Legacy single service
-    sudo systemctl stop "${svc}.service" 2>/dev/null || user_systemctl stop "${svc}.service" 2>/dev/null || true
-    sudo systemctl disable "${svc}.service" 2>/dev/null || user_systemctl disable "${svc}.service" 2>/dev/null || true
-    sudo rm -f "/etc/systemd/system/${svc}.service" 2>/dev/null || true
+    sudo_run_quiet systemctl stop "${svc}.service" || user_systemctl stop "${svc}.service" 2>/dev/null || true
+    sudo_run_quiet systemctl disable "${svc}.service" || user_systemctl disable "${svc}.service" 2>/dev/null || true
+    sudo_run_quiet rm -f "/etc/systemd/system/${svc}.service" || true
     rm -f "$PI_HOME/.config/systemd/user/${svc}.service" 2>/dev/null || true
   fi
-  sudo systemctl daemon-reload 2>/dev/null || true
+  sudo_run_quiet systemctl daemon-reload || true
 
   # Run uninstall script if it exists
   if [ -n "$uninstall_script" ] && [ -f "$install_dir/$uninstall_script" ]; then
@@ -1544,12 +1544,12 @@ do_uninstall() {
     bash "$install_dir/$uninstall_script" 2>/dev/null || true
   fi
 
-  sudo systemctl daemon-reload 2>/dev/null || true
+  sudo_run_quiet systemctl daemon-reload || true
   user_systemctl daemon-reload 2>/dev/null || true
 
   # Remove install directory
   if [ -n "$install_dir" ] && [ -d "$install_dir" ]; then
-    sudo rm -rf "$install_dir"
+    sudo_run rm -rf "$install_dir"
   fi
 
   # Remove assignment
