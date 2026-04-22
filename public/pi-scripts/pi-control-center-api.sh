@@ -119,6 +119,23 @@ log() {
   echo "PCC API: $*" >&2
 }
 
+app_config_dir() { echo "$APPS_CONFIG_DIR/$(echo "$1" | tr -cd 'a-zA-Z0-9_-')"; }
+app_log_dir() { echo "$APPS_LOG_DIR/$(echo "$1" | tr -cd 'a-zA-Z0-9_-')"; }
+
+ensure_app_managed_dirs() {
+  local app=$1 cfg logdir
+  cfg=$(app_config_dir "$app")
+  logdir=$(app_log_dir "$app")
+  sudo mkdir -p "$cfg" "$logdir" 2>/dev/null || true
+  sudo chown -R "$(whoami):$(id -gn)" "$cfg" "$logdir" 2>/dev/null || true
+  chmod 700 "$cfg" 2>/dev/null || true
+  chmod 755 "$logdir" 2>/dev/null || true
+}
+
+escape_json() {
+  printf "%s" "$1" | sed 's/\\/\\\\/g; s/"/\\"/g; s/\t/  /g' | tr '\n' ' ' | cut -c1-240
+}
+
 # --- Dynamic registry helpers ---
 
 # Get a field from services.json: registry_get <key> <field>
