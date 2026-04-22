@@ -1,51 +1,96 @@
 
+## Plan: liten watchdog som skyddar Pi:n från hängda tjänster
 
-## Bedömning: Ja, en ren ominstallation är rätt väg
+Jag lägger till en lättvikts-övervakning i Pi Control Center API:t som körs i bakgrunden och använder redan tillgänglig `/proc` + systemd-data. Målet är att stoppa/restarta tjänster som fastnar i CPU-loopar, tappar sin hälsocheck eller närmar sig/minnesgränsen — utan att belasta Pi Zero 2.
 
-De senaste felen (root-ägt `node_modules`, trasig cwd, sudoers mode 750/755, saknade pi-scripts-symlinks) är alla **ackumulerad drift** från manuella SSH-fix under utvecklingen. En ren Pi OS + `first-boot-setup.sh` ger:
+## Vad som byggs
 
-- Korrekt ägarskap från start (`pi:pi` överallt)
-- Korrekta sudoers-permissions (750)
-- `fix-sudo.sh` körs proaktivt innan första `apt`
-- Symlinks för Lotus/Cast Away/Sonos läggs på rätt plats direkt
-- Inga lager av gamla `node_modules`, npm-cacher, eller halvkörda builds
+1. **Watchdog-loop i API:t**
+   - Kör ungefär var 30:e sekund, bredvid befintlig `health_poll_loop`.
+   - Övervakar varje installerad tjänsts engine/UI-komponent.
+   - Läser:
+     - CPU %
+     - RAM MB
+     - systemd `MemoryMax`
+     - om porten svarar
+     - `/api/health` om tjänsten har det
+     - antal watchdog-ingripanden senaste tiden
 
-**Det löser troligen alla nuvarande symptom.** Det enda som kan kvarstå är buggar i själva `first-boot-setup.sh` — men de upptäcks då i en ren miljö istället för att maskeras av drift.
+2. **Skydd mot oändliga loopar**
+   - Om en engine ligger väldigt högt i CPU under flera mätningar i rad, markeras den som misstänkt hängd.
+   - Första åtgärd: restart av tjänsten.
+   - Om samma tjänst fortsätter trigga upprepade gånger: stoppas den och märks som skyddsstoppad, så den inte startar om i evig krasch-loop.
 
-## Vad jag föreslår att vi rensar i koden
+3. **Skydd mot minnesläckor**
+   - Behåll befintliga `MemoryMax`-gränser.
+   - Lägg till preemptiv varning/åtgärd:
+     - över ca 85% av sin limit: varning i status
+     - över ca 95% under flera mätningar: restart innan Pi:n blir instabil
+   - Om systemd själv dödar tjänsten pga `MemoryMax`, UI ska visa att den stoppades pga minne.
 
-Eftersom en ren install gör vissa "self-healing" guards onödiga, kan vi förenkla:
+4. **Skydd mot hängd men “aktiv” tjänst**
+   - Om systemd säger `active` men porten eller `/api/health` inte svarar under flera checks:
+     - restart upp till ett litet maxantal
+     - sedan skyddsstopp för att undvika loop
 
-### 1. `update-control-center.sh` — ta bort drift-guards
-- **Ta bort cwd-guarden** (`if ! pwd ...; then cd /`) — behövs bara om man kör scriptet från en raderad mapp, vilket inte händer i ren install
-- **Ta bort "PREV_HASH" / `.package-hash`-logiken** — onödig komplexitet, gör alltid ren `npm install` om `package.json` ändrats via enkel `git diff`-koll, eller ännu enklare: alltid `npm ci` om lockfilen ändrats
-- **Ta bort low-disk node_modules-cleanup** — Pi Zero 2 har alltid ont om disk, alltid städa
+5. **Status till UI**
+   - Utöka `ServiceStatus`/`ComponentStatus` med watchdog-info, t.ex:
+     - `watchdog.status`: `ok | warning | restarting | protected | disabled`
+     - `watchdog.reason`: `high_cpu | high_memory | health_timeout | restart_loop`
+     - `watchdog.restartCount`
+     - `watchdog.lastAction`
+   - Visa diskret rad i varje tjänstkort:
+     - `Skydd: OK`
+     - `Varning: hög RAM`
+     - `Restartad av watchdog`
+     - `Skyddsstoppad: CPU-loop`
 
-### 2. `first-boot-setup.sh` — granska om något är defensivt utan anledning
-- Behåll `fix-sudo.sh`-anropet (det är legitim OS-hygien)
-- Behåll LED-feedback
-- Behåll swap-setup
-- Granska om vissa fallbacks (t.ex. `polkitd` || `policykit-1`) faktiskt behövs på senaste Pi OS — om inte, förenkla
+6. **Manuell återställning**
+   - När användaren trycker Starta/Restart i UI efter ett skyddsstopp nollställs watchdog-låset för den tjänsten.
+   - Alternativt lägga till API-hantering så service action automatiskt rensar watchdog-state.
 
-### 3. Dokumentera "ren install"-flödet
-Kort sektion i `README.md` eller ny `INSTALL.md`:
-1. Flasha Pi OS Lite (Bookworm) med Pi Imager — sätt user `pi`, WiFi, SSH
-2. SSH in och kör one-liner med `first-boot-setup.sh`
-3. Vänta ~10 min, öppna `http://<pi-ip>`
-4. Installera Lotus / Cast Away / Sonos via dashboarden
+7. **Säkra defaults**
+   - Inga aggressiva restart direkt.
+   - Trösklarna görs konservativa:
+     - CPU måste vara högt flera mätningar i rad.
+     - Minne måste ligga nära limit flera mätningar i rad.
+     - Health/port måste faila flera gånger.
+   - Watchdog-state sparas i `/tmp/pi-control-center/watchdog/`, så det överlever korta API-förfrågningar men nollställs vid reboot.
 
-## Vad jag INTE föreslår att vi rör
+## Tekniska ändringar
 
-- `fix-sudo.sh` — den är ny och korrekt, behövs både i ren install och som självläkning för befintliga installationer
-- `pi-control-center-api.sh` — fungerar som det ska
-- `services.json` — pekar rätt
-- Symlink-skapandet i `first-boot-setup.sh` (`/var/www/pi-dashboard/pi-scripts`) — krävs för Lotus-wrappern
+- `public/pi-scripts/pi-control-center-api.sh`
+  - Lägg till `WATCHDOG_DIR`.
+  - Lägg till helpers för:
+    - läsa `MemoryMax`
+    - läsa component PID
+    - räkna consecutive failures
+    - restart/stop med system/user systemd
+    - JSON-state per app/component
+  - Lägg till `watchdog_loop &` vid startup.
+  - Integrera watchdog-data i `/api/status`.
+  - Rensa watchdog-lås vid `POST /api/service/.../start|restart`.
+  - Respektera `managed:false` och `manageService:false`:
+    - Lotus kan läsas/övervakas
+    - men PCC ska inte aggressivt skriva om eller ta bort dess systemd-unit
+    - restart/stop sker bara mot korrekt befintlig system/user service
 
-## Plan att utföra (när du godkänner)
+- `src/lib/api.ts`
+  - Utöka TypeScript-typer med watchdogfält.
 
-1. **Förenkla `update-control-center.sh`**: ta bort cwd-guard, hash-cache, disk-conditional cleanup → kortare, deterministisk
-2. **Lägg till `INSTALL.md`** i repo-roten med ren-install-flödet och rekommendation att alltid börja från ren Pi OS vid problem
-3. **Lägg till en kort "Reset to clean state"-sektion** med kommandona för att nuke `node_modules` + `chown -R pi:pi` om någon ändå vill reparera utan ominstallation
+- `src/components/CoreCard.tsx`
+  - Visa kort watchdog-status på komponent- eller tjänstnivå.
+  - Använd befintlig mörk/terminal UI-stil och svenska texter.
 
-Sedan: du flashar SD-kortet, kör one-linern, och vi verifierar att allt funkar i ren miljö.
+- Eventuellt `mem://features/health-monitoring`
+  - Uppdatera minnet med den nya watchdog-regeln så framtida ändringar följer samma modell.
 
+## Resultat
+
+Pi Control Center får en liten “säkerhetsvakt” som:
+- fångar CPU-loopar
+- fångar minnesläckor innan de kraschar Pi:n
+- restartar tjänster som hänger
+- stoppar tjänster som fortsätter krascha
+- visar tydligt i UI vad som hänt
+- gör detta med låg overhead anpassad för Pi Zero 2
