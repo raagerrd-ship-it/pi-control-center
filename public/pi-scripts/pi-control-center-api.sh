@@ -1392,6 +1392,7 @@ do_install() {
   [ -z "$repo" ] && { echo "{\"app\":\"${app}\",\"status\":\"error\",\"message\":\"Okänd app\"}" > "$sf"; return 1; }
 
   progress "$sf" "$app" "Startar installation..." "$start_time"
+  ensure_app_managed_dirs "$app"
 
   export XDG_RUNTIME_DIR="$USER_RUNTIME_DIR"
   export DBUS_SESSION_BUS_ADDRESS="$USER_BUS_ADDRESS"
