@@ -777,11 +777,11 @@ build_status_json() {
       online="false"
       [ "$engine_online" = "true" ] || [ "$ui_online" = "true" ] && online="true"
 
-      # Check installed: need install_dir + at least one service file
+      # Check installed: need install_dir + at least one system/user service file
       installed="false"
       if [ -d "$install_dir" ]; then
-        { [ -n "$engine_svc" ] && [ -f "$PI_HOME/.config/systemd/user/${engine_svc}.service" ]; } || \
-        { [ -n "$ui_svc" ] && [ -f "$PI_HOME/.config/systemd/user/${ui_svc}.service" ]; } && installed="true"
+        { [ -n "$engine_svc" ] && [ -n "$(service_unit_file "$engine_svc")" ]; } || \
+        { [ -n "$ui_svc" ] && [ -n "$(service_unit_file "$ui_svc")" ]; } && installed="true"
       fi
 
       # Use engine port for version check (UI port serves static HTML, not API)
