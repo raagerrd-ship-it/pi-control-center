@@ -34,6 +34,7 @@ interface CoreCardProps {
     ramMb: number;
     memoryMaxMb?: number;
     memoryLevel?: string;
+    memoryProfile?: ServiceDefinition['memoryProfile'] | null;
     port?: number;
     versionInfo?: VersionInfo;
     updateStatus?: UpdateResult;
