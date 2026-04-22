@@ -211,6 +211,7 @@ $USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl daemon-reload
 $USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl start *.service
 $USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl --no-block start *.service
 $USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl stop *.service
+$USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl --no-block stop *.service
 $USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl enable *.service
 $USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl disable *.service
 $USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl try-restart *.service

@@ -1537,14 +1537,14 @@ do_uninstall() {
       local comp_svc
       comp_svc=$(registry_get_component "$app" "$comp" "service")
       [ -z "$comp_svc" ] && continue
-      sudo_run_quiet systemctl stop "${comp_svc}.service" || user_systemctl stop "${comp_svc}.service" 2>/dev/null || true
+      sudo_run_quiet systemctl --no-block stop "${comp_svc}.service" || sudo_run_quiet systemctl stop "${comp_svc}.service" || user_systemctl stop "${comp_svc}.service" 2>/dev/null || true
       sudo_run_quiet systemctl disable "${comp_svc}.service" || user_systemctl disable "${comp_svc}.service" 2>/dev/null || true
       sudo_run_quiet rm -f "/etc/systemd/system/${comp_svc}.service" || true
       rm -f "$PI_HOME/.config/systemd/user/${comp_svc}.service" 2>/dev/null || true
     done
   else
     # Legacy single service
-    sudo_run_quiet systemctl stop "${svc}.service" || user_systemctl stop "${svc}.service" 2>/dev/null || true
+    sudo_run_quiet systemctl --no-block stop "${svc}.service" || sudo_run_quiet systemctl stop "${svc}.service" || user_systemctl stop "${svc}.service" 2>/dev/null || true
     sudo_run_quiet systemctl disable "${svc}.service" || user_systemctl disable "${svc}.service" 2>/dev/null || true
     sudo_run_quiet rm -f "/etc/systemd/system/${svc}.service" || true
     rm -f "$PI_HOME/.config/systemd/user/${svc}.service" 2>/dev/null || true
@@ -1554,7 +1554,7 @@ do_uninstall() {
   # Run uninstall script if it exists
   if [ -n "$uninstall_script" ] && [ -f "$install_dir/$uninstall_script" ]; then
     chmod +x "$install_dir/$uninstall_script"
-    bash "$install_dir/$uninstall_script" 2>/dev/null || true
+    timeout 20 bash "$install_dir/$uninstall_script" 2>/dev/null || true
   fi
 
   sudo_run_quiet systemctl daemon-reload || true

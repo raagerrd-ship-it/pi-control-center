@@ -327,6 +327,7 @@ $PI_USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl daemon-reload
 $PI_USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl start *.service
 $PI_USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl --no-block start *.service
 $PI_USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl stop *.service
+$PI_USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl --no-block stop *.service
 $PI_USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl enable *.service
 $PI_USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl disable *.service
 $PI_USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl try-restart *.service
