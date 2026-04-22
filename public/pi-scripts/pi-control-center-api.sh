@@ -145,6 +145,20 @@ registry_memory_profile_mb() {
   jq -r --arg k "$app" --arg l "$level" '.[] | select(.key == $k) | .memoryProfile.levels[$l] // empty' "$REGISTRY_FILE" 2>/dev/null
 }
 
+registry_permissions_json() {
+  local raw
+  raw=$(jq -c --arg k "$1" '.[] | select(.key == $k) | .permissions // []' "$REGISTRY_FILE" 2>/dev/null)
+  [ -n "$raw" ] && echo "$raw" || echo "[]"
+}
+
+registry_permissions_env() {
+  jq -r --arg k "$1" '.[] | select(.key == $k) | (.permissions // []) | join(",")' "$REGISTRY_FILE" 2>/dev/null
+}
+
+registry_needs_permission() {
+  jq -e --arg k "$1" --arg p "$2" '.[] | select(.key == $k) | (.permissions // []) | index($p)' "$REGISTRY_FILE" >/dev/null 2>&1
+}
+
 memory_level_for_mb() {
   local app=$1 mb=$2
   local level
