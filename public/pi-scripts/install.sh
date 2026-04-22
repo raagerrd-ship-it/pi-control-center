@@ -12,6 +12,17 @@ export NODE_OPTIONS="--max-old-space-size=256"
 
 echo "=== Pi Control Center Installer (Pi Zero 2 W optimized) ==="
 
+ensure_node24() {
+  local current major
+  current=$(node -v 2>/dev/null || true)
+  major=${current#v}; major=${major%%.*}
+  if [ "$major" != "24" ]; then
+    echo "  Installing PCC Node.js 24 LTS runtime..."
+    curl -fsSL https://deb.nodesource.com/setup_24.x | sudo -E bash -
+    sudo apt-get install -y -qq nodejs
+  fi
+}
+
 # 1. Ensure swap exists (critical for npm on 512MB)
 echo "[1/7] Checking swap..."
 if [ "$(swapon --show | wc -l)" -lt 2 ]; then
@@ -34,11 +45,7 @@ sudo apt-get update -qq
 sudo apt-get install -y -qq nginx socat git jq bluez dbus build-essential python3 libudev-dev libusb-1.0-0-dev
 sudo apt-get install -y -qq polkitd 2>/dev/null || sudo apt-get install -y -qq policykit-1 2>/dev/null || true
 
-if ! command -v node &>/dev/null; then
-  echo "  Installing Node.js 20 LTS..."
-  curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
-  sudo apt-get install -y -qq nodejs
-fi
+ensure_node24
 echo "  Node: $(node -v), npm: $(npm -v)"
 
 # 3. Enable lingering + BLE prerequisites

@@ -37,6 +37,7 @@ Din tjänst är ett **program** som installeras i detta OS. Precis som en app p�
 
 - Du bestämmer inte själv vilken port du kör på — **OS:et tilldelar den**
 - Du bestämmer inte vilken CPU du använder — **OS:et tilldelar den**
+- Du installerar inte egen Node-runtime — **OS:et tillhandahåller Node.js v24**
 - Du kan inte ändra systemfiler — **OS:et skyddar sig självt**
 - Du tillhandahåller koden — **OS:et sköter resten**
 
@@ -236,6 +237,8 @@ node {installDir}/{entrypoint}
 # PORT sätts automatiskt som miljövariabel
 ```
 
+Pi Control Center äger Node.js-runtime och startar alla Node-tjänster med samma systemruntime (`/usr/bin/node`, Node.js v24). Tjänster ska **inte** installera egen Node-version, men ska fortfarande ha egna `node_modules` i sin egen katalog.
+
 **`"static"`** — Statisk webbapp (typiskt UI:t), serveras av Python SPA-server:
 ```bash
 python3 /opt/pi-control-center/static-spa-server.py {installDir}/{entrypoint} {port}
@@ -326,7 +329,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 24
       - run: npm ci
       - run: npm run build
       - run: tar czf dist.tar.gz dist/
@@ -358,7 +361,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 24
       - run: npm ci
       - run: npm run build
       - run: npm install --omit=dev --package-lock=false

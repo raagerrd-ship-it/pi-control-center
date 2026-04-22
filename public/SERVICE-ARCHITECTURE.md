@@ -25,7 +25,7 @@ Motorn är hjärtat i tjänsten. Den hanterar all affärslogik och exponerar ett
 
 ### Obligatoriska krav
 
-1. **Node.js-process** — Startas med `node {entrypoint}`
+1. **Node.js-process** — Startas med Pi Control Centers Node.js v24-runtime (`node {entrypoint}`)
 2. **Lyssnar på `process.env.PORT`** (= `ENGINE_PORT`, t.ex. 3052)
 3. **Exponerar REST API** — minst:
    - `GET /api/health` → Se [health-endpoint-standarden i SERVICE-INTEGRATION.md](./SERVICE-INTEGRATION.md#11-health-endpoint--standard-för-motorer)
@@ -211,7 +211,9 @@ After=network.target
 [Service]
 Type=simple
 WorkingDirectory=/opt/my-service
-ExecStart=/usr/bin/node /opt/my-service/engine/index.js
+ExecStart=/usr/bin/node --max-old-space-size=96 /opt/my-service/engine/index.js
+Environment=NODE_ENV=production
+Environment=NODE_OPTIONS=--max-old-space-size=96
 Environment=PORT=3052
 Environment=ENGINE_PORT=3052
 Environment=UI_PORT=3002
@@ -265,7 +267,7 @@ WantedBy=default.target
 |----------|-------|----|
 | `Restart` | `always` — startar om oavsett exit-kod | `on-failure` — startar bara om vid krasch |
 | `PORT` | Vald port + 50 | Vald port |
-| `ExecStart` | `node engine/index.js` | `python3 static-spa-server.py {dir} {port}` |
+| `ExecStart` | `/usr/bin/node --max-old-space-size=96 engine/index.js` | `python3 static-spa-server.py {dir} {port}` |
 
 ---
 
@@ -358,7 +360,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 24
 
       # Bygg UI
       - name: Build UI

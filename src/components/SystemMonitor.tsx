@@ -70,6 +70,9 @@ export function SystemMonitor({
   const diskPercent = noData ? 0 : Math.round((status.diskUsed / status.diskTotal) * 100);
   const dashboardPhase = dashboardUpdate?.progress || dashboardUpdate?.message || (busy ? 'Pi upptagen — väntar på svar...' : 'Startar uppdatering...');
   const dashboardVersionLabel = dashboardVersion?.local || (status?.commit ? status.commit.slice(0, 7) : '—');
+  const nodeRuntimeLabel = noData ? '—' : (status.runtime?.nodeVersion || 'okänd');
+  const nodeRuntimePath = noData ? '' : (status.runtime?.nodePath || '');
+  const nodeRuntimeWarning = !noData && status.runtime?.status === 'warning';
   const dashboardUpdatedVersion = dashboardUpdate?.status === 'success' && dashboardVersion?.local
     ? dashboardVersion.local
     : null;
@@ -137,6 +140,12 @@ export function SystemMonitor({
         <div className="flex items-center gap-2">
           <span className="font-mono text-[10px] text-muted-foreground">
             Version {dashboardVersionLabel}
+          </span>
+          <span
+            className={`font-mono text-[10px] ${nodeRuntimeWarning ? 'text-[hsl(var(--status-warning))]' : 'text-muted-foreground'}`}
+            title={nodeRuntimePath}
+          >
+            Node-runtime {nodeRuntimeLabel}
           </span>
           {dashboardUpdate?.status === 'success' && (
             <span className="inline-flex items-center gap-1 rounded-md border border-[hsl(var(--status-online)/0.35)] bg-[hsl(var(--status-online)/0.12)] px-2 py-1 text-[11px] text-[hsl(var(--status-online))] font-mono">

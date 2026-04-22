@@ -155,8 +155,10 @@ sudo apt-get install -y -qq nginx socat git jq bluez dbus polkitd build-essentia
 
 # 3. Node.js
 echo "[3/9] Installing Node.js..."
-if ! command -v node &>/dev/null; then
-  curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
+NODE_CURRENT=$(node -v 2>/dev/null || true)
+NODE_MAJOR=${NODE_CURRENT#v}; NODE_MAJOR=${NODE_MAJOR%%.*}
+if [ "$NODE_MAJOR" != "24" ]; then
+  curl -fsSL https://deb.nodesource.com/setup_24.x | sudo -E bash -
   sudo apt-get install -y -qq nodejs
 fi
 echo "  Node: $(node -v), npm: $(npm -v)"

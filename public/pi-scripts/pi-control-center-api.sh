@@ -85,6 +85,33 @@ user_systemctl() {
   systemctl --user "$@"
 }
 
+get_node_bin() {
+  command -v node 2>/dev/null || echo "/usr/bin/node"
+}
+
+get_node_version() {
+  local node_bin
+  node_bin=$(get_node_bin)
+  [ -x "$node_bin" ] && "$node_bin" -v 2>/dev/null || echo "unavailable"
+}
+
+assert_node_runtime() {
+  local version major
+  version=$(get_node_version)
+  major=${version#v}; major=${major%%.*}
+  [ "$major" = "24" ]
+}
+
+node_runtime_json() {
+  local node_bin version major status
+  node_bin=$(get_node_bin | sed 's/"/\\"/g')
+  version=$(get_node_version | sed 's/"/\\"/g')
+  major=${version#v}; major=${major%%.*}
+  status="ok"
+  [ "$major" = "24" ] || status="warning"
+  echo "{\"nodeVersion\":\"${version}\",\"nodePath\":\"${node_bin}\",\"status\":\"${status}\"}"
+}
+
 log() {
   echo "PCC API: $*" >&2
 }
@@ -619,13 +646,14 @@ get_service_ram() {
 }
 
 build_status_json() {
-  local cpu temp ram disk uptime_str ram_used ram_total disk_used disk_total svc_json cpu_cores
+  local cpu temp ram disk uptime_str ram_used ram_total disk_used disk_total svc_json cpu_cores runtime_json
   cpu=$(get_cpu)
   cpu_cores=$(get_cpu_per_core)
   temp=$(get_temp)
   ram=$(get_ram)
   disk=$(get_disk)
   uptime_str=$(get_uptime)
+  runtime_json=$(node_runtime_json)
 
   ram_used=${ram%%,*}
   ram_total=${ram##*,}
@@ -754,7 +782,7 @@ build_status_json() {
   dash_pid=$(systemctl show "pi-control-center-api.service" --property=MainPID 2>/dev/null | cut -d= -f2)
   [ -n "$dash_pid" ] && [ "$dash_pid" != "0" ] && dash_cpu=$(ps -p "$dash_pid" -o %cpu= 2>/dev/null | tr -d ' ' || echo "0")
 
-  echo "{\"cpu\":${cpu:-0},\"cpuCores\":${cpu_cores:-[]},\"temp\":${temp:-0},\"ramUsed\":${ram_used:-0},\"ramTotal\":${ram_total:-0},\"diskUsed\":${disk_used:-0},\"diskTotal\":${disk_total:-0},\"uptime\":\"${uptime_str}\",\"dashboardCpu\":${dash_cpu:-0},\"dashboardRamMb\":${dash_ram:-0},\"commit\":\"${DASHBOARD_COMMIT_SHORT}\",\"branch\":\"${DASHBOARD_BRANCH}\",\"services\":{${svc_json}}}"
+  echo "{\"cpu\":${cpu:-0},\"cpuCores\":${cpu_cores:-[]},\"temp\":${temp:-0},\"ramUsed\":${ram_used:-0},\"ramTotal\":${ram_total:-0},\"diskUsed\":${disk_used:-0},\"diskTotal\":${disk_total:-0},\"uptime\":\"${uptime_str}\",\"dashboardCpu\":${dash_cpu:-0},\"dashboardRamMb\":${dash_ram:-0},\"commit\":\"${DASHBOARD_COMMIT_SHORT}\",\"branch\":\"${DASHBOARD_BRANCH}\",\"runtime\":${runtime_json},\"services\":{${svc_json}}}"
 }
 
 get_cached_status() {
@@ -976,7 +1004,8 @@ do_install_release() {
           fi
           search_dir=$(dirname "$search_dir")
         done
-        comp_exec="/usr/bin/node ${install_dir}/${comp_entry}"
+        assert_node_runtime || log "WARNING: PCC expects Node.js v24, current runtime is $(get_node_version)"
+        comp_exec="$(get_node_bin) --max-old-space-size=96 ${install_dir}/${comp_entry}"
       else
         comp_exec="/usr/bin/python3 ${PI_HOME}/pi-control-center/public/pi-scripts/static-spa-server.py --root ${install_dir}/${comp_entry:-dist} --port ${comp_port} --host 0.0.0.0"
       fi
@@ -1001,7 +1030,9 @@ AllowedCPUs=0"
         # User-services kan inte sätta AmbientCapabilities/CapabilityBoundingSet
         # (kräver root). UPnP/SSDP via plain UDP fungerar utan CAP_NET_RAW.
         comp_security_lines="PrivateTmp=true"
-        comp_env_lines="Environment=DBUS_SYSTEM_BUS_ADDRESS=unix:path=/run/dbus/system_bus_socket"
+        comp_env_lines="Environment=NODE_ENV=production
+Environment=NODE_OPTIONS=--max-old-space-size=96
+Environment=DBUS_SYSTEM_BUS_ADDRESS=unix:path=/run/dbus/system_bus_socket"
       fi
 
       local comp_svc_file="$PI_HOME/.config/systemd/user/${comp_svc}.service"
@@ -1075,9 +1106,12 @@ NoNewPrivileges=true"
         fi
         search_dir=$(dirname "$search_dir")
       done
-      exec_start="/usr/bin/node ${install_dir}/${entrypoint}"
+      assert_node_runtime || log "WARNING: PCC expects Node.js v24, current runtime is $(get_node_version)"
+      exec_start="$(get_node_bin) --max-old-space-size=96 ${install_dir}/${entrypoint}"
       legacy_security_lines="PrivateTmp=true"
-      legacy_env_lines="Environment=DBUS_SYSTEM_BUS_ADDRESS=unix:path=/run/dbus/system_bus_socket"
+      legacy_env_lines="Environment=NODE_ENV=production
+Environment=NODE_OPTIONS=--max-old-space-size=96
+Environment=DBUS_SYSTEM_BUS_ADDRESS=unix:path=/run/dbus/system_bus_socket"
     else
       exec_start="/usr/bin/python3 ${PI_HOME}/pi-control-center/public/pi-scripts/static-spa-server.py --root ${install_dir}/dist --port ${req_port} --host 0.0.0.0"
     fi

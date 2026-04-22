@@ -49,6 +49,12 @@ export interface ServiceStatus {
   };
 }
 
+export interface RuntimeStatus {
+  nodeVersion: string;
+  nodePath: string;
+  status?: 'ok' | 'warning' | string;
+}
+
 export interface SystemStatus {
   cpu: number;
   cpuCores?: number[];
@@ -62,6 +68,7 @@ export interface SystemStatus {
   dashboardRamMb: number;
   commit: string;
   branch: string;
+  runtime?: RuntimeStatus;
   services: {
     [key: string]: ServiceStatus;
   };
