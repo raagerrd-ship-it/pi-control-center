@@ -1,5 +1,5 @@
 import { useState, memo } from 'react';
-import { ExternalLink, RefreshCw, CheckCircle2, AlertCircle, Loader2, Play, Square, RotateCcw, Trash2, Server, Monitor, Download, MemoryStick, ShieldCheck } from 'lucide-react';
+import { ExternalLink, RefreshCw, CheckCircle2, AlertCircle, Loader2, Play, Square, RotateCcw, Trash2, Server, Monitor, Download, MemoryStick, ShieldCheck, KeyRound, FolderLock } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import {
@@ -35,6 +35,9 @@ interface CoreCardProps {
     memoryMaxMb?: number;
     memoryLevel?: string;
     memoryProfile?: ServiceDefinition['memoryProfile'] | null;
+    permissions?: string[];
+    configDir?: string;
+    logDir?: string;
     port?: number;
     versionInfo?: VersionInfo;
     updateStatus?: UpdateResult;
@@ -330,6 +333,7 @@ export const CoreCard = memo(function CoreCard({
   const hasUpdate = versionInfo?.hasUpdate ?? false;
   const piIp = window.location.hostname;
   const isComponentBased = hasComponents(def);
+  const permissions = service.permissions || def.permissions || [];
 
   const healthColor = health?.status === 'ok' ? 'bg-[hsl(var(--status-online))]'
     : health?.status === 'degraded' ? 'bg-[hsl(var(--status-warning))]'
@@ -466,6 +470,29 @@ export const CoreCard = memo(function CoreCard({
             <span>16</span>
             <span>{maxForThis}</span>
           </div>
+        </div>
+      )}
+
+      {(permissions.length > 0 || service.configDir || service.logDir) && (
+        <div className="flex flex-col gap-1 rounded bg-secondary/20 px-2 py-1.5 font-mono text-[10px] text-muted-foreground">
+          {permissions.length > 0 && (
+            <div className="flex items-center gap-1.5 min-w-0">
+              <KeyRound className="h-3 w-3 shrink-0" />
+              <span className="truncate">Behörigheter: {permissions.join(', ')}</span>
+            </div>
+          )}
+          {service.configDir && (
+            <div className="flex items-center gap-1.5 min-w-0" title={service.configDir}>
+              <FolderLock className="h-3 w-3 shrink-0" />
+              <span className="truncate">Config: {service.configDir}</span>
+            </div>
+          )}
+          {service.logDir && (
+            <div className="flex items-center gap-1.5 min-w-0" title={service.logDir}>
+              <TerminalIcon className="h-3 w-3 shrink-0" />
+              <span className="truncate">Logg: {service.logDir}</span>
+            </div>
+          )}
         </div>
       )}
 
