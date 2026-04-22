@@ -57,8 +57,9 @@ REGISTRY_FILE="/var/www/pi-control-center/services.json"
 ASSIGNMENTS_FILE="/etc/pi-control-center/assignments.json"
 
 HEALTH_DIR="$STATUS_DIR/health"
+WATCHDOG_DIR="$STATUS_DIR/watchdog"
 
-mkdir -p "$STATUS_DIR" "$INSTALL_DIR" "$HEALTH_DIR"
+mkdir -p "$STATUS_DIR" "$INSTALL_DIR" "$HEALTH_DIR" "$WATCHDOG_DIR"
 sudo mkdir -p /etc/pi-control-center 2>/dev/null || true
 
 # Read git info once at startup
@@ -256,6 +257,85 @@ get_health() {
   else
     echo '{"status":"unknown"}'
   fi
+}
+
+# --- Watchdog ---
+# Conservative guard for Pi Zero 2: restarts services that repeatedly exceed
+# CPU/RAM thresholds or are active but unreachable, then protects against loops.
+WATCHDOG_INTERVAL=30
+WATCHDOG_CPU_LIMIT=85
+WATCHDOG_MEM_WARN=85
+WATCHDOG_MEM_RESTART=95
+WATCHDOG_STRIKES=3
+WATCHDOG_MAX_RESTARTS=3
+
+watchdog_key() { echo "${1}-${2}" | tr -cd 'a-zA-Z0-9_.-'; }
+
+service_exists() {
+  local svc=$1
+  [ -z "$svc" ] && { echo "false"; return; }
+  if user_systemctl cat "${svc}.service" >/dev/null 2>&1 || systemctl cat "${svc}.service" >/dev/null 2>&1; then
+    echo "true"
+  else
+    echo "false"
+  fi
+}
+
+get_memory_limit_mb() {
+  local svc=$1 val
+  val=$(user_systemctl show "${svc}.service" --property=MemoryMax 2>/dev/null | cut -d= -f2)
+  if [ -z "$val" ] || [ "$val" = "infinity" ] || [ "$val" = "[not set]" ] || [ "$val" = "0" ]; then
+    val=$(systemctl show "${svc}.service" --property=MemoryMax 2>/dev/null | cut -d= -f2)
+  fi
+  if [ -n "$val" ] && [ "$val" != "infinity" ] && [ "$val" != "[not set]" ] && [ "$val" != "0" ]; then
+    echo $((val / 1048576))
+  else
+    echo 0
+  fi
+}
+
+watchdog_get() {
+  local app=$1 comp=$2 field=$3 file="$WATCHDOG_DIR/$(watchdog_key "$app" "$comp").state"
+  [ -f "$file" ] && grep -E "^${field}=" "$file" 2>/dev/null | tail -1 | cut -d= -f2-
+}
+
+watchdog_write_state() {
+  local app=$1 comp=$2 status=$3 reason=$4 cpu_fails=$5 mem_fails=$6 health_fails=$7 restarts=$8 last_action=$9
+  local key file tmp
+  key=$(watchdog_key "$app" "$comp")
+  file="$WATCHDOG_DIR/${key}.state"
+  tmp="$WATCHDOG_DIR/${key}.tmp.$$"
+  {
+    echo "status=${status:-ok}"
+    echo "reason=${reason:-}"
+    echo "cpu_fails=${cpu_fails:-0}"
+    echo "mem_fails=${mem_fails:-0}"
+    echo "health_fails=${health_fails:-0}"
+    echo "restart_count=${restarts:-0}"
+    echo "last_action=${last_action:-}"
+    echo "timestamp=$(date -Iseconds)"
+  } > "$tmp"
+  mv "$tmp" "$file"
+}
+
+watchdog_json() {
+  local app=$1 comp=$2 file="$WATCHDOG_DIR/$(watchdog_key "$app" "$comp").state"
+  local status reason restarts last_action timestamp
+  if [ ! -f "$file" ]; then
+    echo '{"status":"ok","restartCount":0}'
+    return
+  fi
+  status=$(grep -E '^status=' "$file" | tail -1 | cut -d= -f2-)
+  reason=$(grep -E '^reason=' "$file" | tail -1 | cut -d= -f2- | sed 's/"/\\"/g')
+  restarts=$(grep -E '^restart_count=' "$file" | tail -1 | cut -d= -f2-)
+  last_action=$(grep -E '^last_action=' "$file" | tail -1 | cut -d= -f2- | sed 's/"/\\"/g')
+  timestamp=$(grep -E '^timestamp=' "$file" | tail -1 | cut -d= -f2- | sed 's/"/\\"/g')
+  echo "{\"status\":\"${status:-ok}\",\"reason\":\"${reason}\",\"restartCount\":${restarts:-0},\"lastAction\":\"${last_action}\",\"timestamp\":\"${timestamp}\"}"
+}
+
+watchdog_reset() {
+  local app=$1 comp=${2:-service}
+  rm -f "$WATCHDOG_DIR/$(watchdog_key "$app" "$comp").state"
 }
 
 get_cpu() {
