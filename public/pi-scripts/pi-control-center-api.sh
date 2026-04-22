@@ -2016,7 +2016,7 @@ handle_request() {
       ;;
 
     "GET /api/memory-limit/"*)
-      local ml_app ml_services ml_limit ml_svc_file
+      local ml_app ml_services ml_limit ml_svc_file ml_profile ml_level
       ml_app=${path#/api/memory-limit/}
       ml_app="${ml_app%%[?#]*}"
       ml_app="${ml_app//[^a-zA-Z0-9_-]/}"
@@ -2038,16 +2038,22 @@ handle_request() {
       # Extract numeric MB value
       local ml_mb
       ml_mb=$(echo "$ml_limit" | grep -oP '^\d+')
-      response="{\"app\":\"${ml_app}\",\"limitMb\":${ml_mb:-128},\"raw\":\"${ml_limit}\"}"
+      ml_profile=$(registry_memory_profile_json "$ml_app"); [ -z "$ml_profile" ] && ml_profile="null"
+      ml_level=$(memory_level_for_mb "$ml_app" "${ml_mb:-128}")
+      response="{\"app\":\"${ml_app}\",\"limitMb\":${ml_mb:-128},\"level\":\"${ml_level}\",\"profile\":${ml_profile},\"raw\":\"${ml_limit}\"}"
       ;;
 
     "POST /api/memory-limit/"*)
-      local ml_app ml_body ml_new_limit ml_mb
+      local ml_app ml_body ml_new_limit ml_level ml_mb
       ml_app=${path#/api/memory-limit/}
       ml_app="${ml_app%%[?#]*}"
       ml_app="${ml_app//[^a-zA-Z0-9_-]/}"
       ml_body="$body"
       ml_new_limit=$(echo "$ml_body" | grep -oP '"limitMb"\s*:\s*\K\d+')
+      ml_level=$(echo "$ml_body" | grep -oP '"level"\s*:\s*"\K[^"]+' | tr -cd 'a-zA-Z0-9_-')
+      if [ -z "$ml_new_limit" ] && [ -n "$ml_level" ]; then
+        ml_new_limit=$(registry_memory_profile_mb "$ml_app" "$ml_level")
+      fi
       if [ -z "$ml_new_limit" ] || [ "$ml_new_limit" -lt 16 ] 2>/dev/null || [ "$ml_new_limit" -gt 480 ] 2>/dev/null; then
         status_line="HTTP/1.1 400 Bad Request"
         response="{\"error\":\"limitMb måste vara 16-480\"}"
@@ -2077,7 +2083,8 @@ handle_request() {
         if [ "$ml_updated" -eq 1 ]; then
           user_systemctl daemon-reload 2>/dev/null || true
           rm -f "$CACHE_FILE"
-          response="{\"app\":\"${ml_app}\",\"limitMb\":${ml_new_limit},\"status\":\"success\"}"
+          [ -z "$ml_level" ] && ml_level=$(memory_level_for_mb "$ml_app" "$ml_new_limit")
+          response="{\"app\":\"${ml_app}\",\"limitMb\":${ml_new_limit},\"level\":\"${ml_level}\",\"status\":\"success\"}"
         else
           status_line="HTTP/1.1 404 Not Found"
           response="{\"error\":\"Ingen tjänstfil hittad för ${ml_app}\"}"
