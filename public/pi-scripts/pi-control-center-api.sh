@@ -1793,6 +1793,11 @@ handle_request() {
       : > "$dashboard_log"
       response=$(< "$sf")
       (
+        exec 9>"$OP_LOCK_FILE"
+        if ! flock -n 9; then
+          echo '{"app":"dashboard","status":"updating","progress":"Pi upptagen – väntar på uppdateringskö..."}' > "$sf"
+          flock 9
+        fi
         STOPPED_SERVICES=""
 
         dashboard_progress() {
@@ -1946,6 +1951,11 @@ handle_request() {
       response=$(< "$update_json")
 
       (
+        exec 9>"$OP_LOCK_FILE"
+        if ! flock -n 9; then
+          echo "{\"app\":\"${app}\",\"status\":\"updating\",\"progress\":\"Pi upptagen – väntar på uppdateringskö...\",\"timestamp\":\"$(date -Iseconds)\"}" > "$update_json"
+          flock 9
+        fi
         local release_url install_dir svc download_url
         release_url=$(registry_get "$app" "releaseUrl")
         install_dir=$(eval echo "$(registry_get "$app" "installDir")")
