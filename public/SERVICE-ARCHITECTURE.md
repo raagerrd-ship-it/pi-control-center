@@ -32,7 +32,7 @@ Motorn är hjärtat i tjänsten. Den hanterar all affärslogik och exponerar ett
    - `GET /api/version` → `{ "version": "1.2.3" }`
    - Appspecifika endpoints
 4. **Ingen egen UI** — motorn serverar *inte* HTML/CSS/JS
-5. **Stateless vid restart** — spara persistent data i filer (inom `installDir`), inte i minnet
+5. **Stateless vid restart** — spara persistent data i `PCC_DATA_DIR`, inte i minnet eller i `/opt/<app>`
 6. **Hanterar SIGTERM graciöst** — stäng ner connections och spara state vid shutdown
 
 ### Exempelmotor
@@ -216,6 +216,7 @@ Environment=NODE_ENV=production
 Environment=NODE_OPTIONS=--max-old-space-size=96
 Environment=PCC_APP_KEY=my-service
 Environment=PCC_CONFIG_DIR=/etc/pi-control-center/apps/my-service
+Environment=PCC_DATA_DIR=/var/lib/pi-control-center/apps/my-service
 Environment=PCC_LOG_DIR=/var/log/pi-control-center/apps/my-service
 Environment=PCC_PERMISSIONS=network,multicast
 Environment=PORT=3052
@@ -228,6 +229,7 @@ ProtectSystem=strict
 ProtectHome=read-only
 ReadWritePaths=/opt/my-service
 ReadWritePaths=/etc/pi-control-center/apps/my-service
+ReadWritePaths=/var/lib/pi-control-center/apps/my-service
 ReadWritePaths=/var/log/pi-control-center/apps/my-service
 PrivateTmp=true
 NoNewPrivileges=true

@@ -1,5 +1,5 @@
 import { useState, memo } from 'react';
-import { ExternalLink, RefreshCw, CheckCircle2, AlertCircle, Loader2, Play, Square, RotateCcw, Trash2, Server, Monitor, Download, MemoryStick, ShieldCheck, KeyRound, FolderLock, Terminal } from 'lucide-react';
+import { ExternalLink, RefreshCw, CheckCircle2, AlertCircle, Loader2, Play, Square, RotateCcw, Trash2, Server, Monitor, Download, MemoryStick, ShieldCheck, KeyRound, FolderLock, Database, Terminal } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import {
@@ -37,6 +37,7 @@ interface CoreCardProps {
     memoryProfile?: ServiceDefinition['memoryProfile'] | null;
     permissions?: string[];
     configDir?: string;
+    dataDir?: string;
     logDir?: string;
     port?: number;
     versionInfo?: VersionInfo;
@@ -473,7 +474,7 @@ export const CoreCard = memo(function CoreCard({
         </div>
       )}
 
-      {(permissions.length > 0 || service.configDir || service.logDir) && (
+      {(permissions.length > 0 || service.configDir || service.dataDir || service.logDir) && (
         <div className="flex flex-col gap-1 rounded bg-secondary/20 px-2 py-1.5 font-mono text-[10px] text-muted-foreground">
           {permissions.length > 0 && (
             <div className="flex items-center gap-1.5 min-w-0">
@@ -485,6 +486,12 @@ export const CoreCard = memo(function CoreCard({
             <div className="flex items-center gap-1.5 min-w-0" title={service.configDir}>
               <FolderLock className="h-3 w-3 shrink-0" />
               <span className="truncate">Config: {service.configDir}</span>
+            </div>
+          )}
+          {service.dataDir && (
+            <div className="flex items-center gap-1.5 min-w-0" title={service.dataDir}>
+              <Database className="h-3 w-3 shrink-0" />
+              <span className="truncate">Data: {service.dataDir}</span>
             </div>
           )}
           {service.logDir && (

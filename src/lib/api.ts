@@ -41,6 +41,7 @@ export interface ServiceStatus {
   memoryProfile?: MemoryProfile | null;
   permissions?: string[];
   configDir?: string;
+  dataDir?: string;
   logDir?: string;
   cpuCore: number;
   port?: number;

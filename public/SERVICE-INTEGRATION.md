@@ -32,6 +32,7 @@ Pi Control Center fungerar som ett **operativsystem** för din Raspberry Pi. Det
 - **Processhantering** — starta, stoppa, starta om via systemd
 - **Resursallokering** — tilldela CPU-kärna och minnesgräns
 - **Gemensamma resurser** — Node-runtime, config-katalog, loggkatalog, portregister och behörigheter
+- **Persistent appdata** — sparfiler och state ligger utanför programkoden och överlever uppdateringar
 - **Isolering** — varje tjänst körs i en sandlåda
 
 Din tjänst är ett **program** som installeras i detta OS. Precis som en app på en telefon:
@@ -529,6 +530,22 @@ Dessa miljövariabler sätts **automatiskt** av Pi Control Center i systemd-unit
 |----------|-------------|---------|
 | `PORT` | Komponentens egen port | `3052` (motor) eller `3002` (UI) |
 | `NODE_ENV` | Alltid `production` | `production` |
+| `PCC_APP_KEY` | Tjänstens nyckel från `services.json` | `my-service` |
+| `PCC_CONFIG_DIR` | Persistent konfiguration/inställningar | `/etc/pi-control-center/apps/my-service` |
+| `PCC_DATA_DIR` | Persistent sparfiler/state/data | `/var/lib/pi-control-center/apps/my-service` |
+| `PCC_LOG_DIR` | Tjänstens loggkatalog | `/var/log/pi-control-center/apps/my-service` |
+
+### Persistent lagring
+
+`/opt/<app>` är programkod och kan ersättas vid uppdatering. Spara därför aldrig användarinställningar, parade enheter, cache eller state där. Använd:
+
+```javascript
+const configDir = process.env.PCC_CONFIG_DIR;
+const dataDir = process.env.PCC_DATA_DIR;
+const logDir = process.env.PCC_LOG_DIR;
+```
+
+Vanlig avinstallation bevarar `PCC_CONFIG_DIR`, `PCC_DATA_DIR` och `PCC_LOG_DIR`. Factory reset rensar dem.
 
 ### Component-baserade tjänster (motor/UI)
 
