@@ -1392,6 +1392,11 @@ do_install() {
   [ -z "$repo" ] && { echo "{\"app\":\"${app}\",\"status\":\"error\",\"message\":\"Okänd app\"}" > "$sf"; return 1; }
 
   progress "$sf" "$app" "Startar installation..." "$start_time"
+  exec 9>"$OP_LOCK_FILE"
+  if ! flock -n 9; then
+    progress "$sf" "$app" "Pi upptagen – väntar på installationskö..." "$start_time"
+    flock 9
+  fi
   ensure_app_managed_dirs "$app"
 
   export XDG_RUNTIME_DIR="$USER_RUNTIME_DIR"
