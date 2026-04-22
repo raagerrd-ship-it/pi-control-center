@@ -1171,11 +1171,10 @@ UNIT
     done
   else
     # Legacy single-service
-    local svc_file="$PI_HOME/.config/systemd/user/${svc}.service"
+    local svc_file="/etc/systemd/system/${svc}.service"
     local app_type entrypoint exec_start
     app_type=$(registry_get "$app" "type")
     entrypoint=$(registry_get "$app" "entrypoint")
-    mkdir -p "$PI_HOME/.config/systemd/user"
     mkdir -p "${install_dir}/.npm-cache"
 
     # Determine working directory from entrypoint's package.json location
@@ -1211,25 +1210,20 @@ Environment=DBUS_SYSTEM_BUS_ADDRESS=unix:path=/run/dbus/system_bus_socket"
       exec_start="/usr/bin/python3 ${PI_HOME}/pi-control-center/public/pi-scripts/static-spa-server.py --root ${install_dir}/dist --port ${req_port} --host 0.0.0.0"
     fi
 
-    # Remove any root-owned service file left by installScript (which runs via sudo)
-    [ -f "$svc_file" ] && [ ! -w "$svc_file" ] && sudo rm -f "$svc_file"
-
-    # Remove conflicting system-level service file that overrides user-level
-    local sys_svc_file="/etc/systemd/system/${svc}.service"
-    if [ -f "$sys_svc_file" ]; then
-      log "Removing conflicting system-level service: ${sys_svc_file}"
-      sudo systemctl stop "${svc}.service" 2>/dev/null || true
-      sudo systemctl disable "${svc}.service" 2>/dev/null || true
-      sudo rm -f "$sys_svc_file"
-      sudo systemctl daemon-reload
-    fi
-    cat > "$svc_file" <<UNIT
+    user_systemctl stop "${svc}.service" 2>/dev/null || true
+    user_systemctl disable "${svc}.service" 2>/dev/null || true
+    rm -f "$PI_HOME/.config/systemd/user/${svc}.service" 2>/dev/null || true
+    sudo systemctl stop "${svc}.service" 2>/dev/null || true
+    sudo systemctl disable "${svc}.service" 2>/dev/null || true
+    sudo tee "$svc_file" > /dev/null <<UNIT
 [Unit]
 Description=${app} service
 After=network.target
 
 [Service]
 Type=simple
+User=pi
+Group=pi
 WorkingDirectory=${legacy_work_dir}
 ExecStart=${exec_start}
 Environment=NPM_CONFIG_CACHE=${install_dir}/.npm-cache
@@ -1254,12 +1248,12 @@ Restart=on-failure
 RestartSec=5
 
 [Install]
-WantedBy=default.target
+WantedBy=multi-user.target
 UNIT
 
-    user_systemctl daemon-reload
-    user_systemctl enable "${svc}.service"
-    user_systemctl --no-block start "${svc}.service"
+    sudo systemctl daemon-reload
+    sudo systemctl enable "${svc}.service"
+    sudo systemctl --no-block start "${svc}.service"
   fi
 
   return 0
