@@ -1497,8 +1497,9 @@ do_uninstall() {
       local comp_svc
       comp_svc=$(registry_get_component "$app" "$comp" "service")
       [ -z "$comp_svc" ] && continue
-      user_systemctl stop "${comp_svc}.service" 2>/dev/null || true
-      user_systemctl disable "${comp_svc}.service" 2>/dev/null || true
+      sudo systemctl stop "${comp_svc}.service" 2>/dev/null || user_systemctl stop "${comp_svc}.service" 2>/dev/null || true
+      sudo systemctl disable "${comp_svc}.service" 2>/dev/null || user_systemctl disable "${comp_svc}.service" 2>/dev/null || true
+      sudo rm -f "/etc/systemd/system/${comp_svc}.service" 2>/dev/null || true
       rm -f "$PI_HOME/.config/systemd/user/${comp_svc}.service" 2>/dev/null || true
     done
   else
@@ -1508,6 +1509,7 @@ do_uninstall() {
     sudo rm -f "/etc/systemd/system/${svc}.service" 2>/dev/null || true
     rm -f "$PI_HOME/.config/systemd/user/${svc}.service" 2>/dev/null || true
   fi
+  sudo systemctl daemon-reload 2>/dev/null || true
 
   # Run uninstall script if it exists
   if [ -n "$uninstall_script" ] && [ -f "$install_dir/$uninstall_script" ]; then
