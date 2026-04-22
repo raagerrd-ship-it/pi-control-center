@@ -307,7 +307,7 @@ export const CoreCard = memo(function CoreCard({
   }
 
   // Occupied core — show service info
-  const { definition: def, online, version, cpu, ramMb, port, versionInfo, updateStatus, actionStatus, components, health } = service;
+  const { definition: def, online, version, cpu, ramMb, port, versionInfo, updateStatus, actionStatus, components, health, watchdog } = service;
   const isUpdating = updateStatus?.status === 'updating';
   const isPending = actionStatus?.status === 'pending';
   const hasUpdate = versionInfo?.hasUpdate ?? false;
@@ -385,20 +385,23 @@ export const CoreCard = memo(function CoreCard({
         </>
       ) : (
         /* Legacy single-service resource row */
-        <div className="flex items-center gap-2 font-mono text-[11px] text-muted-foreground">
-          {online ? (
-            <>
-              <span className={cpu > 50 ? 'text-[hsl(var(--status-warning))]' : ''}>
-                {cpu.toFixed(1)}%
+        <div className="flex flex-col gap-1">
+          <div className="flex items-center gap-2 font-mono text-[11px] text-muted-foreground">
+            {online ? (
+              <>
+                <span className={cpu > 50 ? 'text-[hsl(var(--status-warning))]' : ''}>
+                  {cpu.toFixed(1)}%
+                </span>
+                <span className="text-border">·</span>
+                <span>{ramMb}MB</span>
+              </>
+            ) : (
+              <span className="inline-flex items-center gap-1 rounded bg-[hsl(var(--status-offline)/0.15)] px-1.5 py-0.5 text-[hsl(var(--status-offline))] text-[10px] font-medium">
+                Offline
               </span>
-              <span className="text-border">·</span>
-              <span>{ramMb}MB</span>
-            </>
-          ) : (
-            <span className="inline-flex items-center gap-1 rounded bg-[hsl(var(--status-offline)/0.15)] px-1.5 py-0.5 text-[hsl(var(--status-offline))] text-[10px] font-medium">
-              Offline
-            </span>
-          )}
+            )}
+          </div>
+          <WatchdogLine watchdog={watchdog} />
         </div>
       )}
 
