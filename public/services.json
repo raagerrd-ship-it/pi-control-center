@@ -10,9 +10,9 @@
       "defaultLevel": "balanced",
       "levels": { "low": 72, "balanced": 96, "high": 128 }
     },
-    "permissions": ["bluetooth"],
+    "permissions": ["bluetooth", "audio", "rfkill"],
     "runInstallOnRelease": true,
-    "installScript": "scripts/install.sh",
+    "installScript": "pi/setup-lotus.sh",
     "updateScript": "/opt/lotus-light/scripts/update.sh",
     "uninstallScript": "scripts/uninstall.sh",
     "components": {
