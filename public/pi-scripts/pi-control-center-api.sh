@@ -2014,10 +2014,10 @@ handle_request() {
                   for comp_upd in engine ui; do
                     local comp_svc_upd
                     comp_svc_upd=$(registry_get_component "$app" "$comp_upd" "service")
-                    [ -n "$comp_svc_upd" ] && user_systemctl restart "${comp_svc_upd}.service" 2>> "$update_log" || true
+                    [ -n "$comp_svc_upd" ] && { sudo systemctl restart "${comp_svc_upd}.service" 2>> "$update_log" || user_systemctl restart "${comp_svc_upd}.service" 2>> "$update_log" || true; }
                   done
                 else
-                  user_systemctl restart "${svc}.service" 2>> "$update_log" || sudo systemctl restart "${svc}.service" 2>> "$update_log" || true
+                  sudo systemctl restart "${svc}.service" 2>> "$update_log" || user_systemctl restart "${svc}.service" 2>> "$update_log" || true
                 fi
               fi
 
