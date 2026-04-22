@@ -1320,9 +1320,9 @@ _app_set_limit() {
       f=$(service_unit_file "$s")
       [ -f "$f" ] || continue
       if grep -q '^MemoryMax=' "$f"; then
-        sudo sed -i "s/^MemoryMax=.*/MemoryMax=${limit_mb}M/" "$f"
+        sudo_run sed -i "s/^MemoryMax=.*/MemoryMax=${limit_mb}M/" "$f"
       else
-        sudo sed -i "/^\[Service\]/a MemoryMax=${limit_mb}M" "$f"
+        sudo_run sed -i "/^\[Service\]/a MemoryMax=${limit_mb}M" "$f"
       fi
     done
   else
@@ -1331,9 +1331,9 @@ _app_set_limit() {
     f=$(service_unit_file "$s")
     [ -f "$f" ] || return
     if grep -q '^MemoryMax=' "$f"; then
-      sudo sed -i "s/^MemoryMax=.*/MemoryMax=${limit_mb}M/" "$f"
+      sudo_run sed -i "s/^MemoryMax=.*/MemoryMax=${limit_mb}M/" "$f"
     else
-      sudo sed -i "/^\[Service\]/a MemoryMax=${limit_mb}M" "$f"
+      sudo_run sed -i "/^\[Service\]/a MemoryMax=${limit_mb}M" "$f"
     fi
   fi
 }
@@ -1344,11 +1344,11 @@ _app_try_restart() {
   if [ "$(registry_has_components "$app")" = "true" ]; then
     for comp in engine ui; do
       s=$(registry_get_component "$app" "$comp" "service")
-      [ -n "$s" ] && { sudo systemctl try-restart "${s}.service" 2>/dev/null || user_systemctl try-restart "${s}.service" 2>/dev/null || true; }
+      [ -n "$s" ] && { sudo_run_quiet systemctl try-restart "${s}.service" || user_systemctl try-restart "${s}.service" 2>/dev/null || true; }
     done
   else
     s=$(registry_get "$app" "service")
-    [ -n "$s" ] && { sudo systemctl try-restart "${s}.service" 2>/dev/null || user_systemctl try-restart "${s}.service" 2>/dev/null || true; }
+    [ -n "$s" ] && { sudo_run_quiet systemctl try-restart "${s}.service" || user_systemctl try-restart "${s}.service" 2>/dev/null || true; }
   fi
 }
 
@@ -1416,7 +1416,7 @@ rebalance_memory_budget() {
   fi
 
   if [ ${#changed_apps[@]} -gt 0 ]; then
-    user_systemctl daemon-reload 2>/dev/null || true
+    sudo_run_quiet systemctl daemon-reload || user_systemctl daemon-reload 2>/dev/null || true
     local seen=" "
     for app in "${changed_apps[@]}"; do
       case "$seen" in *" $app "*) continue;; esac
