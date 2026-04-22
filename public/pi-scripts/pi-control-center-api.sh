@@ -128,6 +128,20 @@ registry_get_component() {
   jq -r --arg k "$1" --arg c "$2" --arg f "$3" '.[] | select(.key == $k) | .components[$c][$f] // empty' "$REGISTRY_FILE" 2>/dev/null
 }
 
+registry_memory_profile_json() {
+  jq -c --arg k "$1" '.[] | select(.key == $k) | .memoryProfile // empty' "$REGISTRY_FILE" 2>/dev/null
+}
+
+registry_memory_profile_default_level() {
+  jq -r --arg k "$1" '.[] | select(.key == $k) | .memoryProfile.defaultLevel // "balanced"' "$REGISTRY_FILE" 2>/dev/null
+}
+
+registry_memory_profile_mb() {
+  local app=$1 level=${2:-}
+  [ -z "$level" ] && level=$(registry_memory_profile_default_level "$app")
+  jq -r --arg k "$app" --arg l "$level" '.[] | select(.key == $k) | .memoryProfile.levels[$l] // empty' "$REGISTRY_FILE" 2>/dev/null
+}
+
 # Check if service uses components format
 registry_has_components() {
   local val
