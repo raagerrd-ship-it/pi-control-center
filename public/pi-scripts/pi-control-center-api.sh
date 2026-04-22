@@ -1281,7 +1281,16 @@ rebalance_memory_budget() {
       current_limits[$app]=$cur
       total_set=$((total_set + cur))
     else
-      unset_apps+=("$app")
+      local prof
+      prof=$(registry_memory_profile_mb "$app")
+      if [ -n "$prof" ]; then
+        _app_set_limit "$app" "$prof"
+        current_limits[$app]=$prof
+        total_set=$((total_set + prof))
+        changed_apps+=("$app")
+      else
+        unset_apps+=("$app")
+      fi
     fi
   done
 
