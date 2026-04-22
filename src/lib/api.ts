@@ -280,6 +280,8 @@ export async function triggerPiReset(): Promise<FactoryResetResult> {
 export interface MemoryLimitResult {
   app: string;
   limitMb: number;
+  level?: string;
+  profile?: MemoryProfile | null;
   raw?: string;
   status?: string;
 }
@@ -290,11 +292,11 @@ export async function fetchMemoryLimit(app: string): Promise<MemoryLimitResult> 
   return res.json();
 }
 
-export async function setMemoryLimit(app: string, limitMb: number): Promise<MemoryLimitResult> {
+export async function setMemoryLimit(app: string, limitMb: number, level?: string): Promise<MemoryLimitResult> {
   const res = await fetch(`${getBaseUrl()}/api/memory-limit/${app}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ limitMb }),
+    body: JSON.stringify(level ? { limitMb, level } : { limitMb }),
     signal: AbortSignal.timeout(10000),
   });
   if (!res.ok) throw new Error('Failed to set memory limit');
