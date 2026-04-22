@@ -13,6 +13,15 @@ export interface ComponentStatus {
   service: string;
   port?: number;
   cpuCore?: number;
+  watchdog?: WatchdogStatus;
+}
+
+export interface WatchdogStatus {
+  status: 'ok' | 'warning' | 'restarting' | 'protected' | 'disabled';
+  reason?: 'high_cpu' | 'high_memory' | 'health_timeout' | 'restart_loop' | string;
+  restartCount?: number;
+  lastAction?: string;
+  timestamp?: string;
 }
 
 export interface HealthStatus {
@@ -31,6 +40,8 @@ export interface ServiceStatus {
   port?: number;
   /** Health check data from engine's /api/health */
   health?: HealthStatus;
+  /** Lightweight watchdog protection status */
+  watchdog?: WatchdogStatus;
   /** Present when the service uses engine/ui components */
   components?: {
     engine?: ComponentStatus;

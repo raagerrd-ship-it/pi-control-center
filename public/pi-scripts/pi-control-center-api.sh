@@ -57,8 +57,9 @@ REGISTRY_FILE="/var/www/pi-control-center/services.json"
 ASSIGNMENTS_FILE="/etc/pi-control-center/assignments.json"
 
 HEALTH_DIR="$STATUS_DIR/health"
+WATCHDOG_DIR="$STATUS_DIR/watchdog"
 
-mkdir -p "$STATUS_DIR" "$INSTALL_DIR" "$HEALTH_DIR"
+mkdir -p "$STATUS_DIR" "$INSTALL_DIR" "$HEALTH_DIR" "$WATCHDOG_DIR"
 sudo mkdir -p /etc/pi-control-center 2>/dev/null || true
 
 # Read git info once at startup
@@ -256,6 +257,182 @@ get_health() {
   else
     echo '{"status":"unknown"}'
   fi
+}
+
+# --- Watchdog ---
+# Conservative guard for Pi Zero 2: restarts services that repeatedly exceed
+# CPU/RAM thresholds or are active but unreachable, then protects against loops.
+WATCHDOG_INTERVAL=30
+WATCHDOG_CPU_LIMIT=85
+WATCHDOG_MEM_WARN=85
+WATCHDOG_MEM_RESTART=95
+WATCHDOG_STRIKES=3
+WATCHDOG_MAX_RESTARTS=3
+
+watchdog_key() { echo "${1}-${2}" | tr -cd 'a-zA-Z0-9_.-'; }
+
+service_exists() {
+  local svc=$1
+  [ -z "$svc" ] && { echo "false"; return; }
+  if user_systemctl cat "${svc}.service" >/dev/null 2>&1 || systemctl cat "${svc}.service" >/dev/null 2>&1; then
+    echo "true"
+  else
+    echo "false"
+  fi
+}
+
+get_memory_limit_mb() {
+  local svc=$1 val
+  val=$(user_systemctl show "${svc}.service" --property=MemoryMax 2>/dev/null | cut -d= -f2)
+  if [ -z "$val" ] || [ "$val" = "infinity" ] || [ "$val" = "[not set]" ] || [ "$val" = "0" ]; then
+    val=$(systemctl show "${svc}.service" --property=MemoryMax 2>/dev/null | cut -d= -f2)
+  fi
+  if [ -n "$val" ] && [ "$val" != "infinity" ] && [ "$val" != "[not set]" ] && [ "$val" != "0" ]; then
+    echo $((val / 1048576))
+  else
+    echo 0
+  fi
+}
+
+watchdog_get() {
+  local app=$1 comp=$2 field=$3 file="$WATCHDOG_DIR/$(watchdog_key "$app" "$comp").state"
+  [ -f "$file" ] && grep -E "^${field}=" "$file" 2>/dev/null | tail -1 | cut -d= -f2-
+}
+
+watchdog_write_state() {
+  local app=$1 comp=$2 status=$3 reason=$4 cpu_fails=$5 mem_fails=$6 health_fails=$7 restarts=$8 last_action=$9
+  local key file tmp
+  key=$(watchdog_key "$app" "$comp")
+  file="$WATCHDOG_DIR/${key}.state"
+  tmp="$WATCHDOG_DIR/${key}.tmp.$$"
+  {
+    echo "status=${status:-ok}"
+    echo "reason=${reason:-}"
+    echo "cpu_fails=${cpu_fails:-0}"
+    echo "mem_fails=${mem_fails:-0}"
+    echo "health_fails=${health_fails:-0}"
+    echo "restart_count=${restarts:-0}"
+    echo "last_action=${last_action:-}"
+    echo "timestamp=$(date -Iseconds)"
+  } > "$tmp"
+  mv "$tmp" "$file"
+}
+
+watchdog_json() {
+  local app=$1 comp=$2 file="$WATCHDOG_DIR/$(watchdog_key "$app" "$comp").state"
+  local status reason restarts last_action timestamp
+  if [ ! -f "$file" ]; then
+    echo '{"status":"ok","restartCount":0}'
+    return
+  fi
+  status=$(grep -E '^status=' "$file" | tail -1 | cut -d= -f2-)
+  reason=$(grep -E '^reason=' "$file" | tail -1 | cut -d= -f2- | sed 's/"/\\"/g')
+  restarts=$(grep -E '^restart_count=' "$file" | tail -1 | cut -d= -f2-)
+  last_action=$(grep -E '^last_action=' "$file" | tail -1 | cut -d= -f2- | sed 's/"/\\"/g')
+  timestamp=$(grep -E '^timestamp=' "$file" | tail -1 | cut -d= -f2- | sed 's/"/\\"/g')
+  echo "{\"status\":\"${status:-ok}\",\"reason\":\"${reason}\",\"restartCount\":${restarts:-0},\"lastAction\":\"${last_action}\",\"timestamp\":\"${timestamp}\"}"
+}
+
+watchdog_reset() {
+  local app=$1 comp=${2:-service}
+  rm -f "$WATCHDOG_DIR/$(watchdog_key "$app" "$comp").state"
+}
+
+watchdog_restart_or_protect() {
+  local app=$1 comp=$2 svc=$3 reason=$4 cpu_fails=$5 mem_fails=$6 health_fails=$7 restarts=$8
+  local last_action
+  if [ "$restarts" -ge "$WATCHDOG_MAX_RESTARTS" ]; then
+    user_systemctl stop "${svc}.service" 2>/dev/null || systemctl stop "${svc}.service" 2>/dev/null || true
+    last_action="skyddsstopp $(date -Iseconds)"
+    watchdog_write_state "$app" "$comp" "protected" "restart_loop" "$cpu_fails" "$mem_fails" "$health_fails" "$restarts" "$last_action"
+    echo "WATCHDOG: protected $app/$comp after repeated $reason" >&2
+    return
+  fi
+
+  restarts=$((restarts + 1))
+  user_systemctl restart "${svc}.service" 2>/dev/null || systemctl restart "${svc}.service" 2>/dev/null || true
+  last_action="restart $(date -Iseconds)"
+  watchdog_write_state "$app" "$comp" "restarting" "$reason" 0 0 0 "$restarts" "$last_action"
+  echo "WATCHDOG: restarted $app/$comp ($reason, $restarts/$WATCHDOG_MAX_RESTARTS)" >&2
+}
+
+watchdog_check_component() {
+  local app=$1 comp=$2 svc=$3 port=$4
+  [ -z "$svc" ] && return
+  [ "$(service_exists "$svc")" = "true" ] || return
+
+  local prev_status cpu_fails mem_fails health_fails restarts online cpu ram limit mem_pct port_up health_status reason status
+  prev_status=$(watchdog_get "$app" "$comp" status)
+  cpu_fails=$(watchdog_get "$app" "$comp" cpu_fails); cpu_fails=${cpu_fails:-0}
+  mem_fails=$(watchdog_get "$app" "$comp" mem_fails); mem_fails=${mem_fails:-0}
+  health_fails=$(watchdog_get "$app" "$comp" health_fails); health_fails=${health_fails:-0}
+  restarts=$(watchdog_get "$app" "$comp" restart_count); restarts=${restarts:-0}
+  [ "$prev_status" = "protected" ] && return
+
+  online=$(service_is_active "$svc")
+  [ "$online" != "true" ] && { watchdog_write_state "$app" "$comp" "ok" "" 0 0 0 "$restarts" ""; return; }
+
+  cpu=0
+  local pid
+  pid=$(get_service_pid "$svc")
+  [ -n "$pid" ] && [ "$pid" != "0" ] && cpu=$(ps -p "$pid" -o %cpu= 2>/dev/null | tr -d ' ' | cut -d. -f1 || echo 0)
+  ram=$(get_service_ram "$svc")
+  limit=$(get_memory_limit_mb "$svc")
+  port_up="true"
+  [ -n "$port" ] && [ "$port" -gt 0 ] 2>/dev/null && port_up=$(check_service "$port")
+  health_status="ok"
+  if [ "$comp" = "engine" ] || [ "$comp" = "service" ]; then
+    health_status=$(get_health "$app" | jq -r '.status // "ok"' 2>/dev/null)
+  fi
+
+  if [ "${cpu:-0}" -ge "$WATCHDOG_CPU_LIMIT" ] 2>/dev/null; then cpu_fails=$((cpu_fails + 1)); else cpu_fails=0; fi
+  if [ "$limit" -gt 0 ] 2>/dev/null && [ "$ram" -gt 0 ] 2>/dev/null; then
+    mem_pct=$((ram * 100 / limit))
+    [ "$mem_pct" -ge "$WATCHDOG_MEM_RESTART" ] && mem_fails=$((mem_fails + 1)) || mem_fails=0
+  else
+    mem_pct=0; mem_fails=0
+  fi
+  if [ "$port_up" != "true" ] || [ "$health_status" = "unreachable" ] || [ "$health_status" = "error" ]; then
+    health_fails=$((health_fails + 1))
+  else
+    health_fails=0
+  fi
+
+  reason=""; status="ok"
+  [ "$limit" -gt 0 ] 2>/dev/null && [ "${mem_pct:-0}" -ge "$WATCHDOG_MEM_WARN" ] && { status="warning"; reason="high_memory"; }
+  [ "$cpu_fails" -ge "$WATCHDOG_STRIKES" ] && reason="high_cpu"
+  [ "$mem_fails" -ge "$WATCHDOG_STRIKES" ] && reason="high_memory"
+  [ "$health_fails" -ge "$WATCHDOG_STRIKES" ] && reason="health_timeout"
+
+  if [ -n "$reason" ] && { [ "$cpu_fails" -ge "$WATCHDOG_STRIKES" ] || [ "$mem_fails" -ge "$WATCHDOG_STRIKES" ] || [ "$health_fails" -ge "$WATCHDOG_STRIKES" ]; }; then
+    watchdog_restart_or_protect "$app" "$comp" "$svc" "$reason" "$cpu_fails" "$mem_fails" "$health_fails" "$restarts"
+  else
+    watchdog_write_state "$app" "$comp" "$status" "$reason" "$cpu_fails" "$mem_fails" "$health_fails" "$restarts" ""
+  fi
+}
+
+watchdog_loop() {
+  while true; do
+    for app in $(registry_keys); do
+      local core port has_comp managed svc engine_svc ui_svc engine_port
+      core=$(assignment_get_core "$app")
+      [ -z "$core" ] || [ "$core" -lt 1 ] 2>/dev/null && continue
+      port=$(port_for_core "$core")
+      engine_port=$(engine_port_for_core "$core")
+      has_comp=$(registry_has_components "$app")
+      managed=$(registry_is_managed "$app")
+      if [ "$has_comp" = "true" ]; then
+        engine_svc=$(registry_get_component "$app" "engine" "service")
+        ui_svc=$(registry_get_component "$app" "ui" "service")
+        [ "$managed" = "true" ] && watchdog_check_component "$app" "engine" "$engine_svc" "$engine_port"
+        [ "$managed" = "true" ] && watchdog_check_component "$app" "ui" "$ui_svc" "$port"
+      else
+        svc=$(registry_get "$app" "service")
+        [ "$managed" = "true" ] && watchdog_check_component "$app" "service" "$svc" "$port"
+      fi
+    done
+    sleep "$WATCHDOG_INTERVAL"
+  done
 }
 
 get_cpu() {
@@ -473,7 +650,7 @@ build_status_json() {
 
     # For component-based services, check if ANY component is active
     if [ "$has_comp" = "true" ]; then
-      local engine_svc ui_svc engine_online ui_online engine_cpu engine_ram ui_cpu ui_ram engine_ver ui_ver engine_port
+      local engine_svc ui_svc engine_online ui_online engine_cpu engine_ram ui_cpu ui_ram engine_ver ui_ver engine_port engine_watchdog ui_watchdog
       engine_svc=$(registry_get_component "$app" "engine" "service")
       ui_svc=$(registry_get_component "$app" "ui" "service")
       engine_port=$(engine_port_for_core "$core")
@@ -517,6 +694,8 @@ build_status_json() {
       # Use engine port for version check (UI port serves static HTML, not API)
       ver=$(get_version "$install_dir" "$engine_port")
       engine_ver="$ver"; ui_ver="$ver"
+      engine_watchdog=$(watchdog_json "$app" "engine")
+      ui_watchdog=$(watchdog_json "$app" "ui")
 
       local total_cpu total_ram
       total_cpu=$(echo "$engine_cpu + $ui_cpu" | bc 2>/dev/null || echo "0")
@@ -531,7 +710,7 @@ build_status_json() {
       health_mem_rss=$(echo "$health_json" | jq -r '.memory.rss // 0' 2>/dev/null)
 
       [ -n "$svc_json" ] && svc_json="${svc_json},"
-      svc_json="${svc_json}\"${app}\":{\"online\":${online},\"installed\":${installed},\"version\":\"${ver}\",\"cpu\":${total_cpu:-0},\"ramMb\":${total_ram:-0},\"cpuCore\":${core},\"port\":${port},\"health\":{\"status\":\"${health_status}\",\"uptime\":${health_uptime:-0},\"memoryRss\":${health_mem_rss:-0}},\"components\":{\"engine\":{\"online\":${engine_online},\"version\":\"${engine_ver}\",\"cpu\":${engine_cpu:-0},\"ramMb\":${engine_ram:-0},\"service\":\"${engine_svc}\",\"port\":${engine_port},\"cpuCore\":${core}},\"ui\":{\"online\":${ui_online},\"version\":\"${ui_ver}\",\"cpu\":${ui_cpu:-0},\"ramMb\":${ui_ram:-0},\"service\":\"${ui_svc}\",\"port\":${port},\"cpuCore\":0}}}"
+      svc_json="${svc_json}\"${app}\":{\"online\":${online},\"installed\":${installed},\"version\":\"${ver}\",\"cpu\":${total_cpu:-0},\"ramMb\":${total_ram:-0},\"cpuCore\":${core},\"port\":${port},\"watchdog\":${engine_watchdog},\"health\":{\"status\":\"${health_status}\",\"uptime\":${health_uptime:-0},\"memoryRss\":${health_mem_rss:-0}},\"components\":{\"engine\":{\"online\":${engine_online},\"version\":\"${engine_ver}\",\"cpu\":${engine_cpu:-0},\"ramMb\":${engine_ram:-0},\"service\":\"${engine_svc}\",\"port\":${engine_port},\"cpuCore\":${core},\"watchdog\":${engine_watchdog}},\"ui\":{\"online\":${ui_online},\"version\":\"${ui_ver}\",\"cpu\":${ui_cpu:-0},\"ramMb\":${ui_ram:-0},\"service\":\"${ui_svc}\",\"port\":${port},\"cpuCore\":0,\"watchdog\":${ui_watchdog}}}}"
     else
       # Legacy single-service
       running=$(service_is_active "$svc")
@@ -561,7 +740,9 @@ build_status_json() {
       fi
 
       [ -n "$svc_json" ] && svc_json="${svc_json},"
-      svc_json="${svc_json}\"${app}\":{\"online\":${online},\"installed\":${installed},\"version\":\"${ver}\",\"cpu\":${s_cpu:-0},\"ramMb\":${s_ram:-0},\"cpuCore\":${s_core},\"port\":${port}}"
+      local service_watchdog
+      service_watchdog=$(watchdog_json "$app" "service")
+      svc_json="${svc_json}\"${app}\":{\"online\":${online},\"installed\":${installed},\"version\":\"${ver}\",\"cpu\":${s_cpu:-0},\"ramMb\":${s_ram:-0},\"cpuCore\":${s_core},\"port\":${port},\"watchdog\":${service_watchdog}}"
     fi
   done
 
@@ -1746,6 +1927,9 @@ handle_request() {
         fi
         rm -f /tmp/svc-err-$$
         if [ "$svc_ok" = "true" ]; then
+          if [ "$action" = "start" ] || [ "$action" = "restart" ]; then
+            watchdog_reset "$app" "${component:-service}"
+          fi
           rm -f "$CACHE_FILE"
           printf "[%s] service %s %s: success\n" "$now" "$svc" "$action" >> "$log_file"
           response="{\"app\":\"${app}\",\"action\":\"${action}\",\"status\":\"success\"}"
@@ -2069,11 +2253,15 @@ echo "Pi Control Center API listening on port $PORT"
 health_poll_loop &
 HEALTH_PID=$!
 
+# Start watchdog protection in background
+watchdog_loop &
+WATCHDOG_PID=$!
+
 # Start status cache refresh in background
 status_cache_loop &
 CACHE_PID=$!
 
-trap "kill $HEALTH_PID $CACHE_PID 2>/dev/null; exit" EXIT INT TERM
+trap "kill $HEALTH_PID $WATCHDOG_PID $CACHE_PID 2>/dev/null; exit" EXIT INT TERM
 
 while true; do
   socat TCP-LISTEN:${PORT},reuseaddr,fork EXEC:"${SCRIPT_PATH} --handle-request ${PORT}" 2>/dev/null || sleep 1
