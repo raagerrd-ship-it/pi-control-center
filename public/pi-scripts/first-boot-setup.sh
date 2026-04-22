@@ -331,6 +331,7 @@ $PI_USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl --no-block stop *.service
 $PI_USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl enable *.service
 $PI_USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl disable *.service
 $PI_USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl try-restart *.service
+$PI_USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl restart *.service
 $PI_USER ALL=(ALL) NOPASSWD: /usr/bin/mkdir -p /etc/pi-control-center
 $PI_USER ALL=(ALL) NOPASSWD: /usr/bin/mkdir -p /var/log/pi-control-center
 $PI_USER ALL=(ALL) NOPASSWD: /usr/bin/mkdir -p /var/lib/pi-control-center
