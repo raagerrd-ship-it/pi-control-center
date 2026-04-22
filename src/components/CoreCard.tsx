@@ -427,13 +427,26 @@ export const CoreCard = memo(function CoreCard({
         <div className="flex flex-col gap-1">
           <div className="flex items-center gap-1.5 font-mono text-[10px] text-muted-foreground">
             <MemoryStick className="h-3 w-3 shrink-0" />
-            <span className="font-medium text-foreground">{sliderValue}MB</span>
+            <span className="font-medium text-foreground">MemoryMax {sliderValue}MB</span>
             {online && ramMb > 0 && (
               <span className={ramMb / sliderValue > 0.8 ? 'text-[hsl(var(--status-warning))]' : ''}>
-                ({ramMb}MB used)
+                ({ramMb}MB)
               </span>
             )}
             {memLimitSaving && <Loader2 className="h-2.5 w-2.5 animate-spin" />}
+            {profile?.levels && (
+              <Select value={memoryLevel} onValueChange={handleMemoryLevelChange}>
+                <SelectTrigger className="ml-auto h-6 w-[86px] px-2 font-mono text-[10px]">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="low" className="font-mono text-xs">Låg</SelectItem>
+                  <SelectItem value="balanced" className="font-mono text-xs">Balans</SelectItem>
+                  <SelectItem value="high" className="font-mono text-xs">Hög</SelectItem>
+                  <SelectItem value="custom" className="font-mono text-xs" disabled>Manuell</SelectItem>
+                </SelectContent>
+              </Select>
+            )}
           </div>
           <input
             type="range"
