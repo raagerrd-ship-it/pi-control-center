@@ -1,5 +1,5 @@
 import { useState, memo } from 'react';
-import { ExternalLink, RefreshCw, CheckCircle2, AlertCircle, Loader2, Play, Square, RotateCcw, Trash2, Server, Monitor, Download, MemoryStick, ShieldCheck, KeyRound, FolderLock } from 'lucide-react';
+import { ExternalLink, RefreshCw, CheckCircle2, AlertCircle, Loader2, Play, Square, RotateCcw, Trash2, Server, Monitor, Download, MemoryStick, ShieldCheck, KeyRound, FolderLock, Terminal } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import {
@@ -489,7 +489,7 @@ export const CoreCard = memo(function CoreCard({
           )}
           {service.logDir && (
             <div className="flex items-center gap-1.5 min-w-0" title={service.logDir}>
-              <TerminalIcon className="h-3 w-3 shrink-0" />
+              <Terminal className="h-3 w-3 shrink-0" />
               <span className="truncate">Logg: {service.logDir}</span>
             </div>
           )}
