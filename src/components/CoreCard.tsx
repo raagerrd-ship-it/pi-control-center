@@ -32,6 +32,8 @@ interface CoreCardProps {
     version: string;
     cpu: number;
     ramMb: number;
+    memoryMaxMb?: number;
+    memoryLevel?: string;
     port?: number;
     versionInfo?: VersionInfo;
     updateStatus?: UpdateResult;
@@ -183,7 +185,9 @@ export const CoreCard = memo(function CoreCard({
   const maxForThis = Math.max(16, ramBudgetMb - otherAllocatedMb);
 
   // Sync local slider value with prop
-  const sliderValue = localMemLimit ?? memLimitMb ?? 0;
+  const profile = service?.definition.memoryProfile || service?.memoryProfile;
+  const memoryLevel = service?.memoryLevel || (profile && memLimitMb ? Object.entries(profile.levels).find(([, mb]) => mb === memLimitMb)?.[0] : undefined) || 'custom';
+  const sliderValue = localMemLimit ?? service?.memoryMaxMb ?? memLimitMb ?? 0;
 
   const handleSliderChange = (val: number) => {
     const clamped = Math.min(Math.max(val, 16), maxForThis);
@@ -207,6 +211,18 @@ export const CoreCard = memo(function CoreCard({
     } finally {
       setMemLimitSaving(false);
       setLocalMemLimit(null);
+    }
+  };
+
+  const handleMemoryLevelChange = async (level: string) => {
+    if (!service?.definition?.key || !profile?.levels[level]) return;
+    const mb = Math.min(profile.levels[level], maxForThis);
+    setMemLimitSaving(true);
+    onMemLimitChange(service.definition.key, mb);
+    try {
+      await setMemoryLimit(service.definition.key, mb, level);
+    } finally {
+      setMemLimitSaving(false);
     }
   };
 
