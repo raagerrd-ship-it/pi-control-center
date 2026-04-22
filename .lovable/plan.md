@@ -1,166 +1,92 @@
 
-## Rekommendation: ja till gemensam Node-runtime, nej till gemensam Node-process
+## Mål
 
-Jag tycker idén är bra om vi menar:
+Göra så att varje tjänst får en permanent plats för inställningar och sparfiler som inte ligger i `/opt/<app>` och därför överlever uppdateringar.
 
-**En Node.js-installation som PCC äger och alla tjänster startas med.**
-
-Jag skulle däremot inte lägga Sonos, Lotus och Cast Away i **samma Node-process**, eftersom det tar bort isoleringen. Om Lotus får minnesläcka eller hamnar i loop kan den då påverka de andra direkt. Dagens modell med separata systemd-tjänster är säkrare för Pi:n.
-
-Rätt modell blir:
+Standard:
 
 ```text
-PCC installerar/äger Node.js v24
-        │
-        ├── Sonos engine körs som egen systemd-tjänst
-        ├── Lotus engine körs som egen systemd-tjänst
-        └── Cast Away engine körs som egen systemd-tjänst
-
-Alla använder samma node-binär,
-men har egna node_modules, egna portar, egen CPU-kärna, egen MemoryMax.
+/opt/<app>                              = appens kod, får ersättas vid update
+/etc/pi-control-center/apps/<app>       = appens konfiguration/inställningar
+/var/lib/pi-control-center/apps/<app>   = appens sparfiler/state/data
+/var/log/pi-control-center/apps/<app>   = appens loggar
 ```
 
-## Varför detta är bättre
+## Plan
 
-- Mindre risk för olika Node-versioner mellan appar.
-- Enklare felsökning: PCC kan visa exakt vilken Node-version alla tjänster kör på.
-- Mindre installationsstrul.
-- Bättre kontroll över minnesgränser via gemensamma `NODE_OPTIONS`.
-- Vi behåller sandboxing, watchdog, CPU-pinning och systemd-isolering.
+1. **Införa permanent data-katalog per tjänst**
+   - Lägg till stöd i PCC API:t för:
+     - `/var/lib/pi-control-center/apps/<app>`
+   - Skapa katalogen automatiskt vid installation/start.
+   - Sätt ägare till Pi-användaren.
+   - Sätt säkra rättigheter:
+     - config/data: `700`
+     - loggar: `755`
 
-## Viktig gräns
+2. **Exponera katalogerna till alla tjänster**
+   - Alla systemd-servicefiler som PCC skapar ska få:
+     - `PCC_CONFIG_DIR=/etc/pi-control-center/apps/<app>`
+     - `PCC_DATA_DIR=/var/lib/pi-control-center/apps/<app>`
+     - `PCC_LOG_DIR=/var/log/pi-control-center/apps/<app>`
 
-Jag skulle **inte** dela `node_modules` globalt mellan tjänsterna.
+3. **Tillåt skrivning trots systemd-skydd**
+   - Behåll hårdningen med `ProtectSystem=strict`.
+   - Lägg till:
+     - `ReadWritePaths=/var/lib/pi-control-center/apps/<app>`
+   - Då kan tjänsten skriva sina sparfiler där, men inte fritt i systemet.
 
-Sonos, Lotus och Cast Away har olika beroenden:
+4. **Uppdateringar ska aldrig ta bort sparfiler**
+   - Uppdatering ska bara ersätta:
+     - `/opt/<app>`
+   - Följande ska lämnas kvar:
+     - `/etc/pi-control-center/apps/<app>`
+     - `/var/lib/pi-control-center/apps/<app>`
+     - `/var/log/pi-control-center/apps/<app>`
 
-- Sonos: egna bild/UPnP-relaterade moduler.
-- Lotus: BLE/native-moduler som måste matcha Pi/Node-version.
-- Cast Away: Chromecast/mDNS-relaterade moduler.
+5. **Avinstallation ska bevara användardata**
+   - Vanlig avinstallation tar bort:
+     - systemd-service
+     - `/opt/<app>`
+     - core assignment
+   - Men sparar:
+     - config
+     - data/state
+     - loggar
+   - Det gör att man kan installera om utan att tappa inställningar.
 
-Delade dependencies kan ge versionskrockar och konstiga fel. Varje app bör fortfarande paketera eller installera sina egna produktionsberoenden.
+6. **Factory reset får rensa allt**
+   - Full återställning ska radera även:
+     - `/etc/pi-control-center/apps`
+     - `/var/lib/pi-control-center/apps`
+     - `/var/log/pi-control-center/apps`
+   - Det motsvarar “börja om från noll”.
 
-## Plan: PCC-ägd Node-runtime för alla tjänster
+7. **Visa data-sökvägen i UI**
+   - Lägg till “Data” på tjänstekorten så man ser var sparfilerna ligger:
+     - `Data: /var/lib/pi-control-center/apps/<app>`
 
-### 1. Gör Node v24 till PCC:s systemruntime
+8. **Uppdatera sudo-regler och installationsskript**
+   - Uppdatera `install.sh` och first-boot-script så PCC får lösenordsfri sudo för att skapa och hantera:
+     - `/var/lib/pi-control-center/apps`
+     - `/var/lib/pi-control-center/apps/*`
+   - Lägg till nödvändiga regler för `mkdir`, `chown`, `chmod` och liknande där PCC redan hanterar `/etc` och `/var/log`.
 
-Uppdatera installer/update-flödet så PCC säkerställer att rätt Node-version finns på Pi:n.
+9. **Dokumentera app-standarden**
+   - Appar ska använda:
+     - `PCC_CONFIG_DIR` för inställningar
+     - `PCC_DATA_DIR` för sparfiler/state
+     - `PCC_LOG_DIR` för loggar
+   - Om en app redan sparar inne i `/opt/<app>` behöver appen senare justeras separat för att använda `PCC_DATA_DIR`.
 
-- Ändra från nuvarande Node 20-installation till Node 24.
-- Lägg till tydlig kontroll:
-  - om Node saknas: installera Node v24
-  - om fel major-version finns: uppgradera till Node v24
-- Logga versionen i install-output.
+## Teknisk detalj
 
-Målet är att Pi:n alltid har en stabil, gemensam `/usr/bin/node` som PCC kontrollerar.
-
-### 2. Lägg till runtime-helper i API-skriptet
-
-I `pi-control-center-api.sh` läggs helpers till:
-
-- `get_node_bin`
-- `get_node_version`
-- `assert_node_runtime`
-- eventuellt `node_runtime_json`
-
-Dessa används både vid installation och när systemd-units skapas.
-
-### 3. Ändra genererade systemd-units
-
-När PCC skapar engine-tjänster ska de använda PCC:s Node-runtime explicit.
-
-I stället för hårdkodat:
-
-```ini
-ExecStart=/usr/bin/node /opt/app/engine/index.js
-```
-
-ska PCC generera något i stil med:
-
-```ini
-ExecStart=/usr/bin/node --max-old-space-size=96 /opt/app/engine/index.js
-Environment=NODE_ENV=production
-Environment=NODE_OPTIONS=--max-old-space-size=96
-```
-
-Exakt minnesvärde kan styras konservativt per engine.
-
-### 4. Behåll separata tjänster och separata dependencies
-
-PCC ska fortfarande skapa:
-
-- en engine-service per app
-- en UI-service per app
-- separata `node_modules` per app om appen behöver det
-- separat `MemoryMax`
-- separat watchdog-state
-
-Detta bevarar nuvarande säkerhetsmodell.
-
-### 5. Justera release/install-regeln
-
-Uppdatera dokumentationen och appstandarden:
-
-- Appar ska inte installera egen Node.
-- Appar ska anta att `node` finns via PCC.
-- Releases ska fortfarande innehålla produktionsberoenden om möjligt.
-- Native-moduler får byggas/rebuildas mot PCC:s Node-version vid installation.
-
-Detta passar särskilt Lotus, eftersom BLE/native-moduler måste matcha runtime-versionen.
-
-### 6. Visa Node-runtime i UI/status
-
-Utöka `/api/status` med runtime-info:
-
-```json
-{
-  "runtime": {
-    "nodeVersion": "v24.x.x",
-    "nodePath": "/usr/bin/node"
-  }
-}
-```
-
-UI kan visa detta diskret i systempanelen eller inställningar:
+PCC har redan början på detta med config och loggar:
 
 ```text
-Node-runtime: v24.x.x
+/etc/pi-control-center/apps/<app>
+/var/log/pi-control-center/apps/<app>
 ```
 
-### 7. Uppdatera dokumentationen
+Det som saknas är en tydlig persistent data/state-katalog och att den skickas till alla tjänster via systemd.
 
-Uppdatera:
-
-- `SERVICE-INTEGRATION.md`
-- `SERVICE-ARCHITECTURE.md`
-- projektminnet för standards/arkitektur
-
-Ny regel:
-
-```text
-PCC äger Node.js-runtime. Tjänster får använda node, men ska inte installera egen Node-version.
-```
-
-## Det jag inte skulle bygga nu
-
-Jag skulle inte bygga en gemensam “app-host” där alla tjänster laddas in i en och samma Node-process.
-
-Det skulle spara lite RAM, men kostnaden är för hög:
-
-- sämre isolering
-- en app kan krascha alla
-- svårare watchdog
-- svårare MemoryMax per app
-- svårare BLE/mDNS/Chromecast-felsökning
-- större risk att Pi:n låser sig
-
-## Resultat
-
-Efter ändringen får vi:
-
-- en gemensam, kontrollerad Node v24-runtime
-- mindre versionsstrul
-- fortsatt isolering per tjänst
-- bättre stabilitet på Pi Zero 2
-- enklare appstandard för Sonos, Lotus och Cast Away
-- ingen risk att en trasig app drar med sig resten
+Efter ändringen blir `/opt/<app>` ren programkod och kan tryggt bytas ut vid uppdatering utan att inställningar eller sparfiler försvinner.
