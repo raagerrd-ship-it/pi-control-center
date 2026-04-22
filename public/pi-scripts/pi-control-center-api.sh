@@ -1049,7 +1049,6 @@ do_install_release() {
     # Component-based: create separate services for engine and ui
     # Fixed ports: UI = 3000 + core, Engine = 3050 + core
     local engine_port=$(engine_port_for_core "$req_core")
-    mkdir -p "$PI_HOME/.config/systemd/user" || return 1
     mkdir -p "${install_dir}/.npm-cache" || return 1
 
     for comp in engine ui; do
@@ -1114,34 +1113,27 @@ AllowedCPUs=0"
       comp_group_lines=""
       registry_needs_permission "$app" "bluetooth" && comp_group_lines="SupplementaryGroups=bluetooth"
       if [ "$comp" = "engine" ] && [ "$comp_type" = "node" ]; then
-        # User-services kan inte sätta AmbientCapabilities/CapabilityBoundingSet
-        # (kräver root). UPnP/SSDP via plain UDP fungerar utan CAP_NET_RAW.
         comp_security_lines="PrivateTmp=true"
         comp_env_lines="Environment=NODE_ENV=production
 Environment=NODE_OPTIONS=--max-old-space-size=96
 Environment=DBUS_SYSTEM_BUS_ADDRESS=unix:path=/run/dbus/system_bus_socket"
       fi
 
-      local comp_svc_file="$PI_HOME/.config/systemd/user/${comp_svc}.service"
-      # Remove any root-owned service file left by installScript (which runs via sudo)
-      [ -f "$comp_svc_file" ] && [ ! -w "$comp_svc_file" ] && sudo rm -f "$comp_svc_file"
-
-      # Remove conflicting system-level service file that overrides user-level
-      local sys_svc_file="/etc/systemd/system/${comp_svc}.service"
-      if [ -f "$sys_svc_file" ]; then
-        log "Removing conflicting system-level service: ${sys_svc_file}"
-        sudo systemctl stop "${comp_svc}.service" 2>/dev/null || true
-        sudo systemctl disable "${comp_svc}.service" 2>/dev/null || true
-        sudo rm -f "$sys_svc_file"
-        sudo systemctl daemon-reload
-      fi
-      if ! cat > "$comp_svc_file" <<UNIT
+      local comp_svc_file="/etc/systemd/system/${comp_svc}.service"
+      user_systemctl stop "${comp_svc}.service" 2>/dev/null || true
+      user_systemctl disable "${comp_svc}.service" 2>/dev/null || true
+      rm -f "$PI_HOME/.config/systemd/user/${comp_svc}.service" 2>/dev/null || true
+      sudo systemctl stop "${comp_svc}.service" 2>/dev/null || true
+      sudo systemctl disable "${comp_svc}.service" 2>/dev/null || true
+      if ! sudo tee "$comp_svc_file" > /dev/null <<UNIT
 [Unit]
 Description=${app} ${comp} service
 After=network.target
 
 [Service]
 Type=simple
+User=pi
+Group=pi
 WorkingDirectory=${comp_work_dir}
 ExecStart=${comp_exec}
 Environment=NPM_CONFIG_CACHE=${install_dir}/.npm-cache
@@ -1167,15 +1159,15 @@ Restart=${restart_policy}
 RestartSec=5
 
 [Install]
-WantedBy=default.target
+WantedBy=multi-user.target
 UNIT
       then
         return 1
       fi
 
-      user_systemctl daemon-reload || return 1
-      user_systemctl enable "${comp_svc}.service" || return 1
-      user_systemctl --no-block start "${comp_svc}.service" || return 1
+      sudo systemctl daemon-reload || return 1
+      sudo systemctl enable "${comp_svc}.service" || return 1
+      sudo systemctl --no-block start "${comp_svc}.service" || return 1
     done
   else
     # Legacy single-service
