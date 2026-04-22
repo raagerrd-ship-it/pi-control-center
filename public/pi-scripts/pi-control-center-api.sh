@@ -1181,6 +1181,13 @@ UNIT
     local legacy_security_lines="PrivateTmp=true
 NoNewPrivileges=true"
     local legacy_env_lines=""
+    local legacy_cfg_dir legacy_log_dir legacy_permissions legacy_group_lines
+    legacy_cfg_dir=$(app_config_dir "$app")
+    legacy_log_dir=$(app_log_dir "$app")
+    legacy_permissions=$(registry_permissions_env "$app")
+    ensure_app_managed_dirs "$app"
+    legacy_group_lines=""
+    registry_needs_permission "$app" "bluetooth" && legacy_group_lines="SupplementaryGroups=bluetooth"
     if [ "$app_type" = "node" ] && [ -n "$entrypoint" ]; then
       local entry_dir
       entry_dir=$(dirname "$entrypoint")
@@ -1224,6 +1231,10 @@ Type=simple
 WorkingDirectory=${legacy_work_dir}
 ExecStart=${exec_start}
 Environment=NPM_CONFIG_CACHE=${install_dir}/.npm-cache
+Environment=PCC_APP_KEY=${app}
+Environment=PCC_CONFIG_DIR=${legacy_cfg_dir}
+Environment=PCC_LOG_DIR=${legacy_log_dir}
+Environment=PCC_PERMISSIONS=${legacy_permissions}
 Environment=PORT=${req_port}
 ${legacy_env_lines}
 CPUAffinity=${req_core}
@@ -1231,7 +1242,12 @@ AllowedCPUs=${req_core}
 ProtectSystem=strict
 ProtectHome=read-only
 ReadWritePaths=${install_dir}
+ReadWritePaths=${legacy_cfg_dir}
+ReadWritePaths=${legacy_log_dir}
 ${legacy_security_lines}
+${legacy_group_lines}
+StandardOutput=append:${legacy_log_dir}/service.log
+StandardError=append:${legacy_log_dir}/service.log
 Restart=on-failure
 RestartSec=5
 
