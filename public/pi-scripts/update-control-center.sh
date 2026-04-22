@@ -14,6 +14,18 @@ export NODE_OPTIONS="--max-old-space-size=256"
 
 echo "=== Updating Pi Control Center ==="
 
+ensure_node24() {
+  local current major
+  current=$(node -v 2>/dev/null || true)
+  major=${current#v}; major=${major%%.*}
+  if [ "$major" != "24" ]; then
+    echo "  Installing PCC Node.js 24 LTS runtime..."
+    curl -fsSL https://deb.nodesource.com/setup_24.x | sudo -E bash -
+    sudo apt-get install -y -qq nodejs
+  fi
+  echo "  Node: $(node -v), npm: $(npm -v)"
+}
+
 cd "$DASHBOARD_DIR"
 
 echo "[1/6] Pulling latest code..."
@@ -23,6 +35,7 @@ sed -i 's/\r$//' "$DASHBOARD_DIR/public/pi-scripts/"*.sh
 chmod +x "$DASHBOARD_DIR/public/pi-scripts/"*.sh
 
 echo "[2/6] Installing dependencies..."
+ensure_node24
 rm -rf node_modules
 nice -n 15 ionice -c 3 npm install --no-audit --no-fund
 sudo chown -R "$USER:$USER" node_modules 2>/dev/null || true
