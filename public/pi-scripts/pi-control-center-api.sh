@@ -1106,9 +1106,12 @@ NoNewPrivileges=true"
         fi
         search_dir=$(dirname "$search_dir")
       done
-      exec_start="/usr/bin/node ${install_dir}/${entrypoint}"
+      assert_node_runtime || log "WARNING: PCC expects Node.js v24, current runtime is $(get_node_version)"
+      exec_start="$(get_node_bin) --max-old-space-size=96 ${install_dir}/${entrypoint}"
       legacy_security_lines="PrivateTmp=true"
-      legacy_env_lines="Environment=DBUS_SYSTEM_BUS_ADDRESS=unix:path=/run/dbus/system_bus_socket"
+      legacy_env_lines="Environment=NODE_ENV=production
+Environment=NODE_OPTIONS=--max-old-space-size=96
+Environment=DBUS_SYSTEM_BUS_ADDRESS=unix:path=/run/dbus/system_bus_socket"
     else
       exec_start="/usr/bin/python3 ${PI_HOME}/pi-control-center/public/pi-scripts/static-spa-server.py --root ${install_dir}/dist --port ${req_port} --host 0.0.0.0"
     fi
