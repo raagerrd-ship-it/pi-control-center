@@ -26,7 +26,7 @@ sudo_run_quiet() {
 }
 
 sudo_available() {
-  [ "$(id -u)" -eq 0 ] || sudo -n true >/dev/null 2>&1
+  [ "$(id -u)" -eq 0 ] || sudo -n true >/dev/null 2>&1 || sudo -n /usr/bin/systemctl daemon-reload >/dev/null 2>&1
 }
 
 case "$REQUEST_MODE" in
@@ -998,9 +998,9 @@ do_install_release() {
   [ -z "$download_url" ] || [ "$download_url" = "null" ] && return 1
 
   progress "$sf" "$app" "Förbereder katalog..." "$start_time"
-  [ -d "$install_dir" ] && sudo rm -rf "$install_dir"
-  sudo mkdir -p "$install_dir"
-  sudo chown "$(whoami):$(whoami)" "$install_dir"
+  [ -d "$install_dir" ] && sudo_run rm -rf "$install_dir"
+  sudo_run mkdir -p "$install_dir"
+  sudo_run chown "$(whoami):$(whoami)" "$install_dir"
 
   progress "$sf" "$app" "Laddar ner förbyggd release..." "$start_time"
   if ! curl -sfL "$download_url" -o "/tmp/pi-control-center/${app}-dist.tar.gz" >> "$INSTALL_DIR/${app}.log" 2>&1; then
@@ -1033,10 +1033,10 @@ do_install_release() {
     for pkg_dir in $pkg_dirs; do
       if [ -d "$pkg_dir/node_modules" ]; then
         progress "$sf" "$app" "Bygger om native-moduler i ${pkg_dir##*/}..." "$start_time"
-        if ! sudo systemd-run --scope --quiet -p MemoryMax=256M \
+        if ! sudo_run systemd-run --scope --quiet -p MemoryMax=256M \
           bash -lc "cd '$pkg_dir' && NPM_CONFIG_CACHE='${install_dir}/.npm-cache' nice -n 15 ionice -c 3 npm rebuild --no-audit --no-fund" >> "$INSTALL_DIR/${app}.log" 2>&1; then
           progress "$sf" "$app" "npm rebuild misslyckades i ${pkg_dir##*/}, försöker npm install..." "$start_time"
-          sudo systemd-run --scope --quiet -p MemoryMax=256M \
+          sudo_run systemd-run --scope --quiet -p MemoryMax=256M \
             bash -lc "cd '$pkg_dir' && NPM_CONFIG_CACHE='${install_dir}/.npm-cache' nice -n 15 ionice -c 3 npm install --omit=dev --no-audit --no-fund" >> "$INSTALL_DIR/${app}.log" 2>&1 || {
             echo "{\"app\":\"${app}\",\"status\":\"error\",\"message\":\"npm install misslyckades i ${pkg_dir##*/}\",\"timestamp\":\"$(date -Iseconds)\"}" > "$sf"
             return 1
@@ -1052,7 +1052,7 @@ do_install_release() {
       progress "$sf" "$app" "Kör installationsskript..." "$start_time"
       chmod +x "$install_dir/$install_script"
       find "$install_dir" -name '*.sh' -exec sed -i 's/\r$//' {} +
-      sudo systemd-run --scope --quiet -p MemoryMax=256M \
+      sudo_run systemd-run --scope --quiet -p MemoryMax=256M \
         nice -n 15 ionice -c 3 bash "$install_dir/$install_script" --port "$req_port" --core "$req_core" >> "$INSTALL_DIR/${app}.log" 2>&1 || true
     fi
   fi
