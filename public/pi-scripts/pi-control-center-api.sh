@@ -1919,7 +1919,7 @@ handle_request() {
           STOPPED_SERVICES=$(collect_app_services)
           local svc
           for svc in $STOPPED_SERVICES; do
-            sudo systemctl stop "${svc}.service" 2>/dev/null || user_systemctl stop "${svc}.service" 2>/dev/null || true
+            sudo_run_quiet systemctl --no-block stop "${svc}.service" || sudo_run_quiet systemctl stop "${svc}.service" || user_systemctl stop "${svc}.service" 2>/dev/null || true
           done
         }
 
@@ -1934,20 +1934,30 @@ handle_request() {
 
         cd "$ddir" 2>/dev/null || { dashboard_fail "Dashboard-katalog saknas"; exit 1; }
 
-        dashboard_progress "Stoppar tjänster..."
-        stop_app_services
-
         dashboard_progress "Återställer lokala ändringar..."
         git checkout -- . 2>/dev/null || true
         git clean -fd -e node_modules >/dev/null 2>&1 || true
 
         dashboard_progress "Hämtar senaste kod..."
-        nice -n 15 git fetch origin main --depth=1 --quiet 2>/dev/null || nice -n 15 git fetch origin master --depth=1 --quiet 2>/dev/null || { dashboard_fail "Git fetch misslyckades"; exit 1; }
-        git rev-parse origin/main >/dev/null 2>&1 || remote_ref="origin/master"
+        fetch_err="$STATUS_DIR/dashboard-git-fetch.err"
+        if nice -n 15 git fetch origin main --depth=1 --quiet 2>"$fetch_err"; then
+          remote_ref="origin/main"
+        elif nice -n 15 git fetch origin master --depth=1 --quiet 2>"$fetch_err"; then
+          remote_ref="origin/master"
+        else
+          fetch_msg=$(head -2 "$fetch_err" 2>/dev/null | tr '\n' ' ' | sed 's/"/\\"/g' | cut -c1-140)
+          dashboard_fail "Git fetch misslyckades${fetch_msg:+: ${fetch_msg}}"
+          rm -f "$fetch_err"
+          exit 1
+        fi
+        rm -f "$fetch_err"
         git reset --hard "$remote_ref" --quiet || { dashboard_fail "Git reset misslyckades"; exit 1; }
         git clean -fd -e node_modules >/dev/null 2>&1 || true
         sed -i 's/\r$//' "$ddir/public/pi-scripts/"*.sh
         chmod +x "$ddir/public/pi-scripts/"*.sh
+
+        dashboard_progress "Stoppar tjänster..."
+        stop_app_services
 
         dashboard_progress "Säkerställer swap..."
         if [ "$(swapon --show | wc -l)" -lt 2 ] && [ -f /etc/dphys-swapfile ]; then
