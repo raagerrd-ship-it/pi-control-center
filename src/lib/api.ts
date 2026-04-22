@@ -39,6 +39,9 @@ export interface ServiceStatus {
   memoryMaxMb?: number;
   memoryLevel?: 'low' | 'balanced' | 'high' | 'custom' | string;
   memoryProfile?: MemoryProfile | null;
+  permissions?: string[];
+  configDir?: string;
+  logDir?: string;
   cpuCore: number;
   port?: number;
   /** Health check data from engine's /api/health */
@@ -140,6 +143,7 @@ export interface ServiceDefinition {
   repo: string;
   releaseUrl?: string;
   memoryProfile?: MemoryProfile;
+  permissions?: string[];
   installDir: string;
   installScript: string;
   updateScript: string;
