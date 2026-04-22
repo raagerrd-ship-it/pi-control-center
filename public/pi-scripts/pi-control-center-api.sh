@@ -9,6 +9,26 @@ INSTALL_APP=""
 INSTALL_PORT=""
 INSTALL_CORE=""
 
+sudo_run() {
+  if [ "$(id -u)" -eq 0 ]; then
+    "$@"
+  else
+    sudo -n "$@"
+  fi
+}
+
+sudo_run_quiet() {
+  if [ "$(id -u)" -eq 0 ]; then
+    "$@" 2>/dev/null
+  else
+    sudo -n "$@" 2>/dev/null
+  fi
+}
+
+sudo_available() {
+  [ "$(id -u)" -eq 0 ] || sudo -n true >/dev/null 2>&1
+}
+
 case "$REQUEST_MODE" in
   --handle-request)
     shift
@@ -41,7 +61,7 @@ fi
 if [ -f "$SCRIPT_PATH" ] && [ "$SCRIPT_PATH" != "/usr/local/bin/pi-control-center-api.sh" ]; then
   if [ ! -L /usr/local/bin/pi-control-center-api.sh ] || \
      [ "$(readlink -f /usr/local/bin/pi-control-center-api.sh 2>/dev/null)" != "$SCRIPT_PATH" ]; then
-    sudo ln -sf "$SCRIPT_PATH" /usr/local/bin/pi-control-center-api.sh 2>/dev/null || true
+    sudo_run_quiet ln -sf "$SCRIPT_PATH" /usr/local/bin/pi-control-center-api.sh || true
   fi
 fi
 PI_HOME="/home/pi"
@@ -63,7 +83,9 @@ HEALTH_DIR="$STATUS_DIR/health"
 WATCHDOG_DIR="$STATUS_DIR/watchdog"
 
 mkdir -p "$STATUS_DIR" "$INSTALL_DIR" "$HEALTH_DIR" "$WATCHDOG_DIR"
-sudo mkdir -p /etc/pi-control-center "$APPS_CONFIG_DIR" "$APPS_LOG_DIR" 2>/dev/null || true
+sudo_run_quiet mkdir -p /etc/pi-control-center || true
+sudo_run_quiet mkdir -p "$APPS_CONFIG_DIR" || true
+sudo_run_quiet mkdir -p "$APPS_LOG_DIR" || true
 
 # Read git info once at startup
 DASHBOARD_COMMIT=""
@@ -76,7 +98,7 @@ if [ -d "$PI_HOME/pi-control-center/.git" ]; then
 fi
 
 # Initialize assignments file if missing
-[ -f "$ASSIGNMENTS_FILE" ] || echo '{}' | sudo tee "$ASSIGNMENTS_FILE" > /dev/null
+[ -f "$ASSIGNMENTS_FILE" ] || echo '{}' | sudo_run tee "$ASSIGNMENTS_FILE" > /dev/null || true
 
 # Fixed port mapping: UI = 3000 + core, Engine = 3050 + core
 port_for_core() { echo $((3000 + ${1:-1})); }
@@ -126,8 +148,9 @@ ensure_app_managed_dirs() {
   local app=$1 cfg logdir
   cfg=$(app_config_dir "$app")
   logdir=$(app_log_dir "$app")
-  sudo mkdir -p "$cfg" "$logdir" 2>/dev/null || true
-  sudo chown -R "$(whoami):$(id -gn)" "$cfg" "$logdir" 2>/dev/null || true
+  sudo_run_quiet mkdir -p "$cfg" || true
+  sudo_run_quiet mkdir -p "$logdir" || true
+  sudo_run_quiet chown -R "$(whoami):$(id -gn)" "$cfg" "$logdir" || true
   chmod 700 "$cfg" 2>/dev/null || true
   chmod 755 "$logdir" 2>/dev/null || true
 }
@@ -219,12 +242,12 @@ assignment_set() {
   local tmp tmpfile
   tmpfile="/tmp/pi-control-center/assignments.tmp.$$"
   if ! jq empty "$ASSIGNMENTS_FILE" 2>/dev/null; then
-    echo '{}' | sudo tee "$ASSIGNMENTS_FILE" > /dev/null
+    echo '{}' | sudo_run tee "$ASSIGNMENTS_FILE" > /dev/null || true
   fi
   tmp=$(jq --arg k "$1" --argjson c "$2" '.[$k] = $c' "$ASSIGNMENTS_FILE" 2>/dev/null)
   if [ -n "$tmp" ] && echo "$tmp" | jq empty 2>/dev/null; then
     echo "$tmp" > "$tmpfile"
-    sudo mv "$tmpfile" "$ASSIGNMENTS_FILE"
+    sudo_run mv "$tmpfile" "$ASSIGNMENTS_FILE"
   else
     rm -f "$tmpfile"
     echo "WARNING: assignment_set failed for $1, keeping existing file" >&2
@@ -236,12 +259,12 @@ assignment_remove() {
   local tmp tmpfile
   tmpfile="/tmp/pi-control-center/assignments.tmp.$$"
   if ! jq empty "$ASSIGNMENTS_FILE" 2>/dev/null; then
-    echo '{}' | sudo tee "$ASSIGNMENTS_FILE" > /dev/null
+    echo '{}' | sudo_run tee "$ASSIGNMENTS_FILE" > /dev/null || true
   fi
   tmp=$(jq --arg k "$1" 'del(.[$k])' "$ASSIGNMENTS_FILE" 2>/dev/null)
   if [ -n "$tmp" ] && echo "$tmp" | jq empty 2>/dev/null; then
     echo "$tmp" > "$tmpfile"
-    sudo mv "$tmpfile" "$ASSIGNMENTS_FILE"
+    sudo_run mv "$tmpfile" "$ASSIGNMENTS_FILE"
   else
     rm -f "$tmpfile"
     echo "WARNING: assignment_remove failed for $1, keeping existing file" >&2
