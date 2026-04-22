@@ -2335,11 +2335,10 @@ if [ "$REQUEST_MODE" = "--run-install" ]; then
   exit $?
 fi
 
-# --- Startup: remove conflicting system-level service files ---
-startup_cleanup_system_services() {
+# --- Startup: remove legacy user-level app service files now that PCC owns system services ---
+startup_cleanup_user_services() {
   local cleaned=0
   for app in $(registry_keys); do
-    # Skip apps som hanteras externt (t.ex. Lotus Light som har egen system-service)
     [ "$(registry_is_managed "$app")" = "false" ] && continue
     local has_comp svc_names=""
     has_comp=$(registry_has_components "$app")
@@ -2355,19 +2354,19 @@ startup_cleanup_system_services() {
       [ -n "$s" ] && svc_names="$s"
     fi
     for svc_name in $svc_names; do
-      local sys_file="/etc/systemd/system/${svc_name}.service"
-      if [ -f "$sys_file" ]; then
-        log "Startup cleanup: removing conflicting system-level service ${sys_file}"
-        sudo systemctl stop "${svc_name}.service" 2>/dev/null || true
-        sudo systemctl disable "${svc_name}.service" 2>/dev/null || true
-        sudo rm -f "$sys_file"
+      local user_file="$PI_HOME/.config/systemd/user/${svc_name}.service"
+      if [ -f "$user_file" ]; then
+        log "Startup cleanup: removing legacy user service ${user_file}"
+        user_systemctl stop "${svc_name}.service" 2>/dev/null || true
+        user_systemctl disable "${svc_name}.service" 2>/dev/null || true
+        rm -f "$user_file"
         cleaned=1
       fi
     done
   done
-  [ "$cleaned" -eq 1 ] && sudo systemctl daemon-reload
+  [ "$cleaned" -eq 1 ] && user_systemctl daemon-reload 2>/dev/null || true
 }
-startup_cleanup_system_services
+startup_cleanup_user_services
 
 # --- Migrate legacy assignments.json format ---
 # Old: {"app": {"port": 3001, "core": 1}}  →  New: {"app": 1}
