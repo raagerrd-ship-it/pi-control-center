@@ -1146,9 +1146,9 @@ Environment=DBUS_SYSTEM_BUS_ADDRESS=unix:path=/run/dbus/system_bus_socket"
       user_systemctl stop "${comp_svc}.service" 2>/dev/null || true
       user_systemctl disable "${comp_svc}.service" 2>/dev/null || true
       rm -f "$PI_HOME/.config/systemd/user/${comp_svc}.service" 2>/dev/null || true
-      sudo systemctl stop "${comp_svc}.service" 2>/dev/null || true
-      sudo systemctl disable "${comp_svc}.service" 2>/dev/null || true
-      if ! sudo tee "$comp_svc_file" > /dev/null <<UNIT
+      sudo_run_quiet systemctl stop "${comp_svc}.service" || true
+      sudo_run_quiet systemctl disable "${comp_svc}.service" || true
+      if ! sudo_run tee "$comp_svc_file" > /dev/null <<UNIT
 [Unit]
 Description=${app} ${comp} service
 After=network.target
@@ -1188,9 +1188,9 @@ UNIT
         return 1
       fi
 
-      sudo systemctl daemon-reload || return 1
-      sudo systemctl enable "${comp_svc}.service" || return 1
-      sudo systemctl --no-block start "${comp_svc}.service" || return 1
+      sudo_run systemctl daemon-reload || return 1
+      sudo_run systemctl enable "${comp_svc}.service" || return 1
+      sudo_run systemctl --no-block start "${comp_svc}.service" || return 1
     done
   else
     # Legacy single-service
@@ -1236,9 +1236,9 @@ Environment=DBUS_SYSTEM_BUS_ADDRESS=unix:path=/run/dbus/system_bus_socket"
     user_systemctl stop "${svc}.service" 2>/dev/null || true
     user_systemctl disable "${svc}.service" 2>/dev/null || true
     rm -f "$PI_HOME/.config/systemd/user/${svc}.service" 2>/dev/null || true
-    sudo systemctl stop "${svc}.service" 2>/dev/null || true
-    sudo systemctl disable "${svc}.service" 2>/dev/null || true
-    sudo tee "$svc_file" > /dev/null <<UNIT
+    sudo_run_quiet systemctl stop "${svc}.service" || true
+    sudo_run_quiet systemctl disable "${svc}.service" || true
+    sudo_run tee "$svc_file" > /dev/null <<UNIT
 [Unit]
 Description=${app} service
 After=network.target
@@ -1274,9 +1274,9 @@ RestartSec=5
 WantedBy=multi-user.target
 UNIT
 
-    sudo systemctl daemon-reload
-    sudo systemctl enable "${svc}.service"
-    sudo systemctl --no-block start "${svc}.service"
+    sudo_run systemctl daemon-reload
+    sudo_run systemctl enable "${svc}.service"
+    sudo_run systemctl --no-block start "${svc}.service"
   fi
 
   return 0
