@@ -194,6 +194,7 @@ cd "$DASHBOARD_DIR"
 
 echo "[6/9] Building (this takes ~5-10 min on Pi Zero 2)..."
 sudo -u "$PI_USER" NODE_OPTIONS="--max-old-space-size=256" nice -n 15 ionice -c 3 npm install --no-audit --no-fund
+sudo chown -R "$PI_USER:$PI_USER" node_modules 2>/dev/null || true
 sudo -u "$PI_USER" NODE_OPTIONS="--max-old-space-size=256" nice -n 15 ionice -c 3 npm run build
 sudo mkdir -p "$NGINX_DIR"
 sudo cp -r dist/* "$NGINX_DIR/"
