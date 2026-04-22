@@ -640,6 +640,16 @@ check_installed() {
   [ -d "$install_dir" ] && { [ -f "$PI_HOME/.config/systemd/user/${svc}.service" ] || [ -f "/etc/systemd/system/${svc}.service" ]; } && echo "true" || echo "false"
 }
 
+service_unit_file() {
+  local svc=$1
+  [ -z "$svc" ] && return
+  if [ -f "/etc/systemd/system/${svc}.service" ]; then
+    echo "/etc/systemd/system/${svc}.service"
+  elif [ -f "$PI_HOME/.config/systemd/user/${svc}.service" ]; then
+    echo "$PI_HOME/.config/systemd/user/${svc}.service"
+  fi
+}
+
 get_version() {
   local install_dir="$1" port="$2"
   # 1) Ask the service's own API if it's running
