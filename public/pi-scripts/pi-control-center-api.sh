@@ -1628,6 +1628,7 @@ handle_request() {
         fi
         sudo chown -R pi:pi "$ddir/node_modules" 2>/dev/null || true
         sudo systemd-run --scope --quiet -p MemoryMax=512M bash -lc "cd '$ddir' && NODE_OPTIONS='--max-old-space-size=384' npm install --omit=dev --no-audit --no-fund" >> "$reset_log" 2>&1 || true
+        sudo chown -R pi:pi "$ddir/node_modules" 2>/dev/null || true
 
         echo '{"status":"resetting","phase":"Bygger dashboard..."}' > "$STATUS_DIR/factory-reset.json"
         echo "Bygger dashboard..." >> "$reset_log"
@@ -1762,6 +1763,7 @@ handle_request() {
             dashboard_fail "npm install misslyckades eller dödades (troligen minnesbrist)"
             exit 1
           fi
+          sudo chown -R pi:pi "$ddir/node_modules" 2>/dev/null || true
           echo "$curr_hash" > node_modules/.package-hash
           npx -y update-browserslist-db@latest >/dev/null 2>&1 || true
         else
