@@ -1,5 +1,5 @@
 import { useState, memo } from 'react';
-import { ExternalLink, RefreshCw, CheckCircle2, AlertCircle, Loader2, Play, Square, RotateCcw, Trash2, Server, Monitor, Download, MemoryStick } from 'lucide-react';
+import { ExternalLink, RefreshCw, CheckCircle2, AlertCircle, Loader2, Play, Square, RotateCcw, Trash2, Server, Monitor, Download, MemoryStick, ShieldCheck } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import {
@@ -20,7 +20,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import type { UpdateResult, InstallResult, ServiceActionResult, VersionInfo, ServiceDefinition, ComponentStatus, HealthStatus } from '@/lib/api';
+import type { UpdateResult, InstallResult, ServiceActionResult, VersionInfo, ServiceDefinition, ComponentStatus, HealthStatus, WatchdogStatus } from '@/lib/api';
 import { hasComponents, fetchMemoryLimit, setMemoryLimit } from '@/lib/api';
 
 interface CoreCardProps {
@@ -42,6 +42,7 @@ interface CoreCardProps {
       ui?: ComponentStatus;
     };
     health?: HealthStatus;
+    watchdog?: WatchdogStatus;
   };
   availableServices: ServiceDefinition[];
   allInstalls: Record<string, InstallResult>;
@@ -54,6 +55,38 @@ interface CoreCardProps {
   onInstall: (app: string, port: number, core: number) => void;
   onUninstall: (app: string) => void;
   onServiceAction: (app: string, action: 'start' | 'stop' | 'restart', component?: 'engine' | 'ui') => void;
+}
+
+const watchdogText: Record<string, string> = {
+  ok: 'Skydd: OK',
+  warning: 'Varning',
+  restarting: 'Restartad av watchdog',
+  protected: 'Skyddsstoppad',
+  disabled: 'Skydd: av',
+};
+
+const watchdogReason: Record<string, string> = {
+  high_cpu: 'CPU-loop',
+  high_memory: 'hög RAM',
+  health_timeout: 'svarar inte',
+  restart_loop: 'restart-loop',
+};
+
+function WatchdogLine({ watchdog }: { watchdog?: WatchdogStatus }) {
+  if (!watchdog || watchdog.status === 'ok') return null;
+  const isProtected = watchdog.status === 'protected';
+  const tone = isProtected ? 'text-destructive' : 'text-[hsl(var(--status-warning))]';
+  const reason = watchdog.reason ? watchdogReason[watchdog.reason] ?? watchdog.reason : '';
+
+  return (
+    <div className={`flex items-center gap-1.5 font-mono text-[10px] ${tone}`} title={watchdog.lastAction || undefined}>
+      <ShieldCheck className="h-3 w-3 shrink-0" />
+      <span className="truncate">
+        {watchdogText[watchdog.status] ?? 'Skydd'}{reason ? `: ${reason}` : ''}
+      </span>
+      {(watchdog.restartCount ?? 0) > 0 && <span className="text-muted-foreground/50 shrink-0">×{watchdog.restartCount}</span>}
+    </div>
+  );
 }
 
 function ComponentRow({
@@ -110,6 +143,9 @@ function ComponentRow({
             </Button>
           </>
         )}
+      </div>
+      <div className="pl-5">
+        <WatchdogLine watchdog={comp?.watchdog} />
       </div>
     </div>
   );
