@@ -972,7 +972,7 @@ queue_install() {
     return 0
   fi
 
-  sudo systemd-run --quiet --collect --no-block --unit "$unit_name" \
+  sudo_run systemd-run --quiet --collect --no-block --unit "$unit_name" \
     -p Type=exec \
     -p User="$(whoami)" \
     -p Group="$(id -gn)" \
@@ -1448,6 +1448,10 @@ do_install() {
     progress "$sf" "$app" "Pi upptagen – väntar på installationskö..." "$start_time"
     flock 9
   fi
+  if [ "$(registry_is_managed "$app")" != "false" ] && ! sudo_available; then
+    echo "{\"app\":\"${app}\",\"status\":\"error\",\"message\":\"PCC saknar lösenordsfri sudo för systemtjänster\",\"timestamp\":\"$(date -Iseconds)\"}" > "$sf"
+    return 1
+  fi
   ensure_app_managed_dirs "$app"
 
   export XDG_RUNTIME_DIR="$USER_RUNTIME_DIR"
@@ -1461,15 +1465,15 @@ do_install() {
     install_message="Installation klar"
 
     progress "$sf" "$app" "Förbereder katalog..." "$start_time"
-    [ -d "$install_dir" ] && sudo rm -rf "$install_dir"
-    sudo mkdir -p "$(dirname "$install_dir")"
+    [ -d "$install_dir" ] && sudo_run rm -rf "$install_dir"
+    sudo_run mkdir -p "$(dirname "$install_dir")"
 
     progress "$sf" "$app" "Klonar repo..." "$start_time"
-    if ! nice -n 15 sudo git clone --depth 1 "$repo" "$install_dir" > "$INSTALL_DIR/${app}.log" 2>&1; then
+    if ! nice -n 15 sudo_run git clone --depth 1 "$repo" "$install_dir" > "$INSTALL_DIR/${app}.log" 2>&1; then
       echo "{\"app\":\"${app}\",\"status\":\"error\",\"message\":\"Git clone misslyckades\",\"timestamp\":\"$(date -Iseconds)\"}" > "$sf"
       return 1
     fi
-    sudo chown -R "$(whoami):$(whoami)" "$install_dir"
+    sudo_run chown -R "$(whoami):$(whoami)" "$install_dir"
 
     # Fix CRLF line endings in all shell scripts
     find "$install_dir" -name '*.sh' -exec sed -i 's/\r$//' {} +
