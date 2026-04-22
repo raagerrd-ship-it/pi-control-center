@@ -1869,14 +1869,14 @@ handle_request() {
           STOPPED_SERVICES=$(collect_app_services)
           local svc
           for svc in $STOPPED_SERVICES; do
-            user_systemctl stop "${svc}.service" 2>/dev/null || true
+            sudo systemctl stop "${svc}.service" 2>/dev/null || user_systemctl stop "${svc}.service" 2>/dev/null || true
           done
         }
 
         restart_app_services() {
           local svc
           for svc in $STOPPED_SERVICES; do
-            user_systemctl start "${svc}.service" 2>/dev/null || true
+            sudo systemctl start "${svc}.service" 2>/dev/null || user_systemctl start "${svc}.service" 2>/dev/null || true
           done
         }
 
