@@ -128,6 +128,27 @@ registry_get_component() {
   jq -r --arg k "$1" --arg c "$2" --arg f "$3" '.[] | select(.key == $k) | .components[$c][$f] // empty' "$REGISTRY_FILE" 2>/dev/null
 }
 
+registry_memory_profile_json() {
+  jq -c --arg k "$1" '.[] | select(.key == $k) | .memoryProfile // empty' "$REGISTRY_FILE" 2>/dev/null
+}
+
+registry_memory_profile_default_level() {
+  jq -r --arg k "$1" '.[] | select(.key == $k) | .memoryProfile.defaultLevel // "balanced"' "$REGISTRY_FILE" 2>/dev/null
+}
+
+registry_memory_profile_mb() {
+  local app=$1 level=${2:-}
+  [ -z "$level" ] && level=$(registry_memory_profile_default_level "$app")
+  jq -r --arg k "$app" --arg l "$level" '.[] | select(.key == $k) | .memoryProfile.levels[$l] // empty' "$REGISTRY_FILE" 2>/dev/null
+}
+
+memory_level_for_mb() {
+  local app=$1 mb=$2
+  local level
+  level=$(jq -r --arg k "$app" --argjson mb "${mb:-0}" '.[] | select(.key == $k) | (.memoryProfile.levels // {}) | to_entries[]? | select(.value == $mb) | .key' "$REGISTRY_FILE" 2>/dev/null | head -1)
+  [ -n "$level" ] && echo "$level" || echo "custom"
+}
+
 # Check if service uses components format
 registry_has_components() {
   local val
@@ -737,8 +758,13 @@ build_status_json() {
       health_uptime=$(echo "$health_json" | jq -r '.uptime // 0' 2>/dev/null)
       health_mem_rss=$(echo "$health_json" | jq -r '.memory.rss // 0' 2>/dev/null)
 
+      local mem_limit mem_profile mem_level
+      mem_limit=$(_app_current_limit "$app"); [ -z "$mem_limit" ] && mem_limit=$(registry_memory_profile_mb "$app"); [ -z "$mem_limit" ] && mem_limit=128
+      mem_profile=$(registry_memory_profile_json "$app"); [ -z "$mem_profile" ] && mem_profile="null"
+      mem_level=$(memory_level_for_mb "$app" "$mem_limit")
+
       [ -n "$svc_json" ] && svc_json="${svc_json},"
-      svc_json="${svc_json}\"${app}\":{\"online\":${online},\"installed\":${installed},\"version\":\"${ver}\",\"cpu\":${total_cpu:-0},\"ramMb\":${total_ram:-0},\"cpuCore\":${core},\"port\":${port},\"watchdog\":${engine_watchdog},\"health\":{\"status\":\"${health_status}\",\"uptime\":${health_uptime:-0},\"memoryRss\":${health_mem_rss:-0}},\"components\":{\"engine\":{\"online\":${engine_online},\"version\":\"${engine_ver}\",\"cpu\":${engine_cpu:-0},\"ramMb\":${engine_ram:-0},\"service\":\"${engine_svc}\",\"port\":${engine_port},\"cpuCore\":${core},\"watchdog\":${engine_watchdog}},\"ui\":{\"online\":${ui_online},\"version\":\"${ui_ver}\",\"cpu\":${ui_cpu:-0},\"ramMb\":${ui_ram:-0},\"service\":\"${ui_svc}\",\"port\":${port},\"cpuCore\":0,\"watchdog\":${ui_watchdog}}}}"
+      svc_json="${svc_json}\"${app}\":{\"online\":${online},\"installed\":${installed},\"version\":\"${ver}\",\"cpu\":${total_cpu:-0},\"ramMb\":${total_ram:-0},\"cpuCore\":${core},\"port\":${port},\"memoryMaxMb\":${mem_limit},\"memoryLevel\":\"${mem_level}\",\"memoryProfile\":${mem_profile},\"watchdog\":${engine_watchdog},\"health\":{\"status\":\"${health_status}\",\"uptime\":${health_uptime:-0},\"memoryRss\":${health_mem_rss:-0}},\"components\":{\"engine\":{\"online\":${engine_online},\"version\":\"${engine_ver}\",\"cpu\":${engine_cpu:-0},\"ramMb\":${engine_ram:-0},\"service\":\"${engine_svc}\",\"port\":${engine_port},\"cpuCore\":${core},\"watchdog\":${engine_watchdog}},\"ui\":{\"online\":${ui_online},\"version\":\"${ui_ver}\",\"cpu\":${ui_cpu:-0},\"ramMb\":${ui_ram:-0},\"service\":\"${ui_svc}\",\"port\":${port},\"cpuCore\":0,\"watchdog\":${ui_watchdog}}}}"
     else
       # Legacy single-service
       running=$(service_is_active "$svc")
@@ -770,7 +796,11 @@ build_status_json() {
       [ -n "$svc_json" ] && svc_json="${svc_json},"
       local service_watchdog
       service_watchdog=$(watchdog_json "$app" "service")
-      svc_json="${svc_json}\"${app}\":{\"online\":${online},\"installed\":${installed},\"version\":\"${ver}\",\"cpu\":${s_cpu:-0},\"ramMb\":${s_ram:-0},\"cpuCore\":${s_core},\"port\":${port},\"watchdog\":${service_watchdog}}"
+      local mem_limit mem_profile mem_level
+      mem_limit=$(_app_current_limit "$app"); [ -z "$mem_limit" ] && mem_limit=$(registry_memory_profile_mb "$app"); [ -z "$mem_limit" ] && mem_limit=128
+      mem_profile=$(registry_memory_profile_json "$app"); [ -z "$mem_profile" ] && mem_profile="null"
+      mem_level=$(memory_level_for_mb "$app" "$mem_limit")
+      svc_json="${svc_json}\"${app}\":{\"online\":${online},\"installed\":${installed},\"version\":\"${ver}\",\"cpu\":${s_cpu:-0},\"ramMb\":${s_ram:-0},\"cpuCore\":${s_core},\"port\":${port},\"memoryMaxMb\":${mem_limit},\"memoryLevel\":\"${mem_level}\",\"memoryProfile\":${mem_profile},\"watchdog\":${service_watchdog}}"
     fi
   done
 
@@ -1251,7 +1281,16 @@ rebalance_memory_budget() {
       current_limits[$app]=$cur
       total_set=$((total_set + cur))
     else
-      unset_apps+=("$app")
+      local prof
+      prof=$(registry_memory_profile_mb "$app")
+      if [ -n "$prof" ]; then
+        _app_set_limit "$app" "$prof"
+        current_limits[$app]=$prof
+        total_set=$((total_set + prof))
+        changed_apps+=("$app")
+      else
+        unset_apps+=("$app")
+      fi
     fi
   done
 
@@ -1977,68 +2016,41 @@ handle_request() {
       ;;
 
     "GET /api/memory-limit/"*)
-      local ml_app ml_services ml_limit ml_svc_file
+      local ml_app ml_services ml_limit ml_svc_file ml_profile ml_level
       ml_app=${path#/api/memory-limit/}
       ml_app="${ml_app%%[?#]*}"
       ml_app="${ml_app//[^a-zA-Z0-9_-]/}"
-      ml_limit=""
-      # Find systemd service file(s) and read MemoryMax
-      if [ "$(registry_has_components "$ml_app")" = "true" ]; then
-        local ml_esvc
-        ml_esvc=$(registry_get_component "$ml_app" "engine" "service")
-        [ -n "$ml_esvc" ] && ml_svc_file="$PI_HOME/.config/systemd/user/${ml_esvc}.service"
-      else
-        local ml_svc
-        ml_svc=$(registry_get "$ml_app" "service")
-        [ -n "$ml_svc" ] && ml_svc_file="$PI_HOME/.config/systemd/user/${ml_svc}.service"
-      fi
-      if [ -n "$ml_svc_file" ] && [ -f "$ml_svc_file" ]; then
-        ml_limit=$(grep -oP '^MemoryMax=\K.*' "$ml_svc_file" 2>/dev/null)
-      fi
-      [ -z "$ml_limit" ] && ml_limit="128M"
-      # Extract numeric MB value
+      ml_limit=$(_app_current_limit "$ml_app")
+      [ -z "$ml_limit" ] && ml_limit=$(registry_memory_profile_mb "$ml_app")
+      [ -z "$ml_limit" ] && ml_limit="128"
       local ml_mb
       ml_mb=$(echo "$ml_limit" | grep -oP '^\d+')
-      response="{\"app\":\"${ml_app}\",\"limitMb\":${ml_mb:-128},\"raw\":\"${ml_limit}\"}"
+      ml_profile=$(registry_memory_profile_json "$ml_app"); [ -z "$ml_profile" ] && ml_profile="null"
+      ml_level=$(memory_level_for_mb "$ml_app" "${ml_mb:-128}")
+      response="{\"app\":\"${ml_app}\",\"limitMb\":${ml_mb:-128},\"level\":\"${ml_level}\",\"profile\":${ml_profile},\"raw\":\"${ml_limit}M\"}"
       ;;
 
     "POST /api/memory-limit/"*)
-      local ml_app ml_body ml_new_limit ml_mb
+      local ml_app ml_body ml_new_limit ml_level ml_mb
       ml_app=${path#/api/memory-limit/}
       ml_app="${ml_app%%[?#]*}"
       ml_app="${ml_app//[^a-zA-Z0-9_-]/}"
       ml_body="$body"
       ml_new_limit=$(echo "$ml_body" | grep -oP '"limitMb"\s*:\s*\K\d+')
+      ml_level=$(echo "$ml_body" | grep -oP '"level"\s*:\s*"\K[^"]+' | tr -cd 'a-zA-Z0-9_-')
+      if [ -z "$ml_new_limit" ] && [ -n "$ml_level" ]; then
+        ml_new_limit=$(registry_memory_profile_mb "$ml_app" "$ml_level")
+      fi
       if [ -z "$ml_new_limit" ] || [ "$ml_new_limit" -lt 16 ] 2>/dev/null || [ "$ml_new_limit" -gt 480 ] 2>/dev/null; then
         status_line="HTTP/1.1 400 Bad Request"
         response="{\"error\":\"limitMb måste vara 16-480\"}"
       else
-        local ml_updated=0
-        # Update all service files for this app
-        if [ "$(registry_has_components "$ml_app")" = "true" ]; then
-          for ml_comp in engine ui; do
-            local ml_csvc
-            ml_csvc=$(registry_get_component "$ml_app" "$ml_comp" "service")
-            [ -z "$ml_csvc" ] && continue
-            local ml_sf="$PI_HOME/.config/systemd/user/${ml_csvc}.service"
-            if [ -f "$ml_sf" ]; then
-              sed -i "s/^MemoryMax=.*/MemoryMax=${ml_new_limit}M/" "$ml_sf"
-              ml_updated=1
-            fi
-          done
-        else
-          local ml_svc
-          ml_svc=$(registry_get "$ml_app" "service")
-          local ml_sf="$PI_HOME/.config/systemd/user/${ml_svc}.service"
-          if [ -n "$ml_svc" ] && [ -f "$ml_sf" ]; then
-            sed -i "s/^MemoryMax=.*/MemoryMax=${ml_new_limit}M/" "$ml_sf"
-            ml_updated=1
-          fi
-        fi
-        if [ "$ml_updated" -eq 1 ]; then
+        _app_set_limit "$ml_app" "$ml_new_limit"
+        if [ -n "$(_app_current_limit "$ml_app")" ]; then
           user_systemctl daemon-reload 2>/dev/null || true
           rm -f "$CACHE_FILE"
-          response="{\"app\":\"${ml_app}\",\"limitMb\":${ml_new_limit},\"status\":\"success\"}"
+          [ -z "$ml_level" ] && ml_level=$(memory_level_for_mb "$ml_app" "$ml_new_limit")
+          response="{\"app\":\"${ml_app}\",\"limitMb\":${ml_new_limit},\"level\":\"${ml_level}\",\"status\":\"success\"}"
         else
           status_line="HTTP/1.1 404 Not Found"
           response="{\"error\":\"Ingen tjänstfil hittad för ${ml_app}\"}"

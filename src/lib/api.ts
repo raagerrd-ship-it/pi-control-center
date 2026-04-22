@@ -36,6 +36,9 @@ export interface ServiceStatus {
   installed: boolean;
   cpu: number;
   ramMb: number;
+  memoryMaxMb?: number;
+  memoryLevel?: 'low' | 'balanced' | 'high' | 'custom' | string;
+  memoryProfile?: MemoryProfile | null;
   cpuCore: number;
   port?: number;
   /** Health check data from engine's /api/health */
@@ -53,6 +56,11 @@ export interface RuntimeStatus {
   nodeVersion: string;
   nodePath: string;
   status?: 'ok' | 'warning' | string;
+}
+
+export interface MemoryProfile {
+  defaultLevel: 'low' | 'balanced' | 'high' | string;
+  levels: Record<string, number>;
 }
 
 export interface SystemStatus {
@@ -131,6 +139,7 @@ export interface ServiceDefinition {
   };
   repo: string;
   releaseUrl?: string;
+  memoryProfile?: MemoryProfile;
   installDir: string;
   installScript: string;
   updateScript: string;
@@ -271,6 +280,8 @@ export async function triggerPiReset(): Promise<FactoryResetResult> {
 export interface MemoryLimitResult {
   app: string;
   limitMb: number;
+  level?: string;
+  profile?: MemoryProfile | null;
   raw?: string;
   status?: string;
 }
@@ -281,11 +292,11 @@ export async function fetchMemoryLimit(app: string): Promise<MemoryLimitResult> 
   return res.json();
 }
 
-export async function setMemoryLimit(app: string, limitMb: number): Promise<MemoryLimitResult> {
+export async function setMemoryLimit(app: string, limitMb: number, level?: string): Promise<MemoryLimitResult> {
   const res = await fetch(`${getBaseUrl()}/api/memory-limit/${app}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ limitMb }),
+    body: JSON.stringify(level ? { limitMb, level } : { limitMb }),
     signal: AbortSignal.timeout(10000),
   });
   if (!res.ok) throw new Error('Failed to set memory limit');

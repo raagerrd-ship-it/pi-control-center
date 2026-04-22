@@ -77,9 +77,14 @@ const Index = () => {
       const missing = installedKeys.filter(k => prev[k] == null);
       if (missing.length === 0) return prev;
       missing.forEach(key => {
-        fetchMemoryLimit(key)
-          .then(r => setMemLimits(p => ({ ...p, [key]: r.limitMb })))
-          .catch(() => setMemLimits(p => ({ ...p, [key]: defaultPerApp })));
+        const cachedLimit = status.services[key]?.memoryMaxMb;
+        if (cachedLimit) {
+          setMemLimits(p => ({ ...p, [key]: cachedLimit }));
+        } else {
+          fetchMemoryLimit(key)
+            .then(r => setMemLimits(p => ({ ...p, [key]: r.limitMb })))
+            .catch(() => setMemLimits(p => ({ ...p, [key]: defaultPerApp })));
+        }
       });
       return prev;
     });
@@ -319,6 +324,9 @@ const Index = () => {
                 version: svcStatus.version ?? '—',
                 cpu: svcStatus.cpu,
                 ramMb: svcStatus.ramMb,
+                memoryMaxMb: svcStatus.memoryMaxMb,
+                memoryLevel: svcStatus.memoryLevel,
+                memoryProfile: svcStatus.memoryProfile,
                 port: svcStatus.port,
                 versionInfo: versions?.[serviceKey],
                 updateStatus: updates[serviceKey],
