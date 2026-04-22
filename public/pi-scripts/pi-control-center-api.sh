@@ -1096,6 +1096,13 @@ AllowedCPUs=0"
 
       local comp_security_lines="PrivateTmp=true"
       local comp_env_lines=""
+      local comp_cfg_dir comp_log_dir comp_permissions comp_group_lines
+      comp_cfg_dir=$(app_config_dir "$app")
+      comp_log_dir=$(app_log_dir "$app")
+      comp_permissions=$(registry_permissions_env "$app")
+      ensure_app_managed_dirs "$app"
+      comp_group_lines=""
+      registry_needs_permission "$app" "bluetooth" && comp_group_lines="SupplementaryGroups=bluetooth"
       if [ "$comp" = "engine" ] && [ "$comp_type" = "node" ]; then
         # User-services kan inte sätta AmbientCapabilities/CapabilityBoundingSet
         # (kräver root). UPnP/SSDP via plain UDP fungerar utan CAP_NET_RAW.
@@ -1128,6 +1135,10 @@ Type=simple
 WorkingDirectory=${comp_work_dir}
 ExecStart=${comp_exec}
 Environment=NPM_CONFIG_CACHE=${install_dir}/.npm-cache
+Environment=PCC_APP_KEY=${app}
+Environment=PCC_CONFIG_DIR=${comp_cfg_dir}
+Environment=PCC_LOG_DIR=${comp_log_dir}
+Environment=PCC_PERMISSIONS=${comp_permissions}
 Environment=PORT=${comp_port}
 Environment=ENGINE_PORT=${engine_port}
 Environment=UI_PORT=${req_port}
@@ -1136,7 +1147,12 @@ ${cpu_pin_lines}
 ProtectSystem=strict
 ProtectHome=read-only
 ReadWritePaths=${install_dir}
+ReadWritePaths=${comp_cfg_dir}
+ReadWritePaths=${comp_log_dir}
 ${comp_security_lines}
+${comp_group_lines}
+StandardOutput=append:${comp_log_dir}/${comp}.log
+StandardError=append:${comp_log_dir}/${comp}.log
 Restart=${restart_policy}
 RestartSec=5
 
