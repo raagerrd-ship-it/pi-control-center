@@ -12,7 +12,6 @@
     },
     "permissions": ["bluetooth"],
     "runInstallOnRelease": true,
-    "managed": false,
     "installScript": "scripts/install.sh",
     "updateScript": "/opt/lotus-light/scripts/update.sh",
     "uninstallScript": "scripts/uninstall.sh",
@@ -21,8 +20,7 @@
         "type": "node",
         "entrypoint": "pi/dist/index.js",
         "service": "lotus-light-engine",
-        "alwaysOn": true,
-        "manageService": false
+        "alwaysOn": true
       },
       "ui": {
         "type": "static",
