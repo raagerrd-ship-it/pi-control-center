@@ -214,6 +214,10 @@ WorkingDirectory=/opt/my-service
 ExecStart=/usr/bin/node --max-old-space-size=96 /opt/my-service/engine/index.js
 Environment=NODE_ENV=production
 Environment=NODE_OPTIONS=--max-old-space-size=96
+Environment=PCC_APP_KEY=my-service
+Environment=PCC_CONFIG_DIR=/etc/pi-control-center/apps/my-service
+Environment=PCC_LOG_DIR=/var/log/pi-control-center/apps/my-service
+Environment=PCC_PERMISSIONS=network,multicast
 Environment=PORT=3052
 Environment=ENGINE_PORT=3052
 Environment=UI_PORT=3002
@@ -223,8 +227,12 @@ MemoryMax=128M
 ProtectSystem=strict
 ProtectHome=read-only
 ReadWritePaths=/opt/my-service
+ReadWritePaths=/etc/pi-control-center/apps/my-service
+ReadWritePaths=/var/log/pi-control-center/apps/my-service
 PrivateTmp=true
 NoNewPrivileges=true
+StandardOutput=append:/var/log/pi-control-center/apps/my-service/engine.log
+StandardError=append:/var/log/pi-control-center/apps/my-service/engine.log
 Restart=always
 RestartSec=5
 

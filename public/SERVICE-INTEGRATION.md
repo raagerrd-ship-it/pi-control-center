@@ -31,6 +31,7 @@ Pi Control Center fungerar som ett **operativsystem** för din Raspberry Pi. Det
 - **Tjänsteinstallation** — ladda ner, packa upp, konfigurera
 - **Processhantering** — starta, stoppa, starta om via systemd
 - **Resursallokering** — tilldela CPU-kärna och minnesgräns
+- **Gemensamma resurser** — Node-runtime, config-katalog, loggkatalog, portregister och behörigheter
 - **Isolering** — varje tjänst körs i en sandlåda
 
 Din tjänst är ett **program** som installeras i detta OS. Precis som en app på en telefon:
@@ -210,6 +211,7 @@ Din tjänst registreras i `public/services.json`. Det finns två format:
 | `releaseAsset` | 🔹 | Filnamn på release-asset att ladda ner (default: `dist.tar.gz`). Ange om din release använder ett annat namn |
 | `installDir` | ✅ | Installationskatalog (`$HOME` expanderas automatiskt) |
 | `runInstallOnRelease` | 🔹 | `true` = kör `npm install --omit=dev` efter uppackning av release. Krävs om motorn har **native-moduler** (t.ex. Bluetooth, sharp) som måste kompileras för Pi:ns arkitektur/Node-version |
+| `permissions` | 🔹 | Lista över OS-behov som PCC äger och exponerar, t.ex. `bluetooth`, `multicast`, `network`, `usb`, `audio` |
 | `installScript` | ✅ | Sökväg relativt repo-root (körs vid fallback-install) |
 | `updateScript` | ✅ | Absolut sökväg (finns efter installation) |
 | `uninstallScript` | ✅ | Sökväg relativt repo-root |
@@ -238,6 +240,17 @@ node {installDir}/{entrypoint}
 ```
 
 Pi Control Center äger Node.js-runtime och startar alla Node-tjänster med samma systemruntime (`/usr/bin/node`, Node.js v24). Tjänster ska **inte** installera egen Node-version, men ska fortfarande ha egna `node_modules` i sin egen katalog.
+
+PCC skapar även gemensamma appresurser som tjänsten ska använda i stället för egna systemplatser:
+
+```bash
+PCC_CONFIG_DIR=/etc/pi-control-center/apps/my-service
+PCC_LOG_DIR=/var/log/pi-control-center/apps/my-service
+PCC_PERMISSIONS=bluetooth,multicast
+PCC_APP_KEY=my-service
+```
+
+Tjänster ska lagra konfiguration/secrets i `PCC_CONFIG_DIR` och skriva applikationsloggar i `PCC_LOG_DIR`. Behörigheter deklareras i `services.json`; tjänsten ska inte själv ändra grupper, systemd-units eller OS-inställningar.
 
 **`"static"`** — Statisk webbapp (typiskt UI:t), serveras av Python SPA-server:
 ```bash

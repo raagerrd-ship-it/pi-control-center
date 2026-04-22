@@ -55,12 +55,15 @@ USER_BUS_ADDRESS="unix:path=$USER_RUNTIME_DIR/bus"
 
 REGISTRY_FILE="/var/www/pi-control-center/services.json"
 ASSIGNMENTS_FILE="/etc/pi-control-center/assignments.json"
+APPS_CONFIG_DIR="/etc/pi-control-center/apps"
+APPS_LOG_DIR="/var/log/pi-control-center/apps"
+OP_LOCK_FILE="/tmp/pi-control-center/operation.lock"
 
 HEALTH_DIR="$STATUS_DIR/health"
 WATCHDOG_DIR="$STATUS_DIR/watchdog"
 
 mkdir -p "$STATUS_DIR" "$INSTALL_DIR" "$HEALTH_DIR" "$WATCHDOG_DIR"
-sudo mkdir -p /etc/pi-control-center 2>/dev/null || true
+sudo mkdir -p /etc/pi-control-center "$APPS_CONFIG_DIR" "$APPS_LOG_DIR" 2>/dev/null || true
 
 # Read git info once at startup
 DASHBOARD_COMMIT=""
@@ -116,6 +119,23 @@ log() {
   echo "PCC API: $*" >&2
 }
 
+app_config_dir() { echo "$APPS_CONFIG_DIR/$(echo "$1" | tr -cd 'a-zA-Z0-9_-')"; }
+app_log_dir() { echo "$APPS_LOG_DIR/$(echo "$1" | tr -cd 'a-zA-Z0-9_-')"; }
+
+ensure_app_managed_dirs() {
+  local app=$1 cfg logdir
+  cfg=$(app_config_dir "$app")
+  logdir=$(app_log_dir "$app")
+  sudo mkdir -p "$cfg" "$logdir" 2>/dev/null || true
+  sudo chown -R "$(whoami):$(id -gn)" "$cfg" "$logdir" 2>/dev/null || true
+  chmod 700 "$cfg" 2>/dev/null || true
+  chmod 755 "$logdir" 2>/dev/null || true
+}
+
+escape_json() {
+  printf "%s" "$1" | sed 's/\\/\\\\/g; s/"/\\"/g; s/\t/  /g' | tr '\n' ' ' | cut -c1-240
+}
+
 # --- Dynamic registry helpers ---
 
 # Get a field from services.json: registry_get <key> <field>
@@ -140,6 +160,20 @@ registry_memory_profile_mb() {
   local app=$1 level=${2:-}
   [ -z "$level" ] && level=$(registry_memory_profile_default_level "$app")
   jq -r --arg k "$app" --arg l "$level" '.[] | select(.key == $k) | .memoryProfile.levels[$l] // empty' "$REGISTRY_FILE" 2>/dev/null
+}
+
+registry_permissions_json() {
+  local raw
+  raw=$(jq -c --arg k "$1" '.[] | select(.key == $k) | .permissions // []' "$REGISTRY_FILE" 2>/dev/null)
+  [ -n "$raw" ] && echo "$raw" || echo "[]"
+}
+
+registry_permissions_env() {
+  jq -r --arg k "$1" '.[] | select(.key == $k) | (.permissions // []) | join(",")' "$REGISTRY_FILE" 2>/dev/null
+}
+
+registry_needs_permission() {
+  jq -e --arg k "$1" --arg p "$2" '.[] | select(.key == $k) | (.permissions // []) | index($p)' "$REGISTRY_FILE" >/dev/null 2>&1
 }
 
 memory_level_for_mb() {
@@ -758,13 +792,16 @@ build_status_json() {
       health_uptime=$(echo "$health_json" | jq -r '.uptime // 0' 2>/dev/null)
       health_mem_rss=$(echo "$health_json" | jq -r '.memory.rss // 0' 2>/dev/null)
 
-      local mem_limit mem_profile mem_level
+      local mem_limit mem_profile mem_level permissions_json cfg_dir log_dir
       mem_limit=$(_app_current_limit "$app"); [ -z "$mem_limit" ] && mem_limit=$(registry_memory_profile_mb "$app"); [ -z "$mem_limit" ] && mem_limit=128
       mem_profile=$(registry_memory_profile_json "$app"); [ -z "$mem_profile" ] && mem_profile="null"
       mem_level=$(memory_level_for_mb "$app" "$mem_limit")
+      permissions_json=$(registry_permissions_json "$app")
+      cfg_dir=$(escape_json "$(app_config_dir "$app")")
+      log_dir=$(escape_json "$(app_log_dir "$app")")
 
       [ -n "$svc_json" ] && svc_json="${svc_json},"
-      svc_json="${svc_json}\"${app}\":{\"online\":${online},\"installed\":${installed},\"version\":\"${ver}\",\"cpu\":${total_cpu:-0},\"ramMb\":${total_ram:-0},\"cpuCore\":${core},\"port\":${port},\"memoryMaxMb\":${mem_limit},\"memoryLevel\":\"${mem_level}\",\"memoryProfile\":${mem_profile},\"watchdog\":${engine_watchdog},\"health\":{\"status\":\"${health_status}\",\"uptime\":${health_uptime:-0},\"memoryRss\":${health_mem_rss:-0}},\"components\":{\"engine\":{\"online\":${engine_online},\"version\":\"${engine_ver}\",\"cpu\":${engine_cpu:-0},\"ramMb\":${engine_ram:-0},\"service\":\"${engine_svc}\",\"port\":${engine_port},\"cpuCore\":${core},\"watchdog\":${engine_watchdog}},\"ui\":{\"online\":${ui_online},\"version\":\"${ui_ver}\",\"cpu\":${ui_cpu:-0},\"ramMb\":${ui_ram:-0},\"service\":\"${ui_svc}\",\"port\":${port},\"cpuCore\":0,\"watchdog\":${ui_watchdog}}}}"
+      svc_json="${svc_json}\"${app}\":{\"online\":${online},\"installed\":${installed},\"version\":\"${ver}\",\"cpu\":${total_cpu:-0},\"ramMb\":${total_ram:-0},\"cpuCore\":${core},\"port\":${port},\"memoryMaxMb\":${mem_limit},\"memoryLevel\":\"${mem_level}\",\"memoryProfile\":${mem_profile},\"permissions\":${permissions_json},\"configDir\":\"${cfg_dir}\",\"logDir\":\"${log_dir}\",\"watchdog\":${engine_watchdog},\"health\":{\"status\":\"${health_status}\",\"uptime\":${health_uptime:-0},\"memoryRss\":${health_mem_rss:-0}},\"components\":{\"engine\":{\"online\":${engine_online},\"version\":\"${engine_ver}\",\"cpu\":${engine_cpu:-0},\"ramMb\":${engine_ram:-0},\"service\":\"${engine_svc}\",\"port\":${engine_port},\"cpuCore\":${core},\"watchdog\":${engine_watchdog}},\"ui\":{\"online\":${ui_online},\"version\":\"${ui_ver}\",\"cpu\":${ui_cpu:-0},\"ramMb\":${ui_ram:-0},\"service\":\"${ui_svc}\",\"port\":${port},\"cpuCore\":0,\"watchdog\":${ui_watchdog}}}}"
     else
       # Legacy single-service
       running=$(service_is_active "$svc")
@@ -796,11 +833,14 @@ build_status_json() {
       [ -n "$svc_json" ] && svc_json="${svc_json},"
       local service_watchdog
       service_watchdog=$(watchdog_json "$app" "service")
-      local mem_limit mem_profile mem_level
+      local mem_limit mem_profile mem_level permissions_json cfg_dir log_dir
       mem_limit=$(_app_current_limit "$app"); [ -z "$mem_limit" ] && mem_limit=$(registry_memory_profile_mb "$app"); [ -z "$mem_limit" ] && mem_limit=128
       mem_profile=$(registry_memory_profile_json "$app"); [ -z "$mem_profile" ] && mem_profile="null"
       mem_level=$(memory_level_for_mb "$app" "$mem_limit")
-      svc_json="${svc_json}\"${app}\":{\"online\":${online},\"installed\":${installed},\"version\":\"${ver}\",\"cpu\":${s_cpu:-0},\"ramMb\":${s_ram:-0},\"cpuCore\":${s_core},\"port\":${port},\"memoryMaxMb\":${mem_limit},\"memoryLevel\":\"${mem_level}\",\"memoryProfile\":${mem_profile},\"watchdog\":${service_watchdog}}"
+      permissions_json=$(registry_permissions_json "$app")
+      cfg_dir=$(escape_json "$(app_config_dir "$app")")
+      log_dir=$(escape_json "$(app_log_dir "$app")")
+      svc_json="${svc_json}\"${app}\":{\"online\":${online},\"installed\":${installed},\"version\":\"${ver}\",\"cpu\":${s_cpu:-0},\"ramMb\":${s_ram:-0},\"cpuCore\":${s_core},\"port\":${port},\"memoryMaxMb\":${mem_limit},\"memoryLevel\":\"${mem_level}\",\"memoryProfile\":${mem_profile},\"permissions\":${permissions_json},\"configDir\":\"${cfg_dir}\",\"logDir\":\"${log_dir}\",\"watchdog\":${service_watchdog}}"
     fi
   done
 
@@ -1056,6 +1096,13 @@ AllowedCPUs=0"
 
       local comp_security_lines="PrivateTmp=true"
       local comp_env_lines=""
+      local comp_cfg_dir comp_log_dir comp_permissions comp_group_lines
+      comp_cfg_dir=$(app_config_dir "$app")
+      comp_log_dir=$(app_log_dir "$app")
+      comp_permissions=$(registry_permissions_env "$app")
+      ensure_app_managed_dirs "$app"
+      comp_group_lines=""
+      registry_needs_permission "$app" "bluetooth" && comp_group_lines="SupplementaryGroups=bluetooth"
       if [ "$comp" = "engine" ] && [ "$comp_type" = "node" ]; then
         # User-services kan inte sätta AmbientCapabilities/CapabilityBoundingSet
         # (kräver root). UPnP/SSDP via plain UDP fungerar utan CAP_NET_RAW.
@@ -1088,6 +1135,10 @@ Type=simple
 WorkingDirectory=${comp_work_dir}
 ExecStart=${comp_exec}
 Environment=NPM_CONFIG_CACHE=${install_dir}/.npm-cache
+Environment=PCC_APP_KEY=${app}
+Environment=PCC_CONFIG_DIR=${comp_cfg_dir}
+Environment=PCC_LOG_DIR=${comp_log_dir}
+Environment=PCC_PERMISSIONS=${comp_permissions}
 Environment=PORT=${comp_port}
 Environment=ENGINE_PORT=${engine_port}
 Environment=UI_PORT=${req_port}
@@ -1096,7 +1147,12 @@ ${cpu_pin_lines}
 ProtectSystem=strict
 ProtectHome=read-only
 ReadWritePaths=${install_dir}
+ReadWritePaths=${comp_cfg_dir}
+ReadWritePaths=${comp_log_dir}
 ${comp_security_lines}
+${comp_group_lines}
+StandardOutput=append:${comp_log_dir}/${comp}.log
+StandardError=append:${comp_log_dir}/${comp}.log
 Restart=${restart_policy}
 RestartSec=5
 
@@ -1125,6 +1181,13 @@ UNIT
     local legacy_security_lines="PrivateTmp=true
 NoNewPrivileges=true"
     local legacy_env_lines=""
+    local legacy_cfg_dir legacy_log_dir legacy_permissions legacy_group_lines
+    legacy_cfg_dir=$(app_config_dir "$app")
+    legacy_log_dir=$(app_log_dir "$app")
+    legacy_permissions=$(registry_permissions_env "$app")
+    ensure_app_managed_dirs "$app"
+    legacy_group_lines=""
+    registry_needs_permission "$app" "bluetooth" && legacy_group_lines="SupplementaryGroups=bluetooth"
     if [ "$app_type" = "node" ] && [ -n "$entrypoint" ]; then
       local entry_dir
       entry_dir=$(dirname "$entrypoint")
@@ -1168,6 +1231,10 @@ Type=simple
 WorkingDirectory=${legacy_work_dir}
 ExecStart=${exec_start}
 Environment=NPM_CONFIG_CACHE=${install_dir}/.npm-cache
+Environment=PCC_APP_KEY=${app}
+Environment=PCC_CONFIG_DIR=${legacy_cfg_dir}
+Environment=PCC_LOG_DIR=${legacy_log_dir}
+Environment=PCC_PERMISSIONS=${legacy_permissions}
 Environment=PORT=${req_port}
 ${legacy_env_lines}
 CPUAffinity=${req_core}
@@ -1175,7 +1242,12 @@ AllowedCPUs=${req_core}
 ProtectSystem=strict
 ProtectHome=read-only
 ReadWritePaths=${install_dir}
+ReadWritePaths=${legacy_cfg_dir}
+ReadWritePaths=${legacy_log_dir}
 ${legacy_security_lines}
+${legacy_group_lines}
+StandardOutput=append:${legacy_log_dir}/service.log
+StandardError=append:${legacy_log_dir}/service.log
 Restart=on-failure
 RestartSec=5
 
@@ -1352,6 +1424,12 @@ do_install() {
   [ -z "$repo" ] && { echo "{\"app\":\"${app}\",\"status\":\"error\",\"message\":\"Okänd app\"}" > "$sf"; return 1; }
 
   progress "$sf" "$app" "Startar installation..." "$start_time"
+  exec 9>"$OP_LOCK_FILE"
+  if ! flock -n 9; then
+    progress "$sf" "$app" "Pi upptagen – väntar på installationskö..." "$start_time"
+    flock 9
+  fi
+  ensure_app_managed_dirs "$app"
 
   export XDG_RUNTIME_DIR="$USER_RUNTIME_DIR"
   export DBUS_SESSION_BUS_ADDRESS="$USER_BUS_ADDRESS"
@@ -1747,6 +1825,11 @@ handle_request() {
       : > "$dashboard_log"
       response=$(< "$sf")
       (
+        exec 9>"$OP_LOCK_FILE"
+        if ! flock -n 9; then
+          echo '{"app":"dashboard","status":"updating","progress":"Pi upptagen – väntar på uppdateringskö..."}' > "$sf"
+          flock 9
+        fi
         STOPPED_SERVICES=""
 
         dashboard_progress() {
@@ -1900,6 +1983,11 @@ handle_request() {
       response=$(< "$update_json")
 
       (
+        exec 9>"$OP_LOCK_FILE"
+        if ! flock -n 9; then
+          echo "{\"app\":\"${app}\",\"status\":\"updating\",\"progress\":\"Pi upptagen – väntar på uppdateringskö...\",\"timestamp\":\"$(date -Iseconds)\"}" > "$update_json"
+          flock 9
+        fi
         local release_url install_dir svc download_url
         release_url=$(registry_get "$app" "releaseUrl")
         install_dir=$(eval echo "$(registry_get "$app" "installDir")")
@@ -2059,20 +2147,31 @@ handle_request() {
       ;;
 
     GET\ /api/service-log/*)
-      local app svc lc tmp_err
+      local app svc lc tmp_err app_logs has_comp_log
       app=${path#/api/service-log/}
       svc=$(registry_get "$app" "service")
-      if [ -z "$svc" ]; then
+      has_comp_log=$(registry_has_components "$app")
+      app_logs="$(app_log_dir "$app")"
+      if [ -z "$svc" ] && [ "$has_comp_log" != "true" ]; then
         status_line="HTTP/1.1 404 Not Found"
         response="{\"error\":\"Unknown app: ${app}\"}"
       else
         tmp_err="/tmp/service-log-$$.err"
-        lc=$(
-          timeout 3s sudo -n journalctl -u "${svc}.service" -n 60 --no-pager 2>"$tmp_err" ||
-          timeout 3s journalctl -u "${svc}.service" -n 60 --no-pager 2>>"$tmp_err" ||
-          timeout 3s systemctl status "${svc}.service" --no-pager -n 40 2>>"$tmp_err" ||
-          cat "$tmp_err"
-        )
+        if [ "$has_comp_log" = "true" ]; then
+          lc=$(for comp in engine ui; do
+            local cs
+            cs=$(registry_get_component "$app" "$comp" "service")
+            [ -n "$cs" ] && timeout 2s journalctl --user -u "${cs}.service" -n 30 --no-pager 2>>"$tmp_err"
+            [ -f "$app_logs/${comp}.log" ] && tail -30 "$app_logs/${comp}.log"
+          done)
+        else
+          lc=$(
+            timeout 3s sudo -n journalctl -u "${svc}.service" -n 60 --no-pager 2>"$tmp_err" ||
+            timeout 3s journalctl -u "${svc}.service" -n 60 --no-pager 2>>"$tmp_err" ||
+            timeout 3s systemctl status "${svc}.service" --no-pager -n 40 2>>"$tmp_err" ||
+            cat "$tmp_err"
+          )
+        fi
         rm -f "$tmp_err"
         lc=$(printf "%s" "$lc" | sed 's/\\/\\\\/g; s/"/\\"/g; s/\t/  /g' | tr '\n' '|' | sed 's/|/\\n/g')
         [ -z "$lc" ] && lc="Inga tjänstloggar tillgängliga"
