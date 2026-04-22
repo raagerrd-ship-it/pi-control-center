@@ -85,6 +85,33 @@ user_systemctl() {
   systemctl --user "$@"
 }
 
+get_node_bin() {
+  command -v node 2>/dev/null || echo "/usr/bin/node"
+}
+
+get_node_version() {
+  local node_bin
+  node_bin=$(get_node_bin)
+  [ -x "$node_bin" ] && "$node_bin" -v 2>/dev/null || echo "unavailable"
+}
+
+assert_node_runtime() {
+  local version major
+  version=$(get_node_version)
+  major=${version#v}; major=${major%%.*}
+  [ "$major" = "24" ]
+}
+
+node_runtime_json() {
+  local node_bin version major status
+  node_bin=$(get_node_bin | sed 's/"/\\"/g')
+  version=$(get_node_version | sed 's/"/\\"/g')
+  major=${version#v}; major=${major%%.*}
+  status="ok"
+  [ "$major" = "24" ] || status="warning"
+  echo "{\"nodeVersion\":\"${version}\",\"nodePath\":\"${node_bin}\",\"status\":\"${status}\"}"
+}
+
 log() {
   echo "PCC API: $*" >&2
 }
