@@ -1,96 +1,166 @@
 
-## Plan: liten watchdog som skyddar Pi:n från hängda tjänster
+## Rekommendation: ja till gemensam Node-runtime, nej till gemensam Node-process
 
-Jag lägger till en lättvikts-övervakning i Pi Control Center API:t som körs i bakgrunden och använder redan tillgänglig `/proc` + systemd-data. Målet är att stoppa/restarta tjänster som fastnar i CPU-loopar, tappar sin hälsocheck eller närmar sig/minnesgränsen — utan att belasta Pi Zero 2.
+Jag tycker idén är bra om vi menar:
 
-## Vad som byggs
+**En Node.js-installation som PCC äger och alla tjänster startas med.**
 
-1. **Watchdog-loop i API:t**
-   - Kör ungefär var 30:e sekund, bredvid befintlig `health_poll_loop`.
-   - Övervakar varje installerad tjänsts engine/UI-komponent.
-   - Läser:
-     - CPU %
-     - RAM MB
-     - systemd `MemoryMax`
-     - om porten svarar
-     - `/api/health` om tjänsten har det
-     - antal watchdog-ingripanden senaste tiden
+Jag skulle däremot inte lägga Sonos, Lotus och Cast Away i **samma Node-process**, eftersom det tar bort isoleringen. Om Lotus får minnesläcka eller hamnar i loop kan den då påverka de andra direkt. Dagens modell med separata systemd-tjänster är säkrare för Pi:n.
 
-2. **Skydd mot oändliga loopar**
-   - Om en engine ligger väldigt högt i CPU under flera mätningar i rad, markeras den som misstänkt hängd.
-   - Första åtgärd: restart av tjänsten.
-   - Om samma tjänst fortsätter trigga upprepade gånger: stoppas den och märks som skyddsstoppad, så den inte startar om i evig krasch-loop.
+Rätt modell blir:
 
-3. **Skydd mot minnesläckor**
-   - Behåll befintliga `MemoryMax`-gränser.
-   - Lägg till preemptiv varning/åtgärd:
-     - över ca 85% av sin limit: varning i status
-     - över ca 95% under flera mätningar: restart innan Pi:n blir instabil
-   - Om systemd själv dödar tjänsten pga `MemoryMax`, UI ska visa att den stoppades pga minne.
+```text
+PCC installerar/äger Node.js v24
+        │
+        ├── Sonos engine körs som egen systemd-tjänst
+        ├── Lotus engine körs som egen systemd-tjänst
+        └── Cast Away engine körs som egen systemd-tjänst
 
-4. **Skydd mot hängd men “aktiv” tjänst**
-   - Om systemd säger `active` men porten eller `/api/health` inte svarar under flera checks:
-     - restart upp till ett litet maxantal
-     - sedan skyddsstopp för att undvika loop
+Alla använder samma node-binär,
+men har egna node_modules, egna portar, egen CPU-kärna, egen MemoryMax.
+```
 
-5. **Status till UI**
-   - Utöka `ServiceStatus`/`ComponentStatus` med watchdog-info, t.ex:
-     - `watchdog.status`: `ok | warning | restarting | protected | disabled`
-     - `watchdog.reason`: `high_cpu | high_memory | health_timeout | restart_loop`
-     - `watchdog.restartCount`
-     - `watchdog.lastAction`
-   - Visa diskret rad i varje tjänstkort:
-     - `Skydd: OK`
-     - `Varning: hög RAM`
-     - `Restartad av watchdog`
-     - `Skyddsstoppad: CPU-loop`
+## Varför detta är bättre
 
-6. **Manuell återställning**
-   - När användaren trycker Starta/Restart i UI efter ett skyddsstopp nollställs watchdog-låset för den tjänsten.
-   - Alternativt lägga till API-hantering så service action automatiskt rensar watchdog-state.
+- Mindre risk för olika Node-versioner mellan appar.
+- Enklare felsökning: PCC kan visa exakt vilken Node-version alla tjänster kör på.
+- Mindre installationsstrul.
+- Bättre kontroll över minnesgränser via gemensamma `NODE_OPTIONS`.
+- Vi behåller sandboxing, watchdog, CPU-pinning och systemd-isolering.
 
-7. **Säkra defaults**
-   - Inga aggressiva restart direkt.
-   - Trösklarna görs konservativa:
-     - CPU måste vara högt flera mätningar i rad.
-     - Minne måste ligga nära limit flera mätningar i rad.
-     - Health/port måste faila flera gånger.
-   - Watchdog-state sparas i `/tmp/pi-control-center/watchdog/`, så det överlever korta API-förfrågningar men nollställs vid reboot.
+## Viktig gräns
 
-## Tekniska ändringar
+Jag skulle **inte** dela `node_modules` globalt mellan tjänsterna.
 
-- `public/pi-scripts/pi-control-center-api.sh`
-  - Lägg till `WATCHDOG_DIR`.
-  - Lägg till helpers för:
-    - läsa `MemoryMax`
-    - läsa component PID
-    - räkna consecutive failures
-    - restart/stop med system/user systemd
-    - JSON-state per app/component
-  - Lägg till `watchdog_loop &` vid startup.
-  - Integrera watchdog-data i `/api/status`.
-  - Rensa watchdog-lås vid `POST /api/service/.../start|restart`.
-  - Respektera `managed:false` och `manageService:false`:
-    - Lotus kan läsas/övervakas
-    - men PCC ska inte aggressivt skriva om eller ta bort dess systemd-unit
-    - restart/stop sker bara mot korrekt befintlig system/user service
+Sonos, Lotus och Cast Away har olika beroenden:
 
-- `src/lib/api.ts`
-  - Utöka TypeScript-typer med watchdogfält.
+- Sonos: egna bild/UPnP-relaterade moduler.
+- Lotus: BLE/native-moduler som måste matcha Pi/Node-version.
+- Cast Away: Chromecast/mDNS-relaterade moduler.
 
-- `src/components/CoreCard.tsx`
-  - Visa kort watchdog-status på komponent- eller tjänstnivå.
-  - Använd befintlig mörk/terminal UI-stil och svenska texter.
+Delade dependencies kan ge versionskrockar och konstiga fel. Varje app bör fortfarande paketera eller installera sina egna produktionsberoenden.
 
-- Eventuellt `mem://features/health-monitoring`
-  - Uppdatera minnet med den nya watchdog-regeln så framtida ändringar följer samma modell.
+## Plan: PCC-ägd Node-runtime för alla tjänster
+
+### 1. Gör Node v24 till PCC:s systemruntime
+
+Uppdatera installer/update-flödet så PCC säkerställer att rätt Node-version finns på Pi:n.
+
+- Ändra från nuvarande Node 20-installation till Node 24.
+- Lägg till tydlig kontroll:
+  - om Node saknas: installera Node v24
+  - om fel major-version finns: uppgradera till Node v24
+- Logga versionen i install-output.
+
+Målet är att Pi:n alltid har en stabil, gemensam `/usr/bin/node` som PCC kontrollerar.
+
+### 2. Lägg till runtime-helper i API-skriptet
+
+I `pi-control-center-api.sh` läggs helpers till:
+
+- `get_node_bin`
+- `get_node_version`
+- `assert_node_runtime`
+- eventuellt `node_runtime_json`
+
+Dessa används både vid installation och när systemd-units skapas.
+
+### 3. Ändra genererade systemd-units
+
+När PCC skapar engine-tjänster ska de använda PCC:s Node-runtime explicit.
+
+I stället för hårdkodat:
+
+```ini
+ExecStart=/usr/bin/node /opt/app/engine/index.js
+```
+
+ska PCC generera något i stil med:
+
+```ini
+ExecStart=/usr/bin/node --max-old-space-size=96 /opt/app/engine/index.js
+Environment=NODE_ENV=production
+Environment=NODE_OPTIONS=--max-old-space-size=96
+```
+
+Exakt minnesvärde kan styras konservativt per engine.
+
+### 4. Behåll separata tjänster och separata dependencies
+
+PCC ska fortfarande skapa:
+
+- en engine-service per app
+- en UI-service per app
+- separata `node_modules` per app om appen behöver det
+- separat `MemoryMax`
+- separat watchdog-state
+
+Detta bevarar nuvarande säkerhetsmodell.
+
+### 5. Justera release/install-regeln
+
+Uppdatera dokumentationen och appstandarden:
+
+- Appar ska inte installera egen Node.
+- Appar ska anta att `node` finns via PCC.
+- Releases ska fortfarande innehålla produktionsberoenden om möjligt.
+- Native-moduler får byggas/rebuildas mot PCC:s Node-version vid installation.
+
+Detta passar särskilt Lotus, eftersom BLE/native-moduler måste matcha runtime-versionen.
+
+### 6. Visa Node-runtime i UI/status
+
+Utöka `/api/status` med runtime-info:
+
+```json
+{
+  "runtime": {
+    "nodeVersion": "v24.x.x",
+    "nodePath": "/usr/bin/node"
+  }
+}
+```
+
+UI kan visa detta diskret i systempanelen eller inställningar:
+
+```text
+Node-runtime: v24.x.x
+```
+
+### 7. Uppdatera dokumentationen
+
+Uppdatera:
+
+- `SERVICE-INTEGRATION.md`
+- `SERVICE-ARCHITECTURE.md`
+- projektminnet för standards/arkitektur
+
+Ny regel:
+
+```text
+PCC äger Node.js-runtime. Tjänster får använda node, men ska inte installera egen Node-version.
+```
+
+## Det jag inte skulle bygga nu
+
+Jag skulle inte bygga en gemensam “app-host” där alla tjänster laddas in i en och samma Node-process.
+
+Det skulle spara lite RAM, men kostnaden är för hög:
+
+- sämre isolering
+- en app kan krascha alla
+- svårare watchdog
+- svårare MemoryMax per app
+- svårare BLE/mDNS/Chromecast-felsökning
+- större risk att Pi:n låser sig
 
 ## Resultat
 
-Pi Control Center får en liten “säkerhetsvakt” som:
-- fångar CPU-loopar
-- fångar minnesläckor innan de kraschar Pi:n
-- restartar tjänster som hänger
-- stoppar tjänster som fortsätter krascha
-- visar tydligt i UI vad som hänt
-- gör detta med låg overhead anpassad för Pi Zero 2
+Efter ändringen får vi:
+
+- en gemensam, kontrollerad Node v24-runtime
+- mindre versionsstrul
+- fortsatt isolering per tjänst
+- bättre stabilitet på Pi Zero 2
+- enklare appstandard för Sonos, Lotus och Cast Away
+- ingen risk att en trasig app drar med sig resten
