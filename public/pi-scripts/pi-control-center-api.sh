@@ -148,16 +148,16 @@ app_data_dir() { echo "$APPS_DATA_DIR/$(echo "$1" | tr -cd 'a-zA-Z0-9_-')"; }
 app_log_dir() { echo "$APPS_LOG_DIR/$(echo "$1" | tr -cd 'a-zA-Z0-9_-')"; }
 
 ensure_app_managed_dirs() {
-  local app=$1 cfg data_dir logdir
+  local app=$1 cfg data_dir logdir home_dir xdg_share_dir
   cfg=$(app_config_dir "$app")
   data_dir=$(app_data_dir "$app")
   logdir=$(app_log_dir "$app")
-  sudo_run_quiet mkdir -p "$cfg" || true
-  sudo_run_quiet mkdir -p "$data_dir" || true
-  sudo_run_quiet mkdir -p "$logdir" || true
+  home_dir="$data_dir/home"
+  xdg_share_dir="$home_dir/.local/share"
+  sudo_run_quiet mkdir -p "$cfg" "$data_dir" "$logdir" "$xdg_share_dir" || true
   sudo_run_quiet chown -R "$(whoami):$(id -gn)" "$cfg" "$data_dir" "$logdir" || true
-  chmod 700 "$cfg" "$data_dir" 2>/dev/null || true
-  chmod 755 "$logdir" 2>/dev/null || true
+  chmod 700 "$cfg" "$data_dir" "$home_dir" 2>/dev/null || true
+  chmod 755 "$xdg_share_dir" "$logdir" 2>/dev/null || true
 }
 
 escape_json() {
@@ -1135,21 +1135,25 @@ AllowedCPUs=0"
 
       local comp_security_lines="PrivateTmp=true"
       local comp_env_lines=""
-      local comp_cfg_dir comp_data_dir comp_log_dir comp_permissions comp_group_lines comp_cap_lines comp_device_lines
+      local comp_cfg_dir comp_data_dir comp_log_dir comp_home_dir comp_permissions comp_group_lines comp_cap_lines comp_device_lines
       comp_cfg_dir=$(app_config_dir "$app")
       comp_data_dir=$(app_data_dir "$app")
       comp_log_dir=$(app_log_dir "$app")
+      comp_home_dir="${comp_data_dir}/home"
       comp_permissions=$(registry_permissions_env "$app")
       ensure_app_managed_dirs "$app"
       comp_group_lines=""
       comp_cap_lines=""
       comp_device_lines=""
+      comp_env_lines="Environment=HOME=${comp_home_dir}
+Environment=XDG_DATA_HOME=${comp_home_dir}/.local/share"
       if registry_needs_permission "$app" "bluetooth" || registry_needs_permission "$app" "rfkill" || registry_needs_permission "$app" "audio"; then
         comp_group_lines="SupplementaryGroups=netdev bluetooth audio"
       fi
       if [ "$comp" = "engine" ] && [ "$comp_type" = "node" ]; then
         comp_security_lines="PrivateTmp=true"
-        comp_env_lines="Environment=NODE_ENV=production
+        comp_env_lines="${comp_env_lines}
+Environment=NODE_ENV=production
 Environment=NODE_OPTIONS=--max-old-space-size=96
 Environment=DBUS_SYSTEM_BUS_ADDRESS=unix:path=/run/dbus/system_bus_socket"
         if registry_needs_permission "$app" "bluetooth" || registry_needs_permission "$app" "rfkill"; then
@@ -1235,13 +1239,16 @@ UNIT
     local legacy_security_lines="PrivateTmp=true
 NoNewPrivileges=true"
     local legacy_env_lines=""
-    local legacy_cfg_dir legacy_data_dir legacy_log_dir legacy_permissions legacy_group_lines
+    local legacy_cfg_dir legacy_data_dir legacy_log_dir legacy_home_dir legacy_permissions legacy_group_lines
     legacy_cfg_dir=$(app_config_dir "$app")
     legacy_data_dir=$(app_data_dir "$app")
     legacy_log_dir=$(app_log_dir "$app")
+    legacy_home_dir="${legacy_data_dir}/home"
     legacy_permissions=$(registry_permissions_env "$app")
     ensure_app_managed_dirs "$app"
     legacy_group_lines=""
+    legacy_env_lines="Environment=HOME=${legacy_home_dir}
+Environment=XDG_DATA_HOME=${legacy_home_dir}/.local/share"
     registry_needs_permission "$app" "bluetooth" && legacy_group_lines="SupplementaryGroups=bluetooth"
     if [ "$app_type" = "node" ] && [ -n "$entrypoint" ]; then
       local entry_dir
@@ -1257,7 +1264,8 @@ NoNewPrivileges=true"
       assert_node_runtime || log "WARNING: PCC expects Node.js v24, current runtime is $(get_node_version)"
       exec_start="$(get_node_bin) --max-old-space-size=96 ${install_dir}/${entrypoint}"
       legacy_security_lines="PrivateTmp=true"
-      legacy_env_lines="Environment=NODE_ENV=production
+      legacy_env_lines="${legacy_env_lines}
+Environment=NODE_ENV=production
 Environment=NODE_OPTIONS=--max-old-space-size=96
 Environment=DBUS_SYSTEM_BUS_ADDRESS=unix:path=/run/dbus/system_bus_socket"
     else
