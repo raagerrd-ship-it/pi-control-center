@@ -215,6 +215,7 @@ $USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl --no-block stop *.service
 $USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl enable *.service
 $USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl disable *.service
 $USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl try-restart *.service
+$USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl restart *.service
 $USER ALL=(ALL) NOPASSWD: /usr/bin/mkdir -p /etc/pi-control-center
 $USER ALL=(ALL) NOPASSWD: /usr/bin/mkdir -p /var/log/pi-control-center
 $USER ALL=(ALL) NOPASSWD: /usr/bin/mkdir -p /var/lib/pi-control-center
