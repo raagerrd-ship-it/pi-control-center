@@ -76,6 +76,7 @@ USER_BUS_ADDRESS="unix:path=$USER_RUNTIME_DIR/bus"
 REGISTRY_FILE="/var/www/pi-control-center/services.json"
 ASSIGNMENTS_FILE="/etc/pi-control-center/assignments.json"
 APPS_CONFIG_DIR="/etc/pi-control-center/apps"
+APPS_DATA_DIR="/var/lib/pi-control-center/apps"
 APPS_LOG_DIR="/var/log/pi-control-center/apps"
 OP_LOCK_FILE="/tmp/pi-control-center/operation.lock"
 
@@ -85,6 +86,7 @@ WATCHDOG_DIR="$STATUS_DIR/watchdog"
 mkdir -p "$STATUS_DIR" "$INSTALL_DIR" "$HEALTH_DIR" "$WATCHDOG_DIR"
 sudo_run_quiet mkdir -p /etc/pi-control-center || true
 sudo_run_quiet mkdir -p "$APPS_CONFIG_DIR" || true
+sudo_run_quiet mkdir -p "$APPS_DATA_DIR" || true
 sudo_run_quiet mkdir -p "$APPS_LOG_DIR" || true
 
 # Read git info once at startup
@@ -142,16 +144,19 @@ log() {
 }
 
 app_config_dir() { echo "$APPS_CONFIG_DIR/$(echo "$1" | tr -cd 'a-zA-Z0-9_-')"; }
+app_data_dir() { echo "$APPS_DATA_DIR/$(echo "$1" | tr -cd 'a-zA-Z0-9_-')"; }
 app_log_dir() { echo "$APPS_LOG_DIR/$(echo "$1" | tr -cd 'a-zA-Z0-9_-')"; }
 
 ensure_app_managed_dirs() {
-  local app=$1 cfg logdir
+  local app=$1 cfg data_dir logdir
   cfg=$(app_config_dir "$app")
+  data_dir=$(app_data_dir "$app")
   logdir=$(app_log_dir "$app")
   sudo_run_quiet mkdir -p "$cfg" || true
+  sudo_run_quiet mkdir -p "$data_dir" || true
   sudo_run_quiet mkdir -p "$logdir" || true
-  sudo_run_quiet chown -R "$(whoami):$(id -gn)" "$cfg" "$logdir" || true
-  chmod 700 "$cfg" 2>/dev/null || true
+  sudo_run_quiet chown -R "$(whoami):$(id -gn)" "$cfg" "$data_dir" "$logdir" || true
+  chmod 700 "$cfg" "$data_dir" 2>/dev/null || true
   chmod 755 "$logdir" 2>/dev/null || true
 }
 
@@ -825,16 +830,17 @@ build_status_json() {
       health_uptime=$(echo "$health_json" | jq -r '.uptime // 0' 2>/dev/null)
       health_mem_rss=$(echo "$health_json" | jq -r '.memory.rss // 0' 2>/dev/null)
 
-      local mem_limit mem_profile mem_level permissions_json cfg_dir log_dir
+      local mem_limit mem_profile mem_level permissions_json cfg_dir data_dir log_dir
       mem_limit=$(_app_current_limit "$app"); [ -z "$mem_limit" ] && mem_limit=$(registry_memory_profile_mb "$app"); [ -z "$mem_limit" ] && mem_limit=128
       mem_profile=$(registry_memory_profile_json "$app"); [ -z "$mem_profile" ] && mem_profile="null"
       mem_level=$(memory_level_for_mb "$app" "$mem_limit")
       permissions_json=$(registry_permissions_json "$app")
       cfg_dir=$(escape_json "$(app_config_dir "$app")")
+      data_dir=$(escape_json "$(app_data_dir "$app")")
       log_dir=$(escape_json "$(app_log_dir "$app")")
 
       [ -n "$svc_json" ] && svc_json="${svc_json},"
-      svc_json="${svc_json}\"${app}\":{\"online\":${online},\"installed\":${installed},\"version\":\"${ver}\",\"cpu\":${total_cpu:-0},\"ramMb\":${total_ram:-0},\"cpuCore\":${core},\"port\":${port},\"memoryMaxMb\":${mem_limit},\"memoryLevel\":\"${mem_level}\",\"memoryProfile\":${mem_profile},\"permissions\":${permissions_json},\"configDir\":\"${cfg_dir}\",\"logDir\":\"${log_dir}\",\"watchdog\":${engine_watchdog},\"health\":{\"status\":\"${health_status}\",\"uptime\":${health_uptime:-0},\"memoryRss\":${health_mem_rss:-0}},\"components\":{\"engine\":{\"online\":${engine_online},\"version\":\"${engine_ver}\",\"cpu\":${engine_cpu:-0},\"ramMb\":${engine_ram:-0},\"service\":\"${engine_svc}\",\"port\":${engine_port},\"cpuCore\":${core},\"watchdog\":${engine_watchdog}},\"ui\":{\"online\":${ui_online},\"version\":\"${ui_ver}\",\"cpu\":${ui_cpu:-0},\"ramMb\":${ui_ram:-0},\"service\":\"${ui_svc}\",\"port\":${port},\"cpuCore\":0,\"watchdog\":${ui_watchdog}}}}"
+      svc_json="${svc_json}\"${app}\":{\"online\":${online},\"installed\":${installed},\"version\":\"${ver}\",\"cpu\":${total_cpu:-0},\"ramMb\":${total_ram:-0},\"cpuCore\":${core},\"port\":${port},\"memoryMaxMb\":${mem_limit},\"memoryLevel\":\"${mem_level}\",\"memoryProfile\":${mem_profile},\"permissions\":${permissions_json},\"configDir\":\"${cfg_dir}\",\"dataDir\":\"${data_dir}\",\"logDir\":\"${log_dir}\",\"watchdog\":${engine_watchdog},\"health\":{\"status\":\"${health_status}\",\"uptime\":${health_uptime:-0},\"memoryRss\":${health_mem_rss:-0}},\"components\":{\"engine\":{\"online\":${engine_online},\"version\":\"${engine_ver}\",\"cpu\":${engine_cpu:-0},\"ramMb\":${engine_ram:-0},\"service\":\"${engine_svc}\",\"port\":${engine_port},\"cpuCore\":${core},\"watchdog\":${engine_watchdog}},\"ui\":{\"online\":${ui_online},\"version\":\"${ui_ver}\",\"cpu\":${ui_cpu:-0},\"ramMb\":${ui_ram:-0},\"service\":\"${ui_svc}\",\"port\":${port},\"cpuCore\":0,\"watchdog\":${ui_watchdog}}}}"
     else
       # Legacy single-service
       running=$(service_is_active "$svc")
@@ -866,14 +872,15 @@ build_status_json() {
       [ -n "$svc_json" ] && svc_json="${svc_json},"
       local service_watchdog
       service_watchdog=$(watchdog_json "$app" "service")
-      local mem_limit mem_profile mem_level permissions_json cfg_dir log_dir
+      local mem_limit mem_profile mem_level permissions_json cfg_dir data_dir log_dir
       mem_limit=$(_app_current_limit "$app"); [ -z "$mem_limit" ] && mem_limit=$(registry_memory_profile_mb "$app"); [ -z "$mem_limit" ] && mem_limit=128
       mem_profile=$(registry_memory_profile_json "$app"); [ -z "$mem_profile" ] && mem_profile="null"
       mem_level=$(memory_level_for_mb "$app" "$mem_limit")
       permissions_json=$(registry_permissions_json "$app")
       cfg_dir=$(escape_json "$(app_config_dir "$app")")
+      data_dir=$(escape_json "$(app_data_dir "$app")")
       log_dir=$(escape_json "$(app_log_dir "$app")")
-      svc_json="${svc_json}\"${app}\":{\"online\":${online},\"installed\":${installed},\"version\":\"${ver}\",\"cpu\":${s_cpu:-0},\"ramMb\":${s_ram:-0},\"cpuCore\":${s_core},\"port\":${port},\"memoryMaxMb\":${mem_limit},\"memoryLevel\":\"${mem_level}\",\"memoryProfile\":${mem_profile},\"permissions\":${permissions_json},\"configDir\":\"${cfg_dir}\",\"logDir\":\"${log_dir}\",\"watchdog\":${service_watchdog}}"
+      svc_json="${svc_json}\"${app}\":{\"online\":${online},\"installed\":${installed},\"version\":\"${ver}\",\"cpu\":${s_cpu:-0},\"ramMb\":${s_ram:-0},\"cpuCore\":${s_core},\"port\":${port},\"memoryMaxMb\":${mem_limit},\"memoryLevel\":\"${mem_level}\",\"memoryProfile\":${mem_profile},\"permissions\":${permissions_json},\"configDir\":\"${cfg_dir}\",\"dataDir\":\"${data_dir}\",\"logDir\":\"${log_dir}\",\"watchdog\":${service_watchdog}}"
     fi
   done
 
@@ -1128,8 +1135,9 @@ AllowedCPUs=0"
 
       local comp_security_lines="PrivateTmp=true"
       local comp_env_lines=""
-      local comp_cfg_dir comp_log_dir comp_permissions comp_group_lines
+      local comp_cfg_dir comp_data_dir comp_log_dir comp_permissions comp_group_lines
       comp_cfg_dir=$(app_config_dir "$app")
+      comp_data_dir=$(app_data_dir "$app")
       comp_log_dir=$(app_log_dir "$app")
       comp_permissions=$(registry_permissions_env "$app")
       ensure_app_managed_dirs "$app"
@@ -1162,6 +1170,7 @@ ExecStart=${comp_exec}
 Environment=NPM_CONFIG_CACHE=${install_dir}/.npm-cache
 Environment=PCC_APP_KEY=${app}
 Environment=PCC_CONFIG_DIR=${comp_cfg_dir}
+Environment=PCC_DATA_DIR=${comp_data_dir}
 Environment=PCC_LOG_DIR=${comp_log_dir}
 Environment=PCC_PERMISSIONS=${comp_permissions}
 Environment=PORT=${comp_port}
@@ -1173,6 +1182,7 @@ ProtectSystem=strict
 ProtectHome=read-only
 ReadWritePaths=${install_dir}
 ReadWritePaths=${comp_cfg_dir}
+ReadWritePaths=${comp_data_dir}
 ReadWritePaths=${comp_log_dir}
 ${comp_security_lines}
 ${comp_group_lines}
@@ -1205,8 +1215,9 @@ UNIT
     local legacy_security_lines="PrivateTmp=true
 NoNewPrivileges=true"
     local legacy_env_lines=""
-    local legacy_cfg_dir legacy_log_dir legacy_permissions legacy_group_lines
+    local legacy_cfg_dir legacy_data_dir legacy_log_dir legacy_permissions legacy_group_lines
     legacy_cfg_dir=$(app_config_dir "$app")
+    legacy_data_dir=$(app_data_dir "$app")
     legacy_log_dir=$(app_log_dir "$app")
     legacy_permissions=$(registry_permissions_env "$app")
     ensure_app_managed_dirs "$app"
@@ -1252,6 +1263,7 @@ ExecStart=${exec_start}
 Environment=NPM_CONFIG_CACHE=${install_dir}/.npm-cache
 Environment=PCC_APP_KEY=${app}
 Environment=PCC_CONFIG_DIR=${legacy_cfg_dir}
+Environment=PCC_DATA_DIR=${legacy_data_dir}
 Environment=PCC_LOG_DIR=${legacy_log_dir}
 Environment=PCC_PERMISSIONS=${legacy_permissions}
 Environment=PORT=${req_port}
@@ -1262,6 +1274,7 @@ ProtectSystem=strict
 ProtectHome=read-only
 ReadWritePaths=${install_dir}
 ReadWritePaths=${legacy_cfg_dir}
+ReadWritePaths=${legacy_data_dir}
 ReadWritePaths=${legacy_log_dir}
 ${legacy_security_lines}
 ${legacy_group_lines}
@@ -1700,6 +1713,11 @@ handle_request() {
             sudo kill -9 $pid 2>/dev/null || true
           fi
         done
+
+        # Clear persistent app config/data/logs
+        sudo rm -rf "$APPS_CONFIG_DIR" "$APPS_DATA_DIR" "$APPS_LOG_DIR" >> "$reset_log" 2>&1 || true
+        sudo mkdir -p "$APPS_CONFIG_DIR" "$APPS_DATA_DIR" "$APPS_LOG_DIR" >> "$reset_log" 2>&1 || true
+        sudo chown -R pi:pi "$APPS_CONFIG_DIR" "$APPS_DATA_DIR" "$APPS_LOG_DIR" >> "$reset_log" 2>&1 || true
 
         # Clear assignments
         echo '{}' | sudo tee "$ASSIGNMENTS_FILE" > /dev/null
