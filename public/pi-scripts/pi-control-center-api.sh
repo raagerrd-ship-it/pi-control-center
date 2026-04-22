@@ -55,12 +55,15 @@ USER_BUS_ADDRESS="unix:path=$USER_RUNTIME_DIR/bus"
 
 REGISTRY_FILE="/var/www/pi-control-center/services.json"
 ASSIGNMENTS_FILE="/etc/pi-control-center/assignments.json"
+APPS_CONFIG_DIR="/etc/pi-control-center/apps"
+APPS_LOG_DIR="/var/log/pi-control-center/apps"
+OP_LOCK_FILE="/tmp/pi-control-center/operation.lock"
 
 HEALTH_DIR="$STATUS_DIR/health"
 WATCHDOG_DIR="$STATUS_DIR/watchdog"
 
 mkdir -p "$STATUS_DIR" "$INSTALL_DIR" "$HEALTH_DIR" "$WATCHDOG_DIR"
-sudo mkdir -p /etc/pi-control-center 2>/dev/null || true
+sudo mkdir -p /etc/pi-control-center "$APPS_CONFIG_DIR" "$APPS_LOG_DIR" 2>/dev/null || true
 
 # Read git info once at startup
 DASHBOARD_COMMIT=""
