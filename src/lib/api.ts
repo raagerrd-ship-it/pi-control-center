@@ -36,6 +36,9 @@ export interface ServiceStatus {
   installed: boolean;
   cpu: number;
   ramMb: number;
+  memoryMaxMb?: number;
+  memoryLevel?: 'low' | 'balanced' | 'high' | 'custom' | string;
+  memoryProfile?: MemoryProfile | null;
   cpuCore: number;
   port?: number;
   /** Health check data from engine's /api/health */
@@ -53,6 +56,11 @@ export interface RuntimeStatus {
   nodeVersion: string;
   nodePath: string;
   status?: 'ok' | 'warning' | string;
+}
+
+export interface MemoryProfile {
+  defaultLevel: 'low' | 'balanced' | 'high' | string;
+  levels: Record<string, number>;
 }
 
 export interface SystemStatus {
@@ -131,6 +139,7 @@ export interface ServiceDefinition {
   };
   repo: string;
   releaseUrl?: string;
+  memoryProfile?: MemoryProfile;
   installDir: string;
   installScript: string;
   updateScript: string;
