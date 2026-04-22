@@ -640,6 +640,16 @@ check_installed() {
   [ -d "$install_dir" ] && { [ -f "$PI_HOME/.config/systemd/user/${svc}.service" ] || [ -f "/etc/systemd/system/${svc}.service" ]; } && echo "true" || echo "false"
 }
 
+service_unit_file() {
+  local svc=$1
+  [ -z "$svc" ] && return
+  if [ -f "/etc/systemd/system/${svc}.service" ]; then
+    echo "/etc/systemd/system/${svc}.service"
+  elif [ -f "$PI_HOME/.config/systemd/user/${svc}.service" ]; then
+    echo "$PI_HOME/.config/systemd/user/${svc}.service"
+  fi
+}
+
 get_version() {
   local install_dir="$1" port="$2"
   # 1) Ask the service's own API if it's running
@@ -767,11 +777,11 @@ build_status_json() {
       online="false"
       [ "$engine_online" = "true" ] || [ "$ui_online" = "true" ] && online="true"
 
-      # Check installed: need install_dir + at least one service file
+      # Check installed: need install_dir + at least one system/user service file
       installed="false"
       if [ -d "$install_dir" ]; then
-        { [ -n "$engine_svc" ] && [ -f "$PI_HOME/.config/systemd/user/${engine_svc}.service" ]; } || \
-        { [ -n "$ui_svc" ] && [ -f "$PI_HOME/.config/systemd/user/${ui_svc}.service" ]; } && installed="true"
+        { [ -n "$engine_svc" ] && [ -n "$(service_unit_file "$engine_svc")" ]; } || \
+        { [ -n "$ui_svc" ] && [ -n "$(service_unit_file "$ui_svc")" ]; } && installed="true"
       fi
 
       # Use engine port for version check (UI port serves static HTML, not API)
@@ -1039,7 +1049,6 @@ do_install_release() {
     # Component-based: create separate services for engine and ui
     # Fixed ports: UI = 3000 + core, Engine = 3050 + core
     local engine_port=$(engine_port_for_core "$req_core")
-    mkdir -p "$PI_HOME/.config/systemd/user" || return 1
     mkdir -p "${install_dir}/.npm-cache" || return 1
 
     for comp in engine ui; do
@@ -1104,34 +1113,27 @@ AllowedCPUs=0"
       comp_group_lines=""
       registry_needs_permission "$app" "bluetooth" && comp_group_lines="SupplementaryGroups=bluetooth"
       if [ "$comp" = "engine" ] && [ "$comp_type" = "node" ]; then
-        # User-services kan inte sätta AmbientCapabilities/CapabilityBoundingSet
-        # (kräver root). UPnP/SSDP via plain UDP fungerar utan CAP_NET_RAW.
         comp_security_lines="PrivateTmp=true"
         comp_env_lines="Environment=NODE_ENV=production
 Environment=NODE_OPTIONS=--max-old-space-size=96
 Environment=DBUS_SYSTEM_BUS_ADDRESS=unix:path=/run/dbus/system_bus_socket"
       fi
 
-      local comp_svc_file="$PI_HOME/.config/systemd/user/${comp_svc}.service"
-      # Remove any root-owned service file left by installScript (which runs via sudo)
-      [ -f "$comp_svc_file" ] && [ ! -w "$comp_svc_file" ] && sudo rm -f "$comp_svc_file"
-
-      # Remove conflicting system-level service file that overrides user-level
-      local sys_svc_file="/etc/systemd/system/${comp_svc}.service"
-      if [ -f "$sys_svc_file" ]; then
-        log "Removing conflicting system-level service: ${sys_svc_file}"
-        sudo systemctl stop "${comp_svc}.service" 2>/dev/null || true
-        sudo systemctl disable "${comp_svc}.service" 2>/dev/null || true
-        sudo rm -f "$sys_svc_file"
-        sudo systemctl daemon-reload
-      fi
-      if ! cat > "$comp_svc_file" <<UNIT
+      local comp_svc_file="/etc/systemd/system/${comp_svc}.service"
+      user_systemctl stop "${comp_svc}.service" 2>/dev/null || true
+      user_systemctl disable "${comp_svc}.service" 2>/dev/null || true
+      rm -f "$PI_HOME/.config/systemd/user/${comp_svc}.service" 2>/dev/null || true
+      sudo systemctl stop "${comp_svc}.service" 2>/dev/null || true
+      sudo systemctl disable "${comp_svc}.service" 2>/dev/null || true
+      if ! sudo tee "$comp_svc_file" > /dev/null <<UNIT
 [Unit]
 Description=${app} ${comp} service
 After=network.target
 
 [Service]
 Type=simple
+User=pi
+Group=pi
 WorkingDirectory=${comp_work_dir}
 ExecStart=${comp_exec}
 Environment=NPM_CONFIG_CACHE=${install_dir}/.npm-cache
@@ -1157,23 +1159,22 @@ Restart=${restart_policy}
 RestartSec=5
 
 [Install]
-WantedBy=default.target
+WantedBy=multi-user.target
 UNIT
       then
         return 1
       fi
 
-      user_systemctl daemon-reload || return 1
-      user_systemctl enable "${comp_svc}.service" || return 1
-      user_systemctl --no-block start "${comp_svc}.service" || return 1
+      sudo systemctl daemon-reload || return 1
+      sudo systemctl enable "${comp_svc}.service" || return 1
+      sudo systemctl --no-block start "${comp_svc}.service" || return 1
     done
   else
     # Legacy single-service
-    local svc_file="$PI_HOME/.config/systemd/user/${svc}.service"
+    local svc_file="/etc/systemd/system/${svc}.service"
     local app_type entrypoint exec_start
     app_type=$(registry_get "$app" "type")
     entrypoint=$(registry_get "$app" "entrypoint")
-    mkdir -p "$PI_HOME/.config/systemd/user"
     mkdir -p "${install_dir}/.npm-cache"
 
     # Determine working directory from entrypoint's package.json location
@@ -1209,25 +1210,20 @@ Environment=DBUS_SYSTEM_BUS_ADDRESS=unix:path=/run/dbus/system_bus_socket"
       exec_start="/usr/bin/python3 ${PI_HOME}/pi-control-center/public/pi-scripts/static-spa-server.py --root ${install_dir}/dist --port ${req_port} --host 0.0.0.0"
     fi
 
-    # Remove any root-owned service file left by installScript (which runs via sudo)
-    [ -f "$svc_file" ] && [ ! -w "$svc_file" ] && sudo rm -f "$svc_file"
-
-    # Remove conflicting system-level service file that overrides user-level
-    local sys_svc_file="/etc/systemd/system/${svc}.service"
-    if [ -f "$sys_svc_file" ]; then
-      log "Removing conflicting system-level service: ${sys_svc_file}"
-      sudo systemctl stop "${svc}.service" 2>/dev/null || true
-      sudo systemctl disable "${svc}.service" 2>/dev/null || true
-      sudo rm -f "$sys_svc_file"
-      sudo systemctl daemon-reload
-    fi
-    cat > "$svc_file" <<UNIT
+    user_systemctl stop "${svc}.service" 2>/dev/null || true
+    user_systemctl disable "${svc}.service" 2>/dev/null || true
+    rm -f "$PI_HOME/.config/systemd/user/${svc}.service" 2>/dev/null || true
+    sudo systemctl stop "${svc}.service" 2>/dev/null || true
+    sudo systemctl disable "${svc}.service" 2>/dev/null || true
+    sudo tee "$svc_file" > /dev/null <<UNIT
 [Unit]
 Description=${app} service
 After=network.target
 
 [Service]
 Type=simple
+User=pi
+Group=pi
 WorkingDirectory=${legacy_work_dir}
 ExecStart=${exec_start}
 Environment=NPM_CONFIG_CACHE=${install_dir}/.npm-cache
@@ -1252,12 +1248,12 @@ Restart=on-failure
 RestartSec=5
 
 [Install]
-WantedBy=default.target
+WantedBy=multi-user.target
 UNIT
 
-    user_systemctl daemon-reload
-    user_systemctl enable "${svc}.service"
-    user_systemctl --no-block start "${svc}.service"
+    sudo systemctl daemon-reload
+    sudo systemctl enable "${svc}.service"
+    sudo systemctl --no-block start "${svc}.service"
   fi
 
   return 0
@@ -1279,7 +1275,7 @@ _app_primary_svc_file() {
   else
     s=$(registry_get "$app" "service")
   fi
-  [ -n "$s" ] && echo "$PI_HOME/.config/systemd/user/${s}.service"
+  [ -n "$s" ] && service_unit_file "$s"
 }
 
 # Läs aktuell MemoryMax (MB) för en app, tom sträng om ej satt
@@ -1298,23 +1294,23 @@ _app_set_limit() {
     for comp in engine ui; do
       s=$(registry_get_component "$app" "$comp" "service")
       [ -n "$s" ] || continue
-      f="$PI_HOME/.config/systemd/user/${s}.service"
+      f=$(service_unit_file "$s")
       [ -f "$f" ] || continue
       if grep -q '^MemoryMax=' "$f"; then
-        sed -i "s/^MemoryMax=.*/MemoryMax=${limit_mb}M/" "$f"
+        sudo sed -i "s/^MemoryMax=.*/MemoryMax=${limit_mb}M/" "$f"
       else
-        sed -i "/^\[Service\]/a MemoryMax=${limit_mb}M" "$f"
+        sudo sed -i "/^\[Service\]/a MemoryMax=${limit_mb}M" "$f"
       fi
     done
   else
     s=$(registry_get "$app" "service")
     [ -n "$s" ] || return
-    f="$PI_HOME/.config/systemd/user/${s}.service"
+    f=$(service_unit_file "$s")
     [ -f "$f" ] || return
     if grep -q '^MemoryMax=' "$f"; then
-      sed -i "s/^MemoryMax=.*/MemoryMax=${limit_mb}M/" "$f"
+      sudo sed -i "s/^MemoryMax=.*/MemoryMax=${limit_mb}M/" "$f"
     else
-      sed -i "/^\[Service\]/a MemoryMax=${limit_mb}M" "$f"
+      sudo sed -i "/^\[Service\]/a MemoryMax=${limit_mb}M" "$f"
     fi
   fi
 }
@@ -1325,11 +1321,11 @@ _app_try_restart() {
   if [ "$(registry_has_components "$app")" = "true" ]; then
     for comp in engine ui; do
       s=$(registry_get_component "$app" "$comp" "service")
-      [ -n "$s" ] && user_systemctl try-restart "${s}.service" 2>/dev/null || true
+      [ -n "$s" ] && { sudo systemctl try-restart "${s}.service" 2>/dev/null || user_systemctl try-restart "${s}.service" 2>/dev/null || true; }
     done
   else
     s=$(registry_get "$app" "service")
-    [ -n "$s" ] && user_systemctl try-restart "${s}.service" 2>/dev/null || true
+    [ -n "$s" ] && { sudo systemctl try-restart "${s}.service" 2>/dev/null || user_systemctl try-restart "${s}.service" 2>/dev/null || true; }
   fi
 }
 
@@ -1501,8 +1497,9 @@ do_uninstall() {
       local comp_svc
       comp_svc=$(registry_get_component "$app" "$comp" "service")
       [ -z "$comp_svc" ] && continue
-      user_systemctl stop "${comp_svc}.service" 2>/dev/null || true
-      user_systemctl disable "${comp_svc}.service" 2>/dev/null || true
+      sudo systemctl stop "${comp_svc}.service" 2>/dev/null || user_systemctl stop "${comp_svc}.service" 2>/dev/null || true
+      sudo systemctl disable "${comp_svc}.service" 2>/dev/null || user_systemctl disable "${comp_svc}.service" 2>/dev/null || true
+      sudo rm -f "/etc/systemd/system/${comp_svc}.service" 2>/dev/null || true
       rm -f "$PI_HOME/.config/systemd/user/${comp_svc}.service" 2>/dev/null || true
     done
   else
@@ -1512,6 +1509,7 @@ do_uninstall() {
     sudo rm -f "/etc/systemd/system/${svc}.service" 2>/dev/null || true
     rm -f "$PI_HOME/.config/systemd/user/${svc}.service" 2>/dev/null || true
   fi
+  sudo systemctl daemon-reload 2>/dev/null || true
 
   # Run uninstall script if it exists
   if [ -n "$uninstall_script" ] && [ -f "$install_dir/$uninstall_script" ]; then
@@ -1871,14 +1869,14 @@ handle_request() {
           STOPPED_SERVICES=$(collect_app_services)
           local svc
           for svc in $STOPPED_SERVICES; do
-            user_systemctl stop "${svc}.service" 2>/dev/null || true
+            sudo systemctl stop "${svc}.service" 2>/dev/null || user_systemctl stop "${svc}.service" 2>/dev/null || true
           done
         }
 
         restart_app_services() {
           local svc
           for svc in $STOPPED_SERVICES; do
-            user_systemctl start "${svc}.service" 2>/dev/null || true
+            sudo systemctl start "${svc}.service" 2>/dev/null || user_systemctl start "${svc}.service" 2>/dev/null || true
           done
         }
 
@@ -2016,10 +2014,10 @@ handle_request() {
                   for comp_upd in engine ui; do
                     local comp_svc_upd
                     comp_svc_upd=$(registry_get_component "$app" "$comp_upd" "service")
-                    [ -n "$comp_svc_upd" ] && user_systemctl restart "${comp_svc_upd}.service" 2>> "$update_log" || true
+                    [ -n "$comp_svc_upd" ] && { sudo systemctl restart "${comp_svc_upd}.service" 2>> "$update_log" || user_systemctl restart "${comp_svc_upd}.service" 2>> "$update_log" || true; }
                   done
                 else
-                  user_systemctl restart "${svc}.service" 2>> "$update_log" || sudo systemctl restart "${svc}.service" 2>> "$update_log" || true
+                  sudo systemctl restart "${svc}.service" 2>> "$update_log" || user_systemctl restart "${svc}.service" 2>> "$update_log" || true
                 fi
               fi
 
@@ -2135,7 +2133,7 @@ handle_request() {
       else
         _app_set_limit "$ml_app" "$ml_new_limit"
         if [ -n "$(_app_current_limit "$ml_app")" ]; then
-          user_systemctl daemon-reload 2>/dev/null || true
+          sudo systemctl daemon-reload 2>/dev/null || user_systemctl daemon-reload 2>/dev/null || true
           rm -f "$CACHE_FILE"
           [ -z "$ml_level" ] && ml_level=$(memory_level_for_mb "$ml_app" "$ml_new_limit")
           response="{\"app\":\"${ml_app}\",\"limitMb\":${ml_new_limit},\"level\":\"${ml_level}\",\"status\":\"success\"}"
@@ -2337,11 +2335,10 @@ if [ "$REQUEST_MODE" = "--run-install" ]; then
   exit $?
 fi
 
-# --- Startup: remove conflicting system-level service files ---
-startup_cleanup_system_services() {
+# --- Startup: remove legacy user-level app service files now that PCC owns system services ---
+startup_cleanup_user_services() {
   local cleaned=0
   for app in $(registry_keys); do
-    # Skip apps som hanteras externt (t.ex. Lotus Light som har egen system-service)
     [ "$(registry_is_managed "$app")" = "false" ] && continue
     local has_comp svc_names=""
     has_comp=$(registry_has_components "$app")
@@ -2357,19 +2354,19 @@ startup_cleanup_system_services() {
       [ -n "$s" ] && svc_names="$s"
     fi
     for svc_name in $svc_names; do
-      local sys_file="/etc/systemd/system/${svc_name}.service"
-      if [ -f "$sys_file" ]; then
-        log "Startup cleanup: removing conflicting system-level service ${sys_file}"
-        sudo systemctl stop "${svc_name}.service" 2>/dev/null || true
-        sudo systemctl disable "${svc_name}.service" 2>/dev/null || true
-        sudo rm -f "$sys_file"
+      local user_file="$PI_HOME/.config/systemd/user/${svc_name}.service"
+      if [ -f "$user_file" ]; then
+        log "Startup cleanup: removing legacy user service ${user_file}"
+        user_systemctl stop "${svc_name}.service" 2>/dev/null || true
+        user_systemctl disable "${svc_name}.service" 2>/dev/null || true
+        rm -f "$user_file"
         cleaned=1
       fi
     done
   done
-  [ "$cleaned" -eq 1 ] && sudo systemctl daemon-reload
+  [ "$cleaned" -eq 1 ] && user_systemctl daemon-reload 2>/dev/null || true
 }
-startup_cleanup_system_services
+startup_cleanup_user_services
 
 # --- Migrate legacy assignments.json format ---
 # Old: {"app": {"port": 3001, "core": 1}}  →  New: {"app": 1}
