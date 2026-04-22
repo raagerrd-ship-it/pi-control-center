@@ -200,14 +200,16 @@ CPUAffinity=0
 AllowedCPUs=0
 OVER
 
-# Scoped sudoers — only specific operations, not wildcard systemctl
+# Scoped sudoers — passwordless operations required by all PCC-managed app installers
 sudo tee /etc/sudoers.d/pi-control-center > /dev/null << EOF
+$USER ALL=(ALL) NOPASSWD: /usr/bin/true
 $USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl start pi-control-center-api.service
 $USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl stop pi-control-center-api.service
 $USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl restart pi-control-center-api.service
 $USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl restart nginx.service
 $USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl daemon-reload
 $USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl start *.service
+$USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl --no-block start *.service
 $USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl stop *.service
 $USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl enable *.service
 $USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl disable *.service
@@ -218,12 +220,16 @@ $USER ALL=(ALL) NOPASSWD: /usr/bin/tee /etc/pi-control-center/*
 $USER ALL=(ALL) NOPASSWD: /usr/bin/tee /etc/systemd/system/*.service
 $USER ALL=(ALL) NOPASSWD: /usr/bin/mkdir -p /var/www/pi-control-center
 $USER ALL=(ALL) NOPASSWD: /usr/bin/cp -r *
+$USER ALL=(ALL) NOPASSWD: /usr/bin/cp *
 $USER ALL=(ALL) NOPASSWD: /usr/bin/install -m 755 *
 $USER ALL=(ALL) NOPASSWD: /usr/bin/git clone *
 $USER ALL=(ALL) NOPASSWD: /usr/bin/chown *
 $USER ALL=(ALL) NOPASSWD: /usr/bin/ln -sf *
+$USER ALL=(ALL) NOPASSWD: /usr/bin/mv /tmp/pi-control-center/* /etc/pi-control-center/*
+$USER ALL=(ALL) NOPASSWD: /usr/bin/sed -i * /etc/systemd/system/*.service
 $USER ALL=(ALL) NOPASSWD: /usr/bin/rm -rf /opt/*
 $USER ALL=(ALL) NOPASSWD: /usr/bin/rm -rf /etc/systemd/system/*.service
+$USER ALL=(ALL) NOPASSWD: /usr/bin/rm -f /etc/systemd/system/*.service
 $USER ALL=(ALL) NOPASSWD: /usr/bin/mkdir -p /opt/*
 $USER ALL=(ALL) NOPASSWD: /usr/bin/journalctl *
 $USER ALL=(ALL) NOPASSWD: /usr/bin/systemd-run *

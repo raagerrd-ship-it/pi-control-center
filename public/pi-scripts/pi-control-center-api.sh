@@ -26,7 +26,7 @@ sudo_run_quiet() {
 }
 
 sudo_available() {
-  [ "$(id -u)" -eq 0 ] || sudo -n true >/dev/null 2>&1
+  [ "$(id -u)" -eq 0 ] || sudo -n true >/dev/null 2>&1 || sudo -n /usr/bin/systemctl daemon-reload >/dev/null 2>&1
 }
 
 case "$REQUEST_MODE" in
@@ -998,9 +998,9 @@ do_install_release() {
   [ -z "$download_url" ] || [ "$download_url" = "null" ] && return 1
 
   progress "$sf" "$app" "Förbereder katalog..." "$start_time"
-  [ -d "$install_dir" ] && sudo rm -rf "$install_dir"
-  sudo mkdir -p "$install_dir"
-  sudo chown "$(whoami):$(whoami)" "$install_dir"
+  [ -d "$install_dir" ] && sudo_run rm -rf "$install_dir"
+  sudo_run mkdir -p "$install_dir"
+  sudo_run chown "$(whoami):$(whoami)" "$install_dir"
 
   progress "$sf" "$app" "Laddar ner förbyggd release..." "$start_time"
   if ! curl -sfL "$download_url" -o "/tmp/pi-control-center/${app}-dist.tar.gz" >> "$INSTALL_DIR/${app}.log" 2>&1; then
@@ -1033,10 +1033,10 @@ do_install_release() {
     for pkg_dir in $pkg_dirs; do
       if [ -d "$pkg_dir/node_modules" ]; then
         progress "$sf" "$app" "Bygger om native-moduler i ${pkg_dir##*/}..." "$start_time"
-        if ! sudo systemd-run --scope --quiet -p MemoryMax=256M \
+        if ! sudo_run systemd-run --scope --quiet -p MemoryMax=256M \
           bash -lc "cd '$pkg_dir' && NPM_CONFIG_CACHE='${install_dir}/.npm-cache' nice -n 15 ionice -c 3 npm rebuild --no-audit --no-fund" >> "$INSTALL_DIR/${app}.log" 2>&1; then
           progress "$sf" "$app" "npm rebuild misslyckades i ${pkg_dir##*/}, försöker npm install..." "$start_time"
-          sudo systemd-run --scope --quiet -p MemoryMax=256M \
+          sudo_run systemd-run --scope --quiet -p MemoryMax=256M \
             bash -lc "cd '$pkg_dir' && NPM_CONFIG_CACHE='${install_dir}/.npm-cache' nice -n 15 ionice -c 3 npm install --omit=dev --no-audit --no-fund" >> "$INSTALL_DIR/${app}.log" 2>&1 || {
             echo "{\"app\":\"${app}\",\"status\":\"error\",\"message\":\"npm install misslyckades i ${pkg_dir##*/}\",\"timestamp\":\"$(date -Iseconds)\"}" > "$sf"
             return 1
@@ -1052,7 +1052,7 @@ do_install_release() {
       progress "$sf" "$app" "Kör installationsskript..." "$start_time"
       chmod +x "$install_dir/$install_script"
       find "$install_dir" -name '*.sh' -exec sed -i 's/\r$//' {} +
-      sudo systemd-run --scope --quiet -p MemoryMax=256M \
+      sudo_run systemd-run --scope --quiet -p MemoryMax=256M \
         nice -n 15 ionice -c 3 bash "$install_dir/$install_script" --port "$req_port" --core "$req_core" >> "$INSTALL_DIR/${app}.log" 2>&1 || true
     fi
   fi
@@ -1146,9 +1146,9 @@ Environment=DBUS_SYSTEM_BUS_ADDRESS=unix:path=/run/dbus/system_bus_socket"
       user_systemctl stop "${comp_svc}.service" 2>/dev/null || true
       user_systemctl disable "${comp_svc}.service" 2>/dev/null || true
       rm -f "$PI_HOME/.config/systemd/user/${comp_svc}.service" 2>/dev/null || true
-      sudo systemctl stop "${comp_svc}.service" 2>/dev/null || true
-      sudo systemctl disable "${comp_svc}.service" 2>/dev/null || true
-      if ! sudo tee "$comp_svc_file" > /dev/null <<UNIT
+      sudo_run_quiet systemctl stop "${comp_svc}.service" || true
+      sudo_run_quiet systemctl disable "${comp_svc}.service" || true
+      if ! sudo_run tee "$comp_svc_file" > /dev/null <<UNIT
 [Unit]
 Description=${app} ${comp} service
 After=network.target
@@ -1188,9 +1188,9 @@ UNIT
         return 1
       fi
 
-      sudo systemctl daemon-reload || return 1
-      sudo systemctl enable "${comp_svc}.service" || return 1
-      sudo systemctl --no-block start "${comp_svc}.service" || return 1
+      sudo_run systemctl daemon-reload || return 1
+      sudo_run systemctl enable "${comp_svc}.service" || return 1
+      sudo_run systemctl --no-block start "${comp_svc}.service" || return 1
     done
   else
     # Legacy single-service
@@ -1236,9 +1236,9 @@ Environment=DBUS_SYSTEM_BUS_ADDRESS=unix:path=/run/dbus/system_bus_socket"
     user_systemctl stop "${svc}.service" 2>/dev/null || true
     user_systemctl disable "${svc}.service" 2>/dev/null || true
     rm -f "$PI_HOME/.config/systemd/user/${svc}.service" 2>/dev/null || true
-    sudo systemctl stop "${svc}.service" 2>/dev/null || true
-    sudo systemctl disable "${svc}.service" 2>/dev/null || true
-    sudo tee "$svc_file" > /dev/null <<UNIT
+    sudo_run_quiet systemctl stop "${svc}.service" || true
+    sudo_run_quiet systemctl disable "${svc}.service" || true
+    sudo_run tee "$svc_file" > /dev/null <<UNIT
 [Unit]
 Description=${app} service
 After=network.target
@@ -1274,9 +1274,9 @@ RestartSec=5
 WantedBy=multi-user.target
 UNIT
 
-    sudo systemctl daemon-reload
-    sudo systemctl enable "${svc}.service"
-    sudo systemctl --no-block start "${svc}.service"
+    sudo_run systemctl daemon-reload
+    sudo_run systemctl enable "${svc}.service"
+    sudo_run systemctl --no-block start "${svc}.service"
   fi
 
   return 0
@@ -1320,9 +1320,9 @@ _app_set_limit() {
       f=$(service_unit_file "$s")
       [ -f "$f" ] || continue
       if grep -q '^MemoryMax=' "$f"; then
-        sudo sed -i "s/^MemoryMax=.*/MemoryMax=${limit_mb}M/" "$f"
+        sudo_run sed -i "s/^MemoryMax=.*/MemoryMax=${limit_mb}M/" "$f"
       else
-        sudo sed -i "/^\[Service\]/a MemoryMax=${limit_mb}M" "$f"
+        sudo_run sed -i "/^\[Service\]/a MemoryMax=${limit_mb}M" "$f"
       fi
     done
   else
@@ -1331,9 +1331,9 @@ _app_set_limit() {
     f=$(service_unit_file "$s")
     [ -f "$f" ] || return
     if grep -q '^MemoryMax=' "$f"; then
-      sudo sed -i "s/^MemoryMax=.*/MemoryMax=${limit_mb}M/" "$f"
+      sudo_run sed -i "s/^MemoryMax=.*/MemoryMax=${limit_mb}M/" "$f"
     else
-      sudo sed -i "/^\[Service\]/a MemoryMax=${limit_mb}M" "$f"
+      sudo_run sed -i "/^\[Service\]/a MemoryMax=${limit_mb}M" "$f"
     fi
   fi
 }
@@ -1344,11 +1344,11 @@ _app_try_restart() {
   if [ "$(registry_has_components "$app")" = "true" ]; then
     for comp in engine ui; do
       s=$(registry_get_component "$app" "$comp" "service")
-      [ -n "$s" ] && { sudo systemctl try-restart "${s}.service" 2>/dev/null || user_systemctl try-restart "${s}.service" 2>/dev/null || true; }
+      [ -n "$s" ] && { sudo_run_quiet systemctl try-restart "${s}.service" || user_systemctl try-restart "${s}.service" 2>/dev/null || true; }
     done
   else
     s=$(registry_get "$app" "service")
-    [ -n "$s" ] && { sudo systemctl try-restart "${s}.service" 2>/dev/null || user_systemctl try-restart "${s}.service" 2>/dev/null || true; }
+    [ -n "$s" ] && { sudo_run_quiet systemctl try-restart "${s}.service" || user_systemctl try-restart "${s}.service" 2>/dev/null || true; }
   fi
 }
 
@@ -1416,7 +1416,7 @@ rebalance_memory_budget() {
   fi
 
   if [ ${#changed_apps[@]} -gt 0 ]; then
-    user_systemctl daemon-reload 2>/dev/null || true
+    sudo_run_quiet systemctl daemon-reload || user_systemctl daemon-reload 2>/dev/null || true
     local seen=" "
     for app in "${changed_apps[@]}"; do
       case "$seen" in *" $app "*) continue;; esac
@@ -1487,7 +1487,7 @@ do_install() {
     chmod +x "$install_dir/$script"
 
     progress "$sf" "$app" "Kör installationsskript (kan ta flera minuter)..." "$start_time"
-    if ! sudo systemd-run --scope --quiet -p MemoryMax=256M \
+    if ! sudo_run systemd-run --scope --quiet -p MemoryMax=256M \
       nice -n 15 ionice -c 3 bash "$install_dir/$script" --port "$req_port" --core "$req_core" >> "$INSTALL_DIR/${app}.log" 2>&1; then
       echo "{\"app\":\"${app}\",\"status\":\"error\",\"message\":\"Installationsskript misslyckades\",\"timestamp\":\"$(date -Iseconds)\"}" > "$sf"
       return 1
@@ -1524,19 +1524,19 @@ do_uninstall() {
       local comp_svc
       comp_svc=$(registry_get_component "$app" "$comp" "service")
       [ -z "$comp_svc" ] && continue
-      sudo systemctl stop "${comp_svc}.service" 2>/dev/null || user_systemctl stop "${comp_svc}.service" 2>/dev/null || true
-      sudo systemctl disable "${comp_svc}.service" 2>/dev/null || user_systemctl disable "${comp_svc}.service" 2>/dev/null || true
-      sudo rm -f "/etc/systemd/system/${comp_svc}.service" 2>/dev/null || true
+      sudo_run_quiet systemctl stop "${comp_svc}.service" || user_systemctl stop "${comp_svc}.service" 2>/dev/null || true
+      sudo_run_quiet systemctl disable "${comp_svc}.service" || user_systemctl disable "${comp_svc}.service" 2>/dev/null || true
+      sudo_run_quiet rm -f "/etc/systemd/system/${comp_svc}.service" || true
       rm -f "$PI_HOME/.config/systemd/user/${comp_svc}.service" 2>/dev/null || true
     done
   else
     # Legacy single service
-    sudo systemctl stop "${svc}.service" 2>/dev/null || user_systemctl stop "${svc}.service" 2>/dev/null || true
-    sudo systemctl disable "${svc}.service" 2>/dev/null || user_systemctl disable "${svc}.service" 2>/dev/null || true
-    sudo rm -f "/etc/systemd/system/${svc}.service" 2>/dev/null || true
+    sudo_run_quiet systemctl stop "${svc}.service" || user_systemctl stop "${svc}.service" 2>/dev/null || true
+    sudo_run_quiet systemctl disable "${svc}.service" || user_systemctl disable "${svc}.service" 2>/dev/null || true
+    sudo_run_quiet rm -f "/etc/systemd/system/${svc}.service" || true
     rm -f "$PI_HOME/.config/systemd/user/${svc}.service" 2>/dev/null || true
   fi
-  sudo systemctl daemon-reload 2>/dev/null || true
+  sudo_run_quiet systemctl daemon-reload || true
 
   # Run uninstall script if it exists
   if [ -n "$uninstall_script" ] && [ -f "$install_dir/$uninstall_script" ]; then
@@ -1544,12 +1544,12 @@ do_uninstall() {
     bash "$install_dir/$uninstall_script" 2>/dev/null || true
   fi
 
-  sudo systemctl daemon-reload 2>/dev/null || true
+  sudo_run_quiet systemctl daemon-reload || true
   user_systemctl daemon-reload 2>/dev/null || true
 
   # Remove install directory
   if [ -n "$install_dir" ] && [ -d "$install_dir" ]; then
-    sudo rm -rf "$install_dir"
+    sudo_run rm -rf "$install_dir"
   fi
 
   # Remove assignment
@@ -2041,10 +2041,10 @@ handle_request() {
                   for comp_upd in engine ui; do
                     local comp_svc_upd
                     comp_svc_upd=$(registry_get_component "$app" "$comp_upd" "service")
-                    [ -n "$comp_svc_upd" ] && { sudo systemctl restart "${comp_svc_upd}.service" 2>> "$update_log" || user_systemctl restart "${comp_svc_upd}.service" 2>> "$update_log" || true; }
+                    [ -n "$comp_svc_upd" ] && { sudo_run systemctl restart "${comp_svc_upd}.service" 2>> "$update_log" || user_systemctl restart "${comp_svc_upd}.service" 2>> "$update_log" || true; }
                   done
                 else
-                  sudo systemctl restart "${svc}.service" 2>> "$update_log" || user_systemctl restart "${svc}.service" 2>> "$update_log" || true
+                  sudo_run systemctl restart "${svc}.service" 2>> "$update_log" || user_systemctl restart "${svc}.service" 2>> "$update_log" || true
                 fi
               fi
 
@@ -2106,7 +2106,7 @@ handle_request() {
         local svc_ok="false" svc_err="" log_file now
         log_file="$STATUS_DIR/${app}.log"
         now="$(date -Iseconds)"
-        if sudo systemctl "$action" "${svc}.service" 2>/tmp/svc-err-$$; then
+        if sudo_run systemctl "$action" "${svc}.service" 2>/tmp/svc-err-$$; then
           svc_ok="true"
         elif user_systemctl "$action" "${svc}.service" 2>/tmp/svc-err-$$; then
           svc_ok="true"

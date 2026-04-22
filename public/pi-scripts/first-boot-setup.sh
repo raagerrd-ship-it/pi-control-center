@@ -314,16 +314,18 @@ CPUAffinity=0
 AllowedCPUs=0
 OVER
 
-# 9. Scoped sudoers — only allow managing user services and specific system operations
+# 9. Scoped sudoers — passwordless operations required by all PCC-managed app installers
 echo "[9/9] Configuring permissions..."
 sudo tee /etc/sudoers.d/pi-control-center > /dev/null << EOF
 # Pi Control Center — scoped permissions
+$PI_USER ALL=(ALL) NOPASSWD: /usr/bin/true
 $PI_USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl start pi-control-center-api.service
 $PI_USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl stop pi-control-center-api.service
 $PI_USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl restart pi-control-center-api.service
 $PI_USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl restart nginx.service
 $PI_USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl daemon-reload
 $PI_USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl start *.service
+$PI_USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl --no-block start *.service
 $PI_USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl stop *.service
 $PI_USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl enable *.service
 $PI_USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl disable *.service
@@ -334,12 +336,16 @@ $PI_USER ALL=(ALL) NOPASSWD: /usr/bin/tee /etc/pi-control-center/*
 $PI_USER ALL=(ALL) NOPASSWD: /usr/bin/tee /etc/systemd/system/*.service
 $PI_USER ALL=(ALL) NOPASSWD: /usr/bin/mkdir -p /var/www/pi-control-center
 $PI_USER ALL=(ALL) NOPASSWD: /usr/bin/cp -r *
+$PI_USER ALL=(ALL) NOPASSWD: /usr/bin/cp *
 $PI_USER ALL=(ALL) NOPASSWD: /usr/bin/install -m 755 *
 $PI_USER ALL=(ALL) NOPASSWD: /usr/bin/git clone *
 $PI_USER ALL=(ALL) NOPASSWD: /usr/bin/chown *
 $PI_USER ALL=(ALL) NOPASSWD: /usr/bin/ln -sf *
+$PI_USER ALL=(ALL) NOPASSWD: /usr/bin/mv /tmp/pi-control-center/* /etc/pi-control-center/*
+$PI_USER ALL=(ALL) NOPASSWD: /usr/bin/sed -i * /etc/systemd/system/*.service
 $PI_USER ALL=(ALL) NOPASSWD: /usr/bin/rm -rf /opt/*
 $PI_USER ALL=(ALL) NOPASSWD: /usr/bin/rm -rf /etc/systemd/system/*.service
+$PI_USER ALL=(ALL) NOPASSWD: /usr/bin/rm -f /etc/systemd/system/*.service
 $PI_USER ALL=(ALL) NOPASSWD: /usr/bin/mkdir -p /opt/*
 $PI_USER ALL=(ALL) NOPASSWD: /usr/bin/journalctl *
 $PI_USER ALL=(ALL) NOPASSWD: /usr/bin/systemd-run *
