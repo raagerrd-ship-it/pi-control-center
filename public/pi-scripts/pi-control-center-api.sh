@@ -1059,8 +1059,8 @@ do_install_release() {
       progress "$sf" "$app" "Kör installationsskript..." "$start_time"
       chmod +x "$install_dir/$install_script"
       find "$install_dir" -name '*.sh' -exec sed -i 's/\r$//' {} +
-      sudo_run systemd-run --scope --quiet -p MemoryMax=256M \
-        nice -n 15 ionice -c 3 bash "$install_dir/$install_script" --port "$req_port" --core "$req_core" >> "$INSTALL_DIR/${app}.log" 2>&1 || true
+        sudo_run systemd-run --scope --quiet -p MemoryMax=256M \
+          env PCC_MANAGED=1 nice -n 15 ionice -c 3 bash "$install_dir/$install_script" --port "$req_port" --core "$req_core" >> "$INSTALL_DIR/${app}.log" 2>&1 || true
     fi
   fi
 
@@ -1135,19 +1135,37 @@ AllowedCPUs=0"
 
       local comp_security_lines="PrivateTmp=true"
       local comp_env_lines=""
-      local comp_cfg_dir comp_data_dir comp_log_dir comp_permissions comp_group_lines
+      local comp_cfg_dir comp_data_dir comp_log_dir comp_permissions comp_group_lines comp_cap_lines comp_device_lines
       comp_cfg_dir=$(app_config_dir "$app")
       comp_data_dir=$(app_data_dir "$app")
       comp_log_dir=$(app_log_dir "$app")
       comp_permissions=$(registry_permissions_env "$app")
       ensure_app_managed_dirs "$app"
       comp_group_lines=""
-      registry_needs_permission "$app" "bluetooth" && comp_group_lines="SupplementaryGroups=bluetooth"
+      comp_cap_lines=""
+      comp_device_lines=""
+      if registry_needs_permission "$app" "bluetooth" || registry_needs_permission "$app" "rfkill" || registry_needs_permission "$app" "audio"; then
+        comp_group_lines="SupplementaryGroups=netdev bluetooth audio"
+      fi
       if [ "$comp" = "engine" ] && [ "$comp_type" = "node" ]; then
         comp_security_lines="PrivateTmp=true"
         comp_env_lines="Environment=NODE_ENV=production
 Environment=NODE_OPTIONS=--max-old-space-size=96
 Environment=DBUS_SYSTEM_BUS_ADDRESS=unix:path=/run/dbus/system_bus_socket"
+        if registry_needs_permission "$app" "bluetooth" || registry_needs_permission "$app" "rfkill"; then
+          comp_cap_lines="NoNewPrivileges=false
+AmbientCapabilities=CAP_NET_RAW CAP_NET_ADMIN CAP_SYS_NICE
+CapabilityBoundingSet=CAP_NET_RAW CAP_NET_ADMIN CAP_SYS_NICE"
+          comp_device_lines="DeviceAllow=/dev/rfkill rw
+DeviceAllow=char-rfkill rw"
+        fi
+        if registry_needs_permission "$app" "audio"; then
+          comp_device_lines="${comp_device_lines}
+DeviceAllow=char-alsa rw
+DeviceAllow=/dev/snd rw
+LimitRTPRIO=99
+LimitNICE=-20"
+        fi
       fi
 
       local comp_svc_file="/etc/systemd/system/${comp_svc}.service"
@@ -1178,6 +1196,7 @@ Environment=ENGINE_PORT=${engine_port}
 Environment=UI_PORT=${req_port}
 ${comp_env_lines}
 ${cpu_pin_lines}
+${comp_cap_lines}
 ProtectSystem=strict
 ProtectHome=read-only
 ReadWritePaths=${install_dir}
@@ -1186,6 +1205,7 @@ ReadWritePaths=${comp_data_dir}
 ReadWritePaths=${comp_log_dir}
 ${comp_security_lines}
 ${comp_group_lines}
+${comp_device_lines}
 StandardOutput=append:${comp_log_dir}/${comp}.log
 StandardError=append:${comp_log_dir}/${comp}.log
 Restart=${restart_policy}
