@@ -1927,6 +1927,9 @@ handle_request() {
         fi
         rm -f /tmp/svc-err-$$
         if [ "$svc_ok" = "true" ]; then
+          if [ "$action" = "start" ] || [ "$action" = "restart" ]; then
+            watchdog_reset "$app" "${component:-service}"
+          fi
           rm -f "$CACHE_FILE"
           printf "[%s] service %s %s: success\n" "$now" "$svc" "$action" >> "$log_file"
           response="{\"app\":\"${app}\",\"action\":\"${action}\",\"status\":\"success\"}"
@@ -2250,11 +2253,15 @@ echo "Pi Control Center API listening on port $PORT"
 health_poll_loop &
 HEALTH_PID=$!
 
+# Start watchdog protection in background
+watchdog_loop &
+WATCHDOG_PID=$!
+
 # Start status cache refresh in background
 status_cache_loop &
 CACHE_PID=$!
 
-trap "kill $HEALTH_PID $CACHE_PID 2>/dev/null; exit" EXIT INT TERM
+trap "kill $HEALTH_PID $WATCHDOG_PID $CACHE_PID 2>/dev/null; exit" EXIT INT TERM
 
 while true; do
   socat TCP-LISTEN:${PORT},reuseaddr,fork EXEC:"${SCRIPT_PATH} --handle-request ${PORT}" 2>/dev/null || sleep 1
