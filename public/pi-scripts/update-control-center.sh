@@ -25,6 +25,7 @@ chmod +x "$DASHBOARD_DIR/public/pi-scripts/"*.sh
 echo "[2/6] Installing dependencies..."
 rm -rf node_modules
 nice -n 15 ionice -c 3 npm install --no-audit --no-fund
+sudo chown -R "$USER:$USER" node_modules 2>/dev/null || true
 
 echo "[3/6] Building (this may take a few minutes)..."
 nice -n 15 ionice -c 3 npm run build
