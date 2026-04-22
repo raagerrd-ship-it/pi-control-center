@@ -2147,20 +2147,31 @@ handle_request() {
       ;;
 
     GET\ /api/service-log/*)
-      local app svc lc tmp_err
+      local app svc lc tmp_err app_logs has_comp_log
       app=${path#/api/service-log/}
       svc=$(registry_get "$app" "service")
-      if [ -z "$svc" ]; then
+      has_comp_log=$(registry_has_components "$app")
+      app_logs="$(app_log_dir "$app")"
+      if [ -z "$svc" ] && [ "$has_comp_log" != "true" ]; then
         status_line="HTTP/1.1 404 Not Found"
         response="{\"error\":\"Unknown app: ${app}\"}"
       else
         tmp_err="/tmp/service-log-$$.err"
-        lc=$(
-          timeout 3s sudo -n journalctl -u "${svc}.service" -n 60 --no-pager 2>"$tmp_err" ||
-          timeout 3s journalctl -u "${svc}.service" -n 60 --no-pager 2>>"$tmp_err" ||
-          timeout 3s systemctl status "${svc}.service" --no-pager -n 40 2>>"$tmp_err" ||
-          cat "$tmp_err"
-        )
+        if [ "$has_comp_log" = "true" ]; then
+          lc=$(for comp in engine ui; do
+            local cs
+            cs=$(registry_get_component "$app" "$comp" "service")
+            [ -n "$cs" ] && timeout 2s journalctl --user -u "${cs}.service" -n 30 --no-pager 2>>"$tmp_err"
+            [ -f "$app_logs/${comp}.log" ] && tail -30 "$app_logs/${comp}.log"
+          done)
+        else
+          lc=$(
+            timeout 3s sudo -n journalctl -u "${svc}.service" -n 60 --no-pager 2>"$tmp_err" ||
+            timeout 3s journalctl -u "${svc}.service" -n 60 --no-pager 2>>"$tmp_err" ||
+            timeout 3s systemctl status "${svc}.service" --no-pager -n 40 2>>"$tmp_err" ||
+            cat "$tmp_err"
+          )
+        fi
         rm -f "$tmp_err"
         lc=$(printf "%s" "$lc" | sed 's/\\/\\\\/g; s/"/\\"/g; s/\t/  /g' | tr '\n' '|' | sed 's/|/\\n/g')
         [ -z "$lc" ] && lc="Inga tjänstloggar tillgängliga"
