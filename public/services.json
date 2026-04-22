@@ -6,6 +6,10 @@
     "releaseUrl": "https://api.github.com/repos/raagerrd-ship-it/lotus-light-link/releases/latest",
     "releaseAsset": "dist.tar.gz",
     "installDir": "/opt/lotus-light",
+    "memoryProfile": {
+      "defaultLevel": "balanced",
+      "levels": { "low": 72, "balanced": 96, "high": 128 }
+    },
     "runInstallOnRelease": true,
     "managed": false,
     "installScript": "scripts/install.sh",
@@ -34,6 +38,10 @@
     "releaseUrl": "https://api.github.com/repos/raagerrd-ship-it/hromecast/releases/latest",
     "releaseAsset": "dist.tar.gz",
     "installDir": "/opt/cast-away",
+    "memoryProfile": {
+      "defaultLevel": "balanced",
+      "levels": { "low": 64, "balanced": 88, "high": 120 }
+    },
     "runInstallOnRelease": false,
     "installScript": "scripts/install.sh",
     "updateScript": "/opt/cast-away/scripts/update.sh",
@@ -60,6 +68,10 @@
     "releaseUrl": "https://api.github.com/repos/raagerrd-ship-it/sonos-gateway/releases/latest",
     "releaseAsset": "dist.tar.gz",
     "installDir": "/opt/sonos-buddy",
+    "memoryProfile": {
+      "defaultLevel": "balanced",
+      "levels": { "low": 80, "balanced": 112, "high": 144 }
+    },
     "runInstallOnRelease": true,
     "installScript": "scripts/install.sh",
     "updateScript": "/opt/sonos-buddy/scripts/update.sh",
