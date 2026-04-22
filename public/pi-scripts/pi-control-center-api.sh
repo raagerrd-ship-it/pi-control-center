@@ -1294,23 +1294,23 @@ _app_set_limit() {
     for comp in engine ui; do
       s=$(registry_get_component "$app" "$comp" "service")
       [ -n "$s" ] || continue
-      f="$PI_HOME/.config/systemd/user/${s}.service"
+      f=$(service_unit_file "$s")
       [ -f "$f" ] || continue
       if grep -q '^MemoryMax=' "$f"; then
-        sed -i "s/^MemoryMax=.*/MemoryMax=${limit_mb}M/" "$f"
+        sudo sed -i "s/^MemoryMax=.*/MemoryMax=${limit_mb}M/" "$f"
       else
-        sed -i "/^\[Service\]/a MemoryMax=${limit_mb}M" "$f"
+        sudo sed -i "/^\[Service\]/a MemoryMax=${limit_mb}M" "$f"
       fi
     done
   else
     s=$(registry_get "$app" "service")
     [ -n "$s" ] || return
-    f="$PI_HOME/.config/systemd/user/${s}.service"
+    f=$(service_unit_file "$s")
     [ -f "$f" ] || return
     if grep -q '^MemoryMax=' "$f"; then
-      sed -i "s/^MemoryMax=.*/MemoryMax=${limit_mb}M/" "$f"
+      sudo sed -i "s/^MemoryMax=.*/MemoryMax=${limit_mb}M/" "$f"
     else
-      sed -i "/^\[Service\]/a MemoryMax=${limit_mb}M" "$f"
+      sudo sed -i "/^\[Service\]/a MemoryMax=${limit_mb}M" "$f"
     fi
   fi
 }
@@ -1321,11 +1321,11 @@ _app_try_restart() {
   if [ "$(registry_has_components "$app")" = "true" ]; then
     for comp in engine ui; do
       s=$(registry_get_component "$app" "$comp" "service")
-      [ -n "$s" ] && user_systemctl try-restart "${s}.service" 2>/dev/null || true
+      [ -n "$s" ] && { sudo systemctl try-restart "${s}.service" 2>/dev/null || user_systemctl try-restart "${s}.service" 2>/dev/null || true; }
     done
   else
     s=$(registry_get "$app" "service")
-    [ -n "$s" ] && user_systemctl try-restart "${s}.service" 2>/dev/null || true
+    [ -n "$s" ] && { sudo systemctl try-restart "${s}.service" 2>/dev/null || user_systemctl try-restart "${s}.service" 2>/dev/null || true; }
   fi
 }
 
