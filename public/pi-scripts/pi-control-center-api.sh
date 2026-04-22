@@ -1004,7 +1004,8 @@ do_install_release() {
           fi
           search_dir=$(dirname "$search_dir")
         done
-        comp_exec="/usr/bin/node ${install_dir}/${comp_entry}"
+        assert_node_runtime || log "WARNING: PCC expects Node.js v24, current runtime is $(get_node_version)"
+        comp_exec="$(get_node_bin) --max-old-space-size=96 ${install_dir}/${comp_entry}"
       else
         comp_exec="/usr/bin/python3 ${PI_HOME}/pi-control-center/public/pi-scripts/static-spa-server.py --root ${install_dir}/${comp_entry:-dist} --port ${comp_port} --host 0.0.0.0"
       fi
@@ -1029,7 +1030,9 @@ AllowedCPUs=0"
         # User-services kan inte sätta AmbientCapabilities/CapabilityBoundingSet
         # (kräver root). UPnP/SSDP via plain UDP fungerar utan CAP_NET_RAW.
         comp_security_lines="PrivateTmp=true"
-        comp_env_lines="Environment=DBUS_SYSTEM_BUS_ADDRESS=unix:path=/run/dbus/system_bus_socket"
+        comp_env_lines="Environment=NODE_ENV=production
+Environment=NODE_OPTIONS=--max-old-space-size=96
+Environment=DBUS_SYSTEM_BUS_ADDRESS=unix:path=/run/dbus/system_bus_socket"
       fi
 
       local comp_svc_file="$PI_HOME/.config/systemd/user/${comp_svc}.service"
