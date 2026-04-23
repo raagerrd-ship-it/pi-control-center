@@ -8,7 +8,7 @@
     "installDir": "/opt/lotus-light",
     "memoryProfile": {
       "defaultLevel": "balanced",
-      "levels": { "low": 72, "balanced": 96, "high": 128 }
+      "levels": { "low": 80, "balanced": 96, "high": 128 }
     },
     "permissions": ["bluetooth", "audio", "rfkill"],
     "runInstallOnRelease": true,
@@ -39,7 +39,7 @@
     "installDir": "/opt/cast-away",
     "memoryProfile": {
       "defaultLevel": "balanced",
-      "levels": { "low": 64, "balanced": 88, "high": 120 }
+      "levels": { "low": 80, "balanced": 88, "high": 120 }
     },
     "permissions": ["network", "multicast"],
     "runInstallOnRelease": false,

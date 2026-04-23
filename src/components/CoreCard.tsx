@@ -430,22 +430,14 @@ export const CoreCard = memo(function CoreCard({
               </Select>
             )}
           </div>
-          <input
-            type="range"
-            min={16}
-            max={maxForThis}
-            step={1}
-            value={sliderValue}
-            onChange={e => handleSliderChange(Number(e.target.value))}
-            onMouseUp={handleSliderCommit}
-            onTouchEnd={handleSliderCommit}
-            className="w-full h-1.5 accent-primary bg-secondary/50 rounded-full appearance-none cursor-pointer
-              [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:h-3.5 [&::-webkit-slider-thumb]:w-3.5
-              [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-primary [&::-webkit-slider-thumb]:border-2
-              [&::-webkit-slider-thumb]:border-background [&::-webkit-slider-thumb]:shadow-sm"
-          />
+          <div className="h-1.5 rounded-full bg-secondary/50 overflow-hidden">
+            <div
+              className="h-full rounded-full bg-primary"
+              style={{ width: `${Math.min(100, (sliderValue / maxForThis) * 100)}%` }}
+            />
+          </div>
           <div className="flex justify-between font-mono text-[9px] text-muted-foreground/40">
-            <span>16</span>
+            <span>{MIN_MEMORY_MB}</span>
             <span>{maxForThis}</span>
           </div>
         </div>
