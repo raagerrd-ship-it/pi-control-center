@@ -1809,36 +1809,6 @@ rebalance_memory_budget() {
     log "RAM-budget fördelad: ${budget}MB över ${count} tjänst(er)"
   fi
 }
-      changed_apps+=("$app")
-    done
-  fi
-
-  # Steg 3: om totalen överskrider budget, skala ned proportionellt
-  if [ "$total_set" -gt "$RAM_BUDGET_MB" ]; then
-    log "RAM-totalen ${total_set}MB > budget ${RAM_BUDGET_MB}MB — skalar ned proportionellt"
-    for app in "${installed_apps[@]}"; do
-      local old=${current_limits[$app]}
-      local new=$(( old * RAM_BUDGET_MB / total_set ))
-      [ "$new" -lt 16 ] && new=16
-      if [ "$new" != "$old" ]; then
-        _app_set_limit "$app" "$new"
-        changed_apps+=("$app")
-      fi
-    done
-  fi
-
-  if [ ${#changed_apps[@]} -gt 0 ]; then
-    sudo_run_quiet systemctl daemon-reload || user_systemctl daemon-reload 2>/dev/null || true
-    local seen=" "
-    for app in "${changed_apps[@]}"; do
-      case "$seen" in *" $app "*) continue;; esac
-      seen="$seen$app "
-      _app_try_restart "$app"
-    done
-    rm -f "$CACHE_FILE"
-    log "RAM-budget uppdaterad för ${#changed_apps[@]} tjänst(er) (budget ${RAM_BUDGET_MB}MB, ${count} installerade)"
-  fi
-}
 
 do_install() {
   local app repo install_dir script svc sf install_message req_port req_core start_time
