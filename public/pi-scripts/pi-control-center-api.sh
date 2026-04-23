@@ -1652,11 +1652,14 @@ UNIT
 RAM_BUDGET_MB=330
 
 memory_budget_mb() {
-  local total budget
-  total=$(awk '/^MemTotal:/{print int($2/1024)}' /proc/meminfo 2>/dev/null)
+  local total available committed app_used budget
+  read -r total available < <(awk '/^MemTotal:/{t=int($2/1024)} /^MemAvailable:/{a=int($2/1024)} END{print t, a}' /proc/meminfo 2>/dev/null)
   budget=$RAM_BUDGET_MB
   if [ -n "$total" ] && [ "$total" -gt 0 ] 2>/dev/null; then
+    app_used=${1:-0}
+    committed=$((app_used + available - 64))
     budget=$((total - 86))
+    [ "$committed" -lt "$budget" ] && budget=$committed
     [ "$budget" -lt 240 ] && budget=240
     [ "$budget" -gt 480 ] && budget=480
   fi
@@ -1753,9 +1756,6 @@ rebalance_memory_budget() {
   local count=${#installed_apps[@]}
   [ "$count" -eq 0 ] && return 0
 
-  local budget
-  budget=$(memory_budget_mb)
-
   # Steg 1: räkna faktisk RAM-användning per app
   local total_used=0 changed_apps=()
   declare -A current_limits
@@ -1770,6 +1770,9 @@ rebalance_memory_budget() {
     runtime_ram[$app]=$used
     total_used=$((total_used + used))
   done
+
+  local budget
+  budget=$(memory_budget_mb "$total_used")
 
   # Steg 2: ny maxgräns = faktisk användning + lika del av ledigt app-RAM
   local free=$((budget - total_used)) share=0 extra=0 idx=0
