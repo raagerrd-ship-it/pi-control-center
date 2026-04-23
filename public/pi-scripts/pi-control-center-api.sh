@@ -66,7 +66,11 @@ ble_permissions_need_repair() {
   grep -q '^DisablePlugins=pnat' /etc/bluetooth/main.conf 2>/dev/null || missing=1
   systemctl is-active --quiet bluetooth 2>/dev/null || missing=1
   rfkill list bluetooth 2>/dev/null | grep -qi 'Soft blocked: yes' && missing=1
-  hciconfig hci0 2>/dev/null | grep -q 'UP RUNNING' || missing=1
+  if command -v hciconfig >/dev/null 2>&1; then
+    hciconfig hci0 2>/dev/null | grep -q 'UP RUNNING' || missing=1
+  elif command -v bluetoothctl >/dev/null 2>&1; then
+    bluetoothctl show 2>/dev/null | grep -q 'Powered: yes' || missing=1
+  fi
   [ "$missing" -eq 1 ]
 }
 
@@ -401,10 +405,22 @@ release_update_heal_if_needed() {
 
   last_online=$(release_heal_get "$app" last_online)
   attempts=$(release_heal_get "$app" attempts); attempts=${attempts:-0}
-  [ "$online" = "true" ] && { release_heal_set "$app" last_online true; return; }
+  registry_needs_permission "$app" "bluetooth" || registry_needs_permission "$app" "rfkill" || return
+  if [ "$online" = "true" ]; then
+    release_heal_set "$app" last_online true
+    if [ "$attempts" -lt 2 ] 2>/dev/null && ble_permissions_need_repair; then
+      attempts=$((attempts + 1))
+      release_heal_set "$app" attempts "$attempts"
+      log "SELF-HEAL: $app är online efter release-update men BLE/Noble är inte redo — reparerar Bluetooth"
+      repair_ble_permissions
+      sleep 2
+      _app_try_restart "$app"
+      rm -f "$CACHE_FILE"
+    fi
+    return
+  fi
   [ "$last_online" = "true" ] || return
   [ "$attempts" -ge 2 ] 2>/dev/null && return
-  registry_needs_permission "$app" "bluetooth" || registry_needs_permission "$app" "rfkill" || return
 
   attempts=$((attempts + 1))
   release_heal_set "$app" attempts "$attempts"
