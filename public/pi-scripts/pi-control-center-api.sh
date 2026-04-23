@@ -233,6 +233,45 @@ registry_get() {
   jq -r --arg k "$1" --arg f "$2" '.[] | select(.key == $k) | .[$f] // empty' "$REGISTRY_FILE" 2>/dev/null
 }
 
+registry_release_asset() {
+  local asset
+  asset=$(registry_get "$1" "releaseAsset")
+  [ -n "$asset" ] && echo "$asset" || echo "dist.tar.gz"
+}
+
+latest_release_json() {
+  local app=$1 release_url cache_file cache_age now
+  release_url=$(registry_get "$app" "releaseUrl")
+  [ -n "$release_url" ] || return 1
+  cache_file="$STATUS_DIR/${app}-latest-release.json"
+  now=$(date +%s)
+  if [ -s "$cache_file" ]; then
+    cache_age=$((now - $(stat -c %Y "$cache_file" 2>/dev/null || echo 0)))
+    [ "$cache_age" -lt 300 ] && { cat "$cache_file"; return 0; }
+  fi
+  curl -fsSL --max-time 15 -H 'Accept: application/vnd.github+json' -H 'User-Agent: pi-control-center' "$release_url" 2>/dev/null | tee "$cache_file"
+}
+
+latest_release_tag() {
+  latest_release_json "$1" | jq -r '.tag_name // .name // empty' 2>/dev/null
+}
+
+latest_release_asset_url() {
+  local app=$1 asset
+  asset=$(registry_release_asset "$app")
+  latest_release_json "$app" | jq -r --arg a "$asset" '.assets[]? | select(.name == $a) | .browser_download_url' 2>/dev/null | head -1
+}
+
+installed_release_version() {
+  local install_dir=$1 version
+  if [ -f "$install_dir/VERSION.json" ]; then
+    version=$(jq -r '.tag // .version // .name // empty' "$install_dir/VERSION.json" 2>/dev/null)
+  fi
+  [ -z "$version" ] && [ -f "$install_dir/package.json" ] && version=$(jq -r '.version // empty' "$install_dir/package.json" 2>/dev/null)
+  [ -z "$version" ] && [ -f "$install_dir/engine/package.json" ] && version=$(jq -r '.version // empty' "$install_dir/engine/package.json" 2>/dev/null)
+  echo "$version"
+}
+
 # Get a component field: registry_get_component <key> <component> <field>
 registry_get_component() {
   jq -r --arg k "$1" --arg c "$2" --arg f "$3" '.[] | select(.key == $k) | .components[$c][$f] // empty' "$REGISTRY_FILE" 2>/dev/null
@@ -1234,7 +1273,7 @@ do_install_release() {
   [ -z "$release_url" ] && return 1
 
   progress "$sf" "$app" "Hämtar release-info från GitHub..." "$start_time"
-  download_url=$(curl -sf "$release_url" 2>/dev/null | jq -r '.assets[] | select(.name == "dist.tar.gz") | .browser_download_url' 2>/dev/null)
+  download_url=$(latest_release_asset_url "$app")
 
   [ -z "$download_url" ] || [ "$download_url" = "null" ] && return 1
 
@@ -1255,6 +1294,12 @@ do_install_release() {
     return 1
   fi
   rm -f "/tmp/pi-control-center/${app}-dist.tar.gz"
+
+  local latest_tag
+  latest_tag=$(latest_release_tag "$app")
+  if [ -n "$latest_tag" ]; then
+    printf '{"tag":"%s","version":"%s","installedAt":"%s"}\n' "$(escape_json "$latest_tag")" "$(escape_json "$latest_tag")" "$(date -Iseconds)" > "$install_dir/VERSION.json"
+  fi
 
   # Verify extraction produced files
   local file_count
@@ -2315,7 +2360,7 @@ handle_request() {
           echo "{\"app\":\"${app}\",\"status\":\"updating\",\"progress\":\"Pi upptagen – väntar på uppdateringskö...\",\"timestamp\":\"$(date -Iseconds)\"}" > "$update_json"
           flock 9
         fi
-        local release_url install_dir svc download_url
+        local release_url install_dir svc download_url latest_tag
         release_url=$(registry_get "$app" "releaseUrl")
         install_dir=$(eval echo "$(registry_get "$app" "installDir")")
         svc=$(registry_get "$app" "service")
@@ -2324,14 +2369,18 @@ handle_request() {
 
         # Try release-based update first
         if [ -n "$release_url" ]; then
-          download_url=$(curl -sf "$release_url" 2>/dev/null | jq -r '.assets[] | select(.name == "dist.tar.gz") | .browser_download_url' 2>/dev/null)
+          latest_tag=$(latest_release_tag "$app")
+          download_url=$(latest_release_asset_url "$app")
           if [ -n "$download_url" ] && [ "$download_url" != "null" ]; then
-            echo "Laddar ner ny release..." >> "$update_log"
+            echo "Laddar ner release ${latest_tag:-latest}..." >> "$update_log"
             if curl -sfL "$download_url" -o "/tmp/pi-control-center/${app}-dist.tar.gz" 2>> "$update_log"; then
               echo "Packar upp..." >> "$update_log"
-              rm -rf "$install_dir/dist"
+              rm -rf "$install_dir"/*
               tar xzf "/tmp/pi-control-center/${app}-dist.tar.gz" -C "$install_dir" 2>> "$update_log"
               rm -f "/tmp/pi-control-center/${app}-dist.tar.gz"
+              if [ -n "$latest_tag" ]; then
+                printf '{"tag":"%s","version":"%s","updatedAt":"%s"}\n' "$(escape_json "$latest_tag")" "$(escape_json "$latest_tag")" "$(date -Iseconds)" > "$install_dir/VERSION.json"
+              fi
 
               export XDG_RUNTIME_DIR="$USER_RUNTIME_DIR"
               export DBUS_SESSION_BUS_ADDRESS="$USER_BUS_ADDRESS"
@@ -2559,13 +2608,11 @@ handle_request() {
           v_remote_hash=""
           v_has_update="false"
 
-          if [ -f "$v_install_dir/VERSION.json" ]; then
-            # Release-based install: compare tag from VERSION.json against latest GitHub release
-            v_local_hash=$(jq -r '.tag // .version // empty' "$v_install_dir/VERSION.json" 2>/dev/null)
-            v_local=$(jq -r '.version // .tag // empty' "$v_install_dir/VERSION.json" 2>/dev/null)
-            if [ -n "$v_release_url" ]; then
-              v_remote_hash=$(curl -sf --max-time 10 "$v_release_url" 2>/dev/null | jq -r '.tag_name // empty' 2>/dev/null)
-            fi
+          if [ -n "$v_release_url" ]; then
+            # Release-based install: compare local VERSION/package version against latest GitHub release
+            v_local_hash=$(installed_release_version "$v_install_dir")
+            v_local="$v_local_hash"
+            v_remote_hash=$(latest_release_tag "$vapp")
             [ -n "$v_local_hash" ] && [ -n "$v_remote_hash" ] && [ "$v_local_hash" != "$v_remote_hash" ] && v_has_update="true"
           elif [ -d "$v_install_dir/.git" ]; then
             # Legacy git-based install: compare commit hashes
@@ -2595,13 +2642,11 @@ handle_request() {
         remote_hash=""
         has_update="false"
 
-        if [ -f "$install_dir/VERSION.json" ]; then
+        if [ -n "$rel_url" ]; then
           # Release-based install
-          local_hash=$(jq -r '.tag // .version // empty' "$install_dir/VERSION.json" 2>/dev/null)
-          local_v=$(jq -r '.version // .tag // empty' "$install_dir/VERSION.json" 2>/dev/null)
-          if [ -n "$rel_url" ]; then
-            remote_hash=$(curl -sf --max-time 10 "$rel_url" 2>/dev/null | jq -r '.tag_name // empty' 2>/dev/null)
-          fi
+          local_hash=$(installed_release_version "$install_dir")
+          local_v="$local_hash"
+          remote_hash=$(latest_release_tag "$app")
           [ -n "$local_hash" ] && [ -n "$remote_hash" ] && [ "$local_hash" != "$remote_hash" ] && has_update="true"
         elif [ -d "$install_dir/.git" ]; then
           # Legacy git-based install
