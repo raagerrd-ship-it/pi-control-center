@@ -233,6 +233,45 @@ registry_get() {
   jq -r --arg k "$1" --arg f "$2" '.[] | select(.key == $k) | .[$f] // empty' "$REGISTRY_FILE" 2>/dev/null
 }
 
+registry_release_asset() {
+  local asset
+  asset=$(registry_get "$1" "releaseAsset")
+  [ -n "$asset" ] && echo "$asset" || echo "dist.tar.gz"
+}
+
+latest_release_json() {
+  local app=$1 release_url cache_file cache_age now
+  release_url=$(registry_get "$app" "releaseUrl")
+  [ -n "$release_url" ] || return 1
+  cache_file="$STATUS_DIR/${app}-latest-release.json"
+  now=$(date +%s)
+  if [ -s "$cache_file" ]; then
+    cache_age=$((now - $(stat -c %Y "$cache_file" 2>/dev/null || echo 0)))
+    [ "$cache_age" -lt 300 ] && { cat "$cache_file"; return 0; }
+  fi
+  curl -fsSL --max-time 15 -H 'Accept: application/vnd.github+json' -H 'User-Agent: pi-control-center' "$release_url" 2>/dev/null | tee "$cache_file"
+}
+
+latest_release_tag() {
+  latest_release_json "$1" | jq -r '.tag_name // .name // empty' 2>/dev/null
+}
+
+latest_release_asset_url() {
+  local app=$1 asset
+  asset=$(registry_release_asset "$app")
+  latest_release_json "$app" | jq -r --arg a "$asset" '.assets[]? | select(.name == $a) | .browser_download_url' 2>/dev/null | head -1
+}
+
+installed_release_version() {
+  local install_dir=$1 version
+  if [ -f "$install_dir/VERSION.json" ]; then
+    version=$(jq -r '.tag // .version // .name // empty' "$install_dir/VERSION.json" 2>/dev/null)
+  fi
+  [ -z "$version" ] && [ -f "$install_dir/package.json" ] && version=$(jq -r '.version // empty' "$install_dir/package.json" 2>/dev/null)
+  [ -z "$version" ] && [ -f "$install_dir/engine/package.json" ] && version=$(jq -r '.version // empty' "$install_dir/engine/package.json" 2>/dev/null)
+  echo "$version"
+}
+
 # Get a component field: registry_get_component <key> <component> <field>
 registry_get_component() {
   jq -r --arg k "$1" --arg c "$2" --arg f "$3" '.[] | select(.key == $k) | .components[$c][$f] // empty' "$REGISTRY_FILE" 2>/dev/null
