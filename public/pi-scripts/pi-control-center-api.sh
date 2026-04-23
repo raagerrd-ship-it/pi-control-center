@@ -2207,15 +2207,19 @@ handle_request() {
 
         dashboard_progress "Hämtar senaste kod..."
         fetch_err="$STATUS_DIR/dashboard-git-fetch.err"
-        remote_branch=$(git remote show origin 2>"$fetch_err" | awk '/HEAD branch/ {print $NF}' | head -1)
-        [ -n "$remote_branch" ] || remote_branch="main"
-        if nice -n 15 git fetch origin "$remote_branch" --depth=1 --prune --quiet 2>"$fetch_err"; then
-          remote_ref="origin/$remote_branch"
+        if nice -n 15 git fetch origin main --depth=1 --prune --quiet 2>"$fetch_err"; then
+          remote_ref="origin/main"
+        elif nice -n 15 git fetch origin master --depth=1 --prune --quiet 2>>"$fetch_err"; then
+          remote_ref="origin/master"
         elif nice -n 15 git fetch origin --depth=1 --prune --quiet 2>>"$fetch_err"; then
-          remote_ref=$(git symbolic-ref --quiet --short refs/remotes/origin/HEAD 2>/dev/null | sed 's#^origin/##')
-          [ -n "$remote_ref" ] && remote_ref="origin/$remote_ref" || remote_ref="origin/main"
-        elif nice -n 15 git fetch --unshallow origin "$remote_branch" --prune --quiet 2>>"$fetch_err"; then
-          remote_ref="origin/$remote_branch"
+          if git show-ref --verify --quiet refs/remotes/origin/main; then
+            remote_ref="origin/main"
+          elif git show-ref --verify --quiet refs/remotes/origin/master; then
+            remote_ref="origin/master"
+          else
+            remote_ref=$(git symbolic-ref --quiet --short refs/remotes/origin/HEAD 2>/dev/null | sed 's#^origin/##')
+            [ -n "$remote_ref" ] && remote_ref="origin/$remote_ref" || remote_ref="origin/main"
+          fi
         else
           fetch_msg=$(head -4 "$fetch_err" 2>/dev/null | tr '\n' ' ' | sed 's/"/\\"/g' | cut -c1-180)
           dashboard_fail "Git fetch misslyckades${fetch_msg:+: ${fetch_msg}}"
@@ -2223,7 +2227,7 @@ handle_request() {
           exit 1
         fi
         rm -f "$fetch_err"
-        git reset --hard "$remote_ref" --quiet || { dashboard_fail "Git reset misslyckades"; exit 1; }
+        git reset --hard "$remote_ref" --quiet || git reset --hard origin/main --quiet 2>/dev/null || git reset --hard origin/master --quiet 2>/dev/null || { dashboard_fail "Git reset misslyckades"; exit 1; }
         git clean -fd -e node_modules >/dev/null 2>&1 || true
         sed -i 's/\r$//' "$ddir/public/pi-scripts/"*.sh
         chmod +x "$ddir/public/pi-scripts/"*.sh
@@ -2238,23 +2242,13 @@ handle_request() {
           sudo dphys-swapfile swapon || true
         fi
 
-        prev_hash=""
-        [ -f node_modules/.package-hash ] && prev_hash=$(cat node_modules/.package-hash 2>/dev/null || true)
-        curr_hash=$(md5sum package.json | awk '{print $1}')
-
-        if [ ! -d node_modules ] || [ "$prev_hash" != "$curr_hash" ]; then
-          dashboard_progress "Installerar dependencies..."
-          sudo chown -R pi:pi "$ddir/node_modules" 2>/dev/null || true
-          if ! sudo systemd-run --scope --quiet -p MemoryMax=400M bash -lc "cd '$ddir' && NODE_OPTIONS='--max-old-space-size=352' npm install --omit=dev --no-audit --no-fund"; then
-            dashboard_fail "npm install misslyckades eller dödades (troligen minnesbrist)"
-            exit 1
-          fi
-          sudo chown -R pi:pi "$ddir/node_modules" 2>/dev/null || true
-          echo "$curr_hash" > node_modules/.package-hash
-          npx -y update-browserslist-db@latest >/dev/null 2>&1 || true
-        else
-          echo "Dependencies unchanged — skipping npm install"
+        dashboard_progress "Installerar dependencies..."
+        rm -rf node_modules
+        if ! sudo systemd-run --scope --quiet -p MemoryMax=400M bash -lc "cd '$ddir' && NODE_OPTIONS='--max-old-space-size=352' npm install --no-audit --no-fund"; then
+          dashboard_fail "npm install misslyckades eller dödades (troligen minnesbrist)"
+          exit 1
         fi
+        sudo chown -R pi:pi "$ddir/node_modules" 2>/dev/null || true
 
         dashboard_progress "Bygger dashboard..."
         sudo rm -rf "$ddir/dist"
