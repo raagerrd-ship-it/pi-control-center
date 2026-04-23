@@ -2023,6 +2023,11 @@ handle_request() {
       ) >> "$reset_log" 2>&1 &
       ;;
 
+    "POST /api/reboot")
+      response='{"status":"rebooting"}'
+      ( sleep 1; sudo_run_quiet systemctl reboot || sudo_run_quiet reboot || true ) &
+      ;;
+
     "GET /api/factory-reset-status")
       [ -f "$STATUS_DIR/factory-reset.json" ] && response=$(< "$STATUS_DIR/factory-reset.json") || response='{"status":"idle"}'
       ;;
