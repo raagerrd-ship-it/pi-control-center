@@ -43,6 +43,14 @@ export interface ServiceStatus {
   configDir?: string;
   dataDir?: string;
   logDir?: string;
+  systemdWarning?: {
+    status: 'ok' | 'warning' | string;
+    reason?: 'directory_permissions' | string;
+    message?: string;
+    configDir?: string;
+    dataDir?: string;
+    logDir?: string;
+  };
   cpuCore: number;
   port?: number;
   /** Health check data from engine's /api/health */
@@ -246,6 +254,15 @@ export async function serviceAction(app: string, action: 'start' | 'stop' | 'res
     signal: AbortSignal.timeout(15000),
   });
   if (!res.ok) throw new Error(`Failed to ${action} service`);
+  return res.json();
+}
+
+export async function repairServiceDirs(app: string): Promise<{ app: string; status: 'success' | 'error'; message?: string }> {
+  const res = await fetch(`${getBaseUrl()}/api/repair-dirs/${app}`, {
+    method: 'POST',
+    signal: AbortSignal.timeout(15000),
+  });
+  if (!res.ok) throw new Error('Failed to repair service directories');
   return res.json();
 }
 

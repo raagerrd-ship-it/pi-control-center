@@ -218,8 +218,48 @@ ensure_app_managed_dirs() {
   xdg_share_dir="$home_dir/.local/share"
   sudo_run_quiet mkdir -p "$cfg" "$data_dir" "$logdir" "$xdg_share_dir" || true
   sudo_run_quiet chown -R "$(whoami):$(id -gn)" "$cfg" "$data_dir" "$logdir" || true
-  chmod 700 "$cfg" "$data_dir" "$home_dir" 2>/dev/null || true
-  chmod 755 "$xdg_share_dir" "$logdir" 2>/dev/null || true
+  sudo_run_quiet chmod 700 "$cfg" "$data_dir" "$home_dir" || true
+  sudo_run_quiet chmod 755 "$xdg_share_dir" "$logdir" || true
+}
+
+app_dirs_need_repair() {
+  local app=$1 expected_owner cfg data_dir logdir path mode owner want_mode
+  expected_owner="$(whoami):$(id -gn)"
+  cfg=$(app_config_dir "$app")
+  data_dir=$(app_data_dir "$app")
+  logdir=$(app_log_dir "$app")
+  for path in "$cfg:700" "$data_dir:700" "$logdir:755"; do
+    want_mode=${path##*:}
+    path=${path%:*}
+    [ -d "$path" ] || return 0
+    owner=$(stat -c '%U:%G' "$path" 2>/dev/null || echo '')
+    mode=$(stat -c '%a' "$path" 2>/dev/null || echo '')
+    [ "$owner" = "$expected_owner" ] && [ "$mode" = "$want_mode" ] || return 0
+  done
+  return 1
+}
+
+repair_app_managed_dirs() {
+  local app=$1 reason=${2:-preflight} log_file="$STATUS_DIR/${app}.log"
+  app_dirs_need_repair "$app" || return 1
+  log "SYSTEMD WARNING: reparerar katalogrättigheter för $app ($reason)"
+  printf '[%s] systemd warning: reparerar katalogrättigheter (%s)\n' "$(date -Iseconds)" "$reason" >> "$log_file"
+  ensure_app_managed_dirs "$app"
+  rm -f "$CACHE_FILE"
+  return 0
+}
+
+app_dirs_warning_json() {
+  local app=$1 cfg data_dir logdir reason
+  cfg=$(escape_json "$(app_config_dir "$app")")
+  data_dir=$(escape_json "$(app_data_dir "$app")")
+  logdir=$(escape_json "$(app_log_dir "$app")")
+  if app_dirs_need_repair "$app"; then
+    reason="Katalogrättigheter behöver repareras"
+    echo "{\"status\":\"warning\",\"reason\":\"directory_permissions\",\"message\":\"${reason}\",\"configDir\":\"${cfg}\",\"dataDir\":\"${data_dir}\",\"logDir\":\"${logdir}\"}"
+  else
+    echo '{"status":"ok"}'
+  fi
 }
 
 escape_json() {
@@ -1102,7 +1142,7 @@ build_status_json() {
 
       [ "$online" = "true" ] && auto_adjust_memory_limit "$app" "$total_ram"
 
-      local mem_limit mem_profile mem_level permissions_json cfg_dir data_dir log_dir
+      local mem_limit mem_profile mem_level permissions_json cfg_dir data_dir log_dir systemd_warning
       mem_limit=$(_app_current_limit "$app"); [ -z "$mem_limit" ] && mem_limit=$(registry_memory_profile_mb "$app"); [ -z "$mem_limit" ] && mem_limit=128
       mem_profile=$(registry_memory_profile_json "$app"); [ -z "$mem_profile" ] && mem_profile="null"
       mem_level=$(memory_level_for_mb "$app" "$mem_limit")
@@ -1110,9 +1150,10 @@ build_status_json() {
       cfg_dir=$(escape_json "$(app_config_dir "$app")")
       data_dir=$(escape_json "$(app_data_dir "$app")")
       log_dir=$(escape_json "$(app_log_dir "$app")")
+      systemd_warning=$(app_dirs_warning_json "$app")
 
       [ -n "$svc_json" ] && svc_json="${svc_json},"
-      svc_json="${svc_json}\"${app}\":{\"online\":${online},\"installed\":${installed},\"version\":\"${ver}\",\"cpu\":${total_cpu:-0},\"ramMb\":${total_ram:-0},\"cpuCore\":${core},\"port\":${port},\"memoryMaxMb\":${mem_limit},\"memoryLevel\":\"${mem_level}\",\"memoryProfile\":${mem_profile},\"permissions\":${permissions_json},\"configDir\":\"${cfg_dir}\",\"dataDir\":\"${data_dir}\",\"logDir\":\"${log_dir}\",\"watchdog\":${engine_watchdog},\"health\":{\"status\":\"${health_status}\",\"uptime\":${health_uptime:-0},\"memoryRss\":${health_mem_rss:-0}},\"components\":{\"engine\":{\"online\":${engine_online},\"version\":\"${engine_ver}\",\"cpu\":${engine_cpu:-0},\"ramMb\":${engine_ram:-0},\"service\":\"${engine_svc}\",\"port\":${engine_port},\"cpuCore\":${core},\"watchdog\":${engine_watchdog}},\"ui\":{\"online\":${ui_online},\"version\":\"${ui_ver}\",\"cpu\":${ui_cpu:-0},\"ramMb\":${ui_ram:-0},\"service\":\"${ui_svc}\",\"port\":${port},\"cpuCore\":0,\"watchdog\":${ui_watchdog}}}}"
+      svc_json="${svc_json}\"${app}\":{\"online\":${online},\"installed\":${installed},\"version\":\"${ver}\",\"cpu\":${total_cpu:-0},\"ramMb\":${total_ram:-0},\"cpuCore\":${core},\"port\":${port},\"memoryMaxMb\":${mem_limit},\"memoryLevel\":\"${mem_level}\",\"memoryProfile\":${mem_profile},\"permissions\":${permissions_json},\"configDir\":\"${cfg_dir}\",\"dataDir\":\"${data_dir}\",\"logDir\":\"${log_dir}\",\"systemdWarning\":${systemd_warning},\"watchdog\":${engine_watchdog},\"health\":{\"status\":\"${health_status}\",\"uptime\":${health_uptime:-0},\"memoryRss\":${health_mem_rss:-0}},\"components\":{\"engine\":{\"online\":${engine_online},\"version\":\"${engine_ver}\",\"cpu\":${engine_cpu:-0},\"ramMb\":${engine_ram:-0},\"service\":\"${engine_svc}\",\"port\":${engine_port},\"cpuCore\":${core},\"watchdog\":${engine_watchdog}},\"ui\":{\"online\":${ui_online},\"version\":\"${ui_ver}\",\"cpu\":${ui_cpu:-0},\"ramMb\":${ui_ram:-0},\"service\":\"${ui_svc}\",\"port\":${port},\"cpuCore\":0,\"watchdog\":${ui_watchdog}}}}"
     else
       # Legacy single-service
       running=$(service_is_active "$svc")
@@ -1146,7 +1187,7 @@ build_status_json() {
       [ -n "$svc_json" ] && svc_json="${svc_json},"
       local service_watchdog
       service_watchdog=$(watchdog_json "$app" "service")
-      local mem_limit mem_profile mem_level permissions_json cfg_dir data_dir log_dir
+      local mem_limit mem_profile mem_level permissions_json cfg_dir data_dir log_dir systemd_warning
       mem_limit=$(_app_current_limit "$app"); [ -z "$mem_limit" ] && mem_limit=$(registry_memory_profile_mb "$app"); [ -z "$mem_limit" ] && mem_limit=128
       mem_profile=$(registry_memory_profile_json "$app"); [ -z "$mem_profile" ] && mem_profile="null"
       mem_level=$(memory_level_for_mb "$app" "$mem_limit")
@@ -1154,7 +1195,8 @@ build_status_json() {
       cfg_dir=$(escape_json "$(app_config_dir "$app")")
       data_dir=$(escape_json "$(app_data_dir "$app")")
       log_dir=$(escape_json "$(app_log_dir "$app")")
-      svc_json="${svc_json}\"${app}\":{\"online\":${online},\"installed\":${installed},\"version\":\"${ver}\",\"cpu\":${s_cpu:-0},\"ramMb\":${s_ram:-0},\"cpuCore\":${s_core},\"port\":${port},\"memoryMaxMb\":${mem_limit},\"memoryLevel\":\"${mem_level}\",\"memoryProfile\":${mem_profile},\"permissions\":${permissions_json},\"configDir\":\"${cfg_dir}\",\"dataDir\":\"${data_dir}\",\"logDir\":\"${log_dir}\",\"watchdog\":${service_watchdog}}"
+      systemd_warning=$(app_dirs_warning_json "$app")
+      svc_json="${svc_json}\"${app}\":{\"online\":${online},\"installed\":${installed},\"version\":\"${ver}\",\"cpu\":${s_cpu:-0},\"ramMb\":${s_ram:-0},\"cpuCore\":${s_core},\"port\":${port},\"memoryMaxMb\":${mem_limit},\"memoryLevel\":\"${mem_level}\",\"memoryProfile\":${mem_profile},\"permissions\":${permissions_json},\"configDir\":\"${cfg_dir}\",\"dataDir\":\"${data_dir}\",\"logDir\":\"${log_dir}\",\"systemdWarning\":${systemd_warning},\"watchdog\":${service_watchdog}}"
     fi
   done
 
@@ -1819,6 +1861,7 @@ do_install() {
   fi
 
   progress "$sf" "$app" "Sparar konfiguration..." "$start_time"
+  repair_app_managed_dirs "$app" "config-save" || true
 
   # Save assignment
   assignment_set "$app" "$req_core"
@@ -2463,6 +2506,9 @@ handle_request() {
         local svc_ok="false" svc_err="" log_file now
         log_file="$STATUS_DIR/${app}.log"
         now="$(date -Iseconds)"
+        if [ "$action" = "start" ] || [ "$action" = "restart" ]; then
+          repair_app_managed_dirs "$app" "service-${action}" || true
+        fi
         if sudo_run systemctl "$action" "${svc}.service" 2>/tmp/svc-err-$$; then
           svc_ok="true"
         elif user_systemctl "$action" "${svc}.service" 2>/tmp/svc-err-$$; then
@@ -2482,6 +2528,20 @@ handle_request() {
           printf "[%s] service %s %s: %s\n" "$now" "$svc" "$action" "${svc_err:-systemctl ${action} failed}" >> "$log_file"
           response="{\"app\":\"${app}\",\"action\":\"${action}\",\"status\":\"error\",\"message\":\"${svc_err:-systemctl ${action} failed}\"}"
         fi
+      fi
+      ;;
+
+    POST\ /api/repair-dirs/*)
+      local app
+      app=${path#/api/repair-dirs/}
+      app="${app%%[?#]*}"
+      app="${app//[^a-zA-Z0-9_-]/}"
+      if [ -z "$(registry_get "$app" "repo")" ]; then
+        status_line="HTTP/1.1 404 Not Found"
+        response="{\"error\":\"Unknown app: ${app}\"}"
+      else
+        repair_app_managed_dirs "$app" "manual" || ensure_app_managed_dirs "$app"
+        response="{\"app\":\"${app}\",\"status\":\"success\"}"
       fi
       ;;
 
@@ -2772,6 +2832,16 @@ migrate_assignments() {
   fi
 }
 migrate_assignments
+
+startup_repair_app_dirs() {
+  local app assigned
+  for app in $(registry_keys); do
+    assigned=$(assignment_get_core "$app")
+    [ -n "$assigned" ] || continue
+    repair_app_managed_dirs "$app" "api-startup" || true
+  done
+}
+startup_repair_app_dirs
 
 echo "Pi Control Center API listening on port $PORT"
 

@@ -20,8 +20,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import type { UpdateResult, InstallResult, ServiceActionResult, VersionInfo, ServiceDefinition, ComponentStatus, HealthStatus, WatchdogStatus } from '@/lib/api';
-import { hasComponents, setMemoryLimit } from '@/lib/api';
+import type { UpdateResult, InstallResult, ServiceActionResult, VersionInfo, ServiceDefinition, ComponentStatus, HealthStatus, WatchdogStatus, ServiceStatus } from '@/lib/api';
+import { hasComponents, repairServiceDirs, setMemoryLimit } from '@/lib/api';
 
 interface CoreCardProps {
   coreIndex: number;
@@ -39,6 +39,7 @@ interface CoreCardProps {
     configDir?: string;
     dataDir?: string;
     logDir?: string;
+    systemdWarning?: ServiceStatus['systemdWarning'];
     port?: number;
     versionInfo?: VersionInfo;
     updateStatus?: UpdateResult;
@@ -177,6 +178,7 @@ export const CoreCard = memo(function CoreCard({
   const [installingService, setInstallingService] = useState<string>('');
   const [checkingVersion, setCheckingVersion] = useState(false);
   const [memLimitSaving, setMemLimitSaving] = useState(false);
+  const [repairingDirs, setRepairingDirs] = useState(false);
 
   const uiPort = 3000 + coreIndex;
   const enginePort = 3050 + coreIndex;
@@ -207,6 +209,16 @@ export const CoreCard = memo(function CoreCard({
       await setMemoryLimit(service.definition.key, mb, level);
     } finally {
       setMemLimitSaving(false);
+    }
+  };
+
+  const handleRepairDirs = async () => {
+    if (!service?.definition?.key) return;
+    setRepairingDirs(true);
+    try {
+      await repairServiceDirs(service.definition.key);
+    } finally {
+      setRepairingDirs(false);
     }
   };
 
@@ -316,6 +328,7 @@ export const CoreCard = memo(function CoreCard({
   const piIp = window.location.hostname;
   const isComponentBased = hasComponents(def);
   const permissions = service.permissions || def.permissions || [];
+  const hasSystemdWarning = service.systemdWarning?.status === 'warning';
 
   const healthColor = health?.status === 'ok' ? 'bg-[hsl(var(--status-online))]'
     : health?.status === 'degraded' ? 'bg-[hsl(var(--status-warning))]'
@@ -447,6 +460,22 @@ export const CoreCard = memo(function CoreCard({
 
       {(permissions.length > 0 || service.configDir || service.dataDir || service.logDir) && (
         <div className="flex flex-col gap-1 rounded bg-secondary/20 px-2 py-1.5 font-mono text-[10px] text-muted-foreground">
+          {hasSystemdWarning && (
+            <div className="flex items-center gap-1.5 min-w-0 text-[hsl(var(--status-warning))]">
+              <AlertCircle className="h-3 w-3 shrink-0" />
+              <span className="truncate">systemd-varning: katalogrättigheter</span>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="ml-auto h-5 px-1.5 text-[10px] text-[hsl(var(--status-warning))] hover:text-[hsl(var(--status-warning))]"
+                onClick={handleRepairDirs}
+                disabled={repairingDirs}
+                title="Reparera katalogrättigheter"
+              >
+                {repairingDirs ? <Loader2 className="h-3 w-3 animate-spin" /> : 'Repair'}
+              </Button>
+            </div>
+          )}
           {permissions.length > 0 && (
             <div className="flex items-center gap-1.5 min-w-0">
               <KeyRound className="h-3 w-3 shrink-0" />

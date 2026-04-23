@@ -343,6 +343,11 @@ const Index = () => {
                 actionStatus: actions[serviceKey],
                 components: svcStatus.components,
                 health: svcStatus.health,
+                configDir: svcStatus.configDir,
+                dataDir: svcStatus.dataDir,
+                logDir: svcStatus.logDir,
+                systemdWarning: svcStatus.systemdWarning,
+                watchdog: svcStatus.watchdog,
               } : undefined;
 
               // Calculate other installed services' allocated RAM

@@ -187,6 +187,10 @@ EOF
 sudo systemctl daemon-reload
 sudo systemctl enable --now pi-control-center-api.service
 
+sudo mkdir -p /etc/pi-control-center/apps /var/lib/pi-control-center/apps /var/log/pi-control-center/apps
+sudo chown -R "$USER:$USER" /etc/pi-control-center/apps /var/lib/pi-control-center/apps /var/log/pi-control-center/apps
+sudo chmod 755 /etc/pi-control-center/apps /var/lib/pi-control-center/apps /var/log/pi-control-center/apps
+
 # Disable any legacy auto-update timers
 for timer in $(systemctl list-timers --all --no-legend 2>/dev/null | awk '/-update\.timer/{print $NF}'); do
   sudo systemctl disable --now "$timer" 2>/dev/null && echo "  Disabled $timer" || true
@@ -217,12 +221,18 @@ $USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl disable *.service
 $USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl try-restart *.service
 $USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl restart *.service
 $USER ALL=(ALL) NOPASSWD: /usr/bin/mkdir -p /etc/pi-control-center
+$USER ALL=(ALL) NOPASSWD: /usr/bin/mkdir -p /etc/pi-control-center/apps
+$USER ALL=(ALL) NOPASSWD: /usr/bin/mkdir -p /etc/pi-control-center/apps/*
 $USER ALL=(ALL) NOPASSWD: /usr/bin/mkdir -p /var/log/pi-control-center
+$USER ALL=(ALL) NOPASSWD: /usr/bin/mkdir -p /var/log/pi-control-center/apps
+$USER ALL=(ALL) NOPASSWD: /usr/bin/mkdir -p /var/log/pi-control-center/apps/*
 $USER ALL=(ALL) NOPASSWD: /usr/bin/mkdir -p /var/lib/pi-control-center
 $USER ALL=(ALL) NOPASSWD: /usr/bin/mkdir -p /var/lib/pi-control-center/apps
 $USER ALL=(ALL) NOPASSWD: /usr/bin/mkdir -p /var/lib/pi-control-center/apps/*
 $USER ALL=(ALL) NOPASSWD: /usr/bin/tee /etc/pi-control-center/*
+$USER ALL=(ALL) NOPASSWD: /usr/bin/chmod * /etc/pi-control-center/apps/*
 $USER ALL=(ALL) NOPASSWD: /usr/bin/chmod * /var/lib/pi-control-center/apps/*
+$USER ALL=(ALL) NOPASSWD: /usr/bin/chmod * /var/log/pi-control-center/apps/*
 $USER ALL=(ALL) NOPASSWD: /usr/bin/tee /etc/systemd/system/*.service
 $USER ALL=(ALL) NOPASSWD: /usr/bin/mkdir -p /var/www/pi-control-center
 $USER ALL=(ALL) NOPASSWD: /usr/bin/cp -r *
