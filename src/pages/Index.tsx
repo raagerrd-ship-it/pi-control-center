@@ -10,7 +10,7 @@ import { useServiceUpdate } from '@/hooks/useServiceUpdate';
 import { useActivityLog } from '@/hooks/useActivityLog';
 import {
   triggerUpdate, fetchUpdateStatus, fetchVersions, fetchVersion, fetchAvailableServices,
-  fetchMemoryLimit,
+  fetchMemoryLimit, triggerReboot,
   type UpdateResult, type VersionMap, type ServiceDefinition, fetchLogs,
 } from '@/lib/api';
 
@@ -25,6 +25,7 @@ const Index = () => {
   const [versions, setVersions] = useState<VersionMap | null>(null);
   const [checkingVersions, setCheckingVersions] = useState(false);
   const [memLimits, setMemLimits] = useState<Record<string, number>>({});
+  const [rebooting, setRebooting] = useState(false);
 
   const serviceNames = useMemo(() => {
     const map: Record<string, string> = {};
@@ -278,6 +279,12 @@ const Index = () => {
     }, 800);
   }, [refresh, runServiceAction]);
 
+  const handleReboot = useCallback(async () => {
+    setRebooting(true);
+    addEntry('SYSTEM', 'Startar om Pi...', 'info');
+    try { await triggerReboot(); } catch {}
+  }, [addEntry]);
+
   const isUpdatingDashboard = dashboardUpdate?.status === 'updating';
   const dashboardVersion = versions?.dashboard;
   const updatesAvailable = versions ? Object.values(versions).some(v => v.hasUpdate) : false;
@@ -304,6 +311,8 @@ const Index = () => {
             updatesAvailable={updatesAvailable}
             onCheckVersions={handleCheckVersions}
             onDashboardUpdate={handleDashboardUpdate}
+            rebooting={rebooting}
+            onReboot={handleReboot}
           />
         </section>
 
