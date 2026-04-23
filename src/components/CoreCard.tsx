@@ -189,11 +189,14 @@ export const CoreCard = memo(function CoreCard({
   const MIN_MEMORY_MB = 80;
   const maxForThis = Math.max(MIN_MEMORY_MB, ramBudgetMb - otherAllocatedMb);
 
-  // Sync local slider value with prop
+  // Prefer the optimistic local limit while the Pi status poll catches up.
   const profile = service?.definition.memoryProfile || service?.memoryProfile;
-  const rawMemoryLevel = service?.memoryLevel || (profile && memLimitMb ? Object.entries(profile.levels).find(([, mb]) => mb === memLimitMb)?.[0] : undefined);
+  const localMemoryLevel = profile && memLimitMb
+    ? Object.entries(profile.levels).find(([, mb]) => mb === memLimitMb)?.[0]
+    : undefined;
+  const rawMemoryLevel = localMemoryLevel || service?.memoryLevel;
   const memoryLevel = rawMemoryLevel && ['low', 'balanced', 'high'].includes(rawMemoryLevel) ? rawMemoryLevel : (profile?.defaultLevel || 'balanced');
-  const memoryMaxMb = Math.max(MIN_MEMORY_MB, service?.memoryMaxMb ?? memLimitMb ?? MIN_MEMORY_MB);
+  const memoryMaxMb = Math.max(MIN_MEMORY_MB, memLimitMb ?? service?.memoryMaxMb ?? MIN_MEMORY_MB);
 
   const handleMemoryLevelChange = async (level: string) => {
     if (!service?.definition?.key || !profile?.levels[level]) return;
