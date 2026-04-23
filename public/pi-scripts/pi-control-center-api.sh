@@ -58,6 +58,18 @@ EOF
   sudo_run_quiet systemctl restart bluetooth || true
 }
 
+ble_permissions_need_repair() {
+  local user_name="$(whoami)" missing=0
+  id -nG "$user_name" 2>/dev/null | grep -qw bluetooth || missing=1
+  loginctl show-user "$user_name" -p Linger 2>/dev/null | grep -q '=yes$' || missing=1
+  [ -f /etc/polkit-1/rules.d/49-allow-pi-bluez.rules ] || missing=1
+  grep -q '^DisablePlugins=pnat' /etc/bluetooth/main.conf 2>/dev/null || missing=1
+  systemctl is-active --quiet bluetooth 2>/dev/null || missing=1
+  rfkill list bluetooth 2>/dev/null | grep -qi 'Soft blocked: yes' && missing=1
+  hciconfig hci0 2>/dev/null | grep -q 'UP RUNNING' || missing=1
+  [ "$missing" -eq 1 ]
+}
+
 case "$REQUEST_MODE" in
   --handle-request)
     shift
@@ -397,9 +409,13 @@ release_update_heal_if_needed() {
   attempts=$((attempts + 1))
   release_heal_set "$app" attempts "$attempts"
   release_heal_set "$app" last_online false
-  log "SELF-HEAL: $app gick offline efter release-update — återställer BLE/Noble och startar om tjänsten"
-  repair_ble_permissions
-  sleep 2
+  if ble_permissions_need_repair; then
+    log "SELF-HEAL: $app gick offline efter release-update — BLE/Noble-rättigheter saknas, reparerar"
+    repair_ble_permissions
+    sleep 2
+  else
+    log "SELF-HEAL: $app gick offline efter release-update — BLE/Noble-rättigheter OK, hoppar över Bluetooth-omstart"
+  fi
   _app_try_restart "$app"
   rm -f "$CACHE_FILE"
 }
