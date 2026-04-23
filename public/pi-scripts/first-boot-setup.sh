@@ -306,6 +306,10 @@ EOF
 sudo systemctl daemon-reload
 sudo systemctl enable --now pi-control-center-api.service
 
+sudo mkdir -p /etc/pi-control-center/apps /var/lib/pi-control-center/apps /var/log/pi-control-center/apps
+sudo chown -R "$PI_USER:$PI_USER" /etc/pi-control-center/apps /var/lib/pi-control-center/apps /var/log/pi-control-center/apps
+sudo chmod 755 /etc/pi-control-center/apps /var/lib/pi-control-center/apps /var/log/pi-control-center/apps
+
 # Pin Nginx to core 0 (hard limit)
 sudo mkdir -p /etc/systemd/system/nginx.service.d
 sudo tee /etc/systemd/system/nginx.service.d/cpu-pin.conf > /dev/null << 'OVER'
@@ -333,12 +337,18 @@ $PI_USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl disable *.service
 $PI_USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl try-restart *.service
 $PI_USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl restart *.service
 $PI_USER ALL=(ALL) NOPASSWD: /usr/bin/mkdir -p /etc/pi-control-center
+$PI_USER ALL=(ALL) NOPASSWD: /usr/bin/mkdir -p /etc/pi-control-center/apps
+$PI_USER ALL=(ALL) NOPASSWD: /usr/bin/mkdir -p /etc/pi-control-center/apps/*
 $PI_USER ALL=(ALL) NOPASSWD: /usr/bin/mkdir -p /var/log/pi-control-center
+$PI_USER ALL=(ALL) NOPASSWD: /usr/bin/mkdir -p /var/log/pi-control-center/apps
+$PI_USER ALL=(ALL) NOPASSWD: /usr/bin/mkdir -p /var/log/pi-control-center/apps/*
 $PI_USER ALL=(ALL) NOPASSWD: /usr/bin/mkdir -p /var/lib/pi-control-center
 $PI_USER ALL=(ALL) NOPASSWD: /usr/bin/mkdir -p /var/lib/pi-control-center/apps
 $PI_USER ALL=(ALL) NOPASSWD: /usr/bin/mkdir -p /var/lib/pi-control-center/apps/*
 $PI_USER ALL=(ALL) NOPASSWD: /usr/bin/tee /etc/pi-control-center/*
+$PI_USER ALL=(ALL) NOPASSWD: /usr/bin/chmod * /etc/pi-control-center/apps/*
 $PI_USER ALL=(ALL) NOPASSWD: /usr/bin/chmod * /var/lib/pi-control-center/apps/*
+$PI_USER ALL=(ALL) NOPASSWD: /usr/bin/chmod * /var/log/pi-control-center/apps/*
 $PI_USER ALL=(ALL) NOPASSWD: /usr/bin/tee /etc/systemd/system/*.service
 $PI_USER ALL=(ALL) NOPASSWD: /usr/bin/mkdir -p /var/www/pi-control-center
 $PI_USER ALL=(ALL) NOPASSWD: /usr/bin/cp -r *
