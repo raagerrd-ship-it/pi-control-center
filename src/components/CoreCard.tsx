@@ -55,8 +55,6 @@ interface CoreCardProps {
   availableServices: ServiceDefinition[];
   allInstalls: Record<string, InstallResult>;
   memLimitMb: number | null;
-  otherAllocatedMb: number;
-  ramBudgetMb: number;
   onMemLimitChange: (app: string, mb: number) => void;
   onUpdate: (app: string) => void;
   onCheckVersion: (app: string) => Promise<void>;
@@ -165,8 +163,6 @@ export const CoreCard = memo(function CoreCard({
   availableServices,
   allInstalls,
   memLimitMb,
-  otherAllocatedMb,
-  ramBudgetMb,
   onMemLimitChange,
   onUpdate,
   onCheckVersion,
@@ -189,7 +185,6 @@ export const CoreCard = memo(function CoreCard({
   };
 
   const MIN_MEMORY_MB = 80;
-  const maxForThis = Math.max(MIN_MEMORY_MB, ramBudgetMb - otherAllocatedMb);
 
   // Prefer the optimistic local limit while the Pi status poll catches up.
   const profile = service?.definition.memoryProfile || service?.memoryProfile;
@@ -202,11 +197,18 @@ export const CoreCard = memo(function CoreCard({
 
   const handleMemoryLevelChange = async (level: string) => {
     if (!service?.definition?.key || !profile?.levels[level]) return;
-    const mb = Math.min(Math.max(profile.levels[level], MIN_MEMORY_MB), maxForThis);
+    const key = service.definition.key;
+    const previousMb = memLimitMb ?? service.memoryMaxMb ?? MIN_MEMORY_MB;
+    const mb = Math.max(profile.levels[level], MIN_MEMORY_MB);
+
     setMemLimitSaving(true);
-    onMemLimitChange(service.definition.key, mb);
+
+    onMemLimitChange(key, mb);
     try {
-      await setMemoryLimit(service.definition.key, mb, level);
+      const result = await setMemoryLimit(key, mb, level);
+      onMemLimitChange(key, result.limitMb);
+    } catch {
+      onMemLimitChange(key, previousMb);
     } finally {
       setMemLimitSaving(false);
     }
