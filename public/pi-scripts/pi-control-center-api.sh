@@ -218,8 +218,48 @@ ensure_app_managed_dirs() {
   xdg_share_dir="$home_dir/.local/share"
   sudo_run_quiet mkdir -p "$cfg" "$data_dir" "$logdir" "$xdg_share_dir" || true
   sudo_run_quiet chown -R "$(whoami):$(id -gn)" "$cfg" "$data_dir" "$logdir" || true
-  chmod 700 "$cfg" "$data_dir" "$home_dir" 2>/dev/null || true
-  chmod 755 "$xdg_share_dir" "$logdir" 2>/dev/null || true
+  sudo_run_quiet chmod 700 "$cfg" "$data_dir" "$home_dir" || true
+  sudo_run_quiet chmod 755 "$xdg_share_dir" "$logdir" || true
+}
+
+app_dirs_need_repair() {
+  local app=$1 expected_owner cfg data_dir logdir path mode owner want_mode
+  expected_owner="$(whoami):$(id -gn)"
+  cfg=$(app_config_dir "$app")
+  data_dir=$(app_data_dir "$app")
+  logdir=$(app_log_dir "$app")
+  for path in "$cfg:700" "$data_dir:700" "$logdir:755"; do
+    want_mode=${path##*:}
+    path=${path%:*}
+    [ -d "$path" ] || return 0
+    owner=$(stat -c '%U:%G' "$path" 2>/dev/null || echo '')
+    mode=$(stat -c '%a' "$path" 2>/dev/null || echo '')
+    [ "$owner" = "$expected_owner" ] && [ "$mode" = "$want_mode" ] || return 0
+  done
+  return 1
+}
+
+repair_app_managed_dirs() {
+  local app=$1 reason=${2:-preflight} log_file="$STATUS_DIR/${app}.log"
+  app_dirs_need_repair "$app" || return 1
+  log "SYSTEMD WARNING: reparerar katalogrättigheter för $app ($reason)"
+  printf '[%s] systemd warning: reparerar katalogrättigheter (%s)\n' "$(date -Iseconds)" "$reason" >> "$log_file"
+  ensure_app_managed_dirs "$app"
+  rm -f "$CACHE_FILE"
+  return 0
+}
+
+app_dirs_warning_json() {
+  local app=$1 cfg data_dir logdir reason
+  cfg=$(escape_json "$(app_config_dir "$app")")
+  data_dir=$(escape_json "$(app_data_dir "$app")")
+  logdir=$(escape_json "$(app_log_dir "$app")")
+  if app_dirs_need_repair "$app"; then
+    reason="Katalogrättigheter behöver repareras"
+    echo "{\"status\":\"warning\",\"reason\":\"directory_permissions\",\"message\":\"${reason}\",\"configDir\":\"${cfg}\",\"dataDir\":\"${data_dir}\",\"logDir\":\"${logdir}\"}"
+  else
+    echo '{"status":"ok"}'
+  fi
 }
 
 escape_json() {
