@@ -58,6 +58,18 @@ EOF
   sudo_run_quiet systemctl restart bluetooth || true
 }
 
+ble_permissions_need_repair() {
+  local user_name="$(whoami)" missing=0
+  id -nG "$user_name" 2>/dev/null | grep -qw bluetooth || missing=1
+  loginctl show-user "$user_name" -p Linger 2>/dev/null | grep -q '=yes$' || missing=1
+  [ -f /etc/polkit-1/rules.d/49-allow-pi-bluez.rules ] || missing=1
+  grep -q '^DisablePlugins=pnat' /etc/bluetooth/main.conf 2>/dev/null || missing=1
+  systemctl is-active --quiet bluetooth 2>/dev/null || missing=1
+  rfkill list bluetooth 2>/dev/null | grep -qi 'Soft blocked: yes' && missing=1
+  hciconfig hci0 2>/dev/null | grep -q 'UP RUNNING' || missing=1
+  [ "$missing" -eq 1 ]
+}
+
 case "$REQUEST_MODE" in
   --handle-request)
     shift
