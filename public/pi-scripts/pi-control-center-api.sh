@@ -1142,7 +1142,7 @@ build_status_json() {
 
       [ "$online" = "true" ] && auto_adjust_memory_limit "$app" "$total_ram"
 
-      local mem_limit mem_profile mem_level permissions_json cfg_dir data_dir log_dir
+      local mem_limit mem_profile mem_level permissions_json cfg_dir data_dir log_dir systemd_warning
       mem_limit=$(_app_current_limit "$app"); [ -z "$mem_limit" ] && mem_limit=$(registry_memory_profile_mb "$app"); [ -z "$mem_limit" ] && mem_limit=128
       mem_profile=$(registry_memory_profile_json "$app"); [ -z "$mem_profile" ] && mem_profile="null"
       mem_level=$(memory_level_for_mb "$app" "$mem_limit")
@@ -1150,9 +1150,10 @@ build_status_json() {
       cfg_dir=$(escape_json "$(app_config_dir "$app")")
       data_dir=$(escape_json "$(app_data_dir "$app")")
       log_dir=$(escape_json "$(app_log_dir "$app")")
+      systemd_warning=$(app_dirs_warning_json "$app")
 
       [ -n "$svc_json" ] && svc_json="${svc_json},"
-      svc_json="${svc_json}\"${app}\":{\"online\":${online},\"installed\":${installed},\"version\":\"${ver}\",\"cpu\":${total_cpu:-0},\"ramMb\":${total_ram:-0},\"cpuCore\":${core},\"port\":${port},\"memoryMaxMb\":${mem_limit},\"memoryLevel\":\"${mem_level}\",\"memoryProfile\":${mem_profile},\"permissions\":${permissions_json},\"configDir\":\"${cfg_dir}\",\"dataDir\":\"${data_dir}\",\"logDir\":\"${log_dir}\",\"watchdog\":${engine_watchdog},\"health\":{\"status\":\"${health_status}\",\"uptime\":${health_uptime:-0},\"memoryRss\":${health_mem_rss:-0}},\"components\":{\"engine\":{\"online\":${engine_online},\"version\":\"${engine_ver}\",\"cpu\":${engine_cpu:-0},\"ramMb\":${engine_ram:-0},\"service\":\"${engine_svc}\",\"port\":${engine_port},\"cpuCore\":${core},\"watchdog\":${engine_watchdog}},\"ui\":{\"online\":${ui_online},\"version\":\"${ui_ver}\",\"cpu\":${ui_cpu:-0},\"ramMb\":${ui_ram:-0},\"service\":\"${ui_svc}\",\"port\":${port},\"cpuCore\":0,\"watchdog\":${ui_watchdog}}}}"
+      svc_json="${svc_json}\"${app}\":{\"online\":${online},\"installed\":${installed},\"version\":\"${ver}\",\"cpu\":${total_cpu:-0},\"ramMb\":${total_ram:-0},\"cpuCore\":${core},\"port\":${port},\"memoryMaxMb\":${mem_limit},\"memoryLevel\":\"${mem_level}\",\"memoryProfile\":${mem_profile},\"permissions\":${permissions_json},\"configDir\":\"${cfg_dir}\",\"dataDir\":\"${data_dir}\",\"logDir\":\"${log_dir}\",\"systemdWarning\":${systemd_warning},\"watchdog\":${engine_watchdog},\"health\":{\"status\":\"${health_status}\",\"uptime\":${health_uptime:-0},\"memoryRss\":${health_mem_rss:-0}},\"components\":{\"engine\":{\"online\":${engine_online},\"version\":\"${engine_ver}\",\"cpu\":${engine_cpu:-0},\"ramMb\":${engine_ram:-0},\"service\":\"${engine_svc}\",\"port\":${engine_port},\"cpuCore\":${core},\"watchdog\":${engine_watchdog}},\"ui\":{\"online\":${ui_online},\"version\":\"${ui_ver}\",\"cpu\":${ui_cpu:-0},\"ramMb\":${ui_ram:-0},\"service\":\"${ui_svc}\",\"port\":${port},\"cpuCore\":0,\"watchdog\":${ui_watchdog}}}}"
     else
       # Legacy single-service
       running=$(service_is_active "$svc")
@@ -1186,7 +1187,7 @@ build_status_json() {
       [ -n "$svc_json" ] && svc_json="${svc_json},"
       local service_watchdog
       service_watchdog=$(watchdog_json "$app" "service")
-      local mem_limit mem_profile mem_level permissions_json cfg_dir data_dir log_dir
+      local mem_limit mem_profile mem_level permissions_json cfg_dir data_dir log_dir systemd_warning
       mem_limit=$(_app_current_limit "$app"); [ -z "$mem_limit" ] && mem_limit=$(registry_memory_profile_mb "$app"); [ -z "$mem_limit" ] && mem_limit=128
       mem_profile=$(registry_memory_profile_json "$app"); [ -z "$mem_profile" ] && mem_profile="null"
       mem_level=$(memory_level_for_mb "$app" "$mem_limit")
@@ -1194,7 +1195,8 @@ build_status_json() {
       cfg_dir=$(escape_json "$(app_config_dir "$app")")
       data_dir=$(escape_json "$(app_data_dir "$app")")
       log_dir=$(escape_json "$(app_log_dir "$app")")
-      svc_json="${svc_json}\"${app}\":{\"online\":${online},\"installed\":${installed},\"version\":\"${ver}\",\"cpu\":${s_cpu:-0},\"ramMb\":${s_ram:-0},\"cpuCore\":${s_core},\"port\":${port},\"memoryMaxMb\":${mem_limit},\"memoryLevel\":\"${mem_level}\",\"memoryProfile\":${mem_profile},\"permissions\":${permissions_json},\"configDir\":\"${cfg_dir}\",\"dataDir\":\"${data_dir}\",\"logDir\":\"${log_dir}\",\"watchdog\":${service_watchdog}}"
+      systemd_warning=$(app_dirs_warning_json "$app")
+      svc_json="${svc_json}\"${app}\":{\"online\":${online},\"installed\":${installed},\"version\":\"${ver}\",\"cpu\":${s_cpu:-0},\"ramMb\":${s_ram:-0},\"cpuCore\":${s_core},\"port\":${port},\"memoryMaxMb\":${mem_limit},\"memoryLevel\":\"${mem_level}\",\"memoryProfile\":${mem_profile},\"permissions\":${permissions_json},\"configDir\":\"${cfg_dir}\",\"dataDir\":\"${data_dir}\",\"logDir\":\"${log_dir}\",\"systemdWarning\":${systemd_warning},\"watchdog\":${service_watchdog}}"
     fi
   done
 
