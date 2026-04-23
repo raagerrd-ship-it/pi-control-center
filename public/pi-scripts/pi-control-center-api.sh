@@ -30,8 +30,21 @@ sudo_available() {
   [ "$(id -u)" -eq 0 ] || sudo -n true >/dev/null 2>&1 || sudo -n /usr/bin/systemctl daemon-reload >/dev/null 2>&1
 }
 
+bluetooth_is_up_running() {
+  if command -v hciconfig >/dev/null 2>&1; then
+    hciconfig hci0 2>/dev/null | grep -q 'UP RUNNING'
+  elif command -v bluetoothctl >/dev/null 2>&1; then
+    bluetoothctl show 2>/dev/null | grep -q 'Powered: yes'
+  else
+    return 0
+  fi
+}
+
 repair_ble_permissions() {
+  local user_name="$(whoami)" group_changed=0 reboot_file="/tmp/pi-control-center/reboot-required.json"
+  mkdir -p /tmp/pi-control-center 2>/dev/null || true
   sudo_run_quiet loginctl enable-linger "$(whoami)" || true
+  id -nG "$user_name" 2>/dev/null | grep -qw bluetooth || group_changed=1
   sudo_run_quiet usermod -aG bluetooth,netdev,audio "$(whoami)" || true
   sudo_run_quiet mkdir -p /etc/polkit-1/rules.d || true
   sudo_run tee /etc/polkit-1/rules.d/49-allow-pi-bluez.rules > /dev/null <<'EOF' || true
@@ -56,6 +69,11 @@ EOF
   sudo_run_quiet hciconfig hci0 up || true
   sudo_run_quiet systemctl enable --now bluetooth || true
   sudo_run_quiet systemctl restart bluetooth || true
+  if [ "$group_changed" -eq 1 ] && ! bluetooth_is_up_running; then
+    echo '{"required":true,"reason":"ble_group_changed","message":"BLE-rättigheter har lagats men kräver omstart för ny gruppsession.","timestamp":"'"$(date -Iseconds)"'"}' > "$reboot_file"
+  elif bluetooth_is_up_running; then
+    rm -f "$reboot_file"
+  fi
 }
 
 ble_permissions_need_repair() {
@@ -66,11 +84,7 @@ ble_permissions_need_repair() {
   grep -q '^DisablePlugins=pnat' /etc/bluetooth/main.conf 2>/dev/null || missing=1
   systemctl is-active --quiet bluetooth 2>/dev/null || missing=1
   rfkill list bluetooth 2>/dev/null | grep -qi 'Soft blocked: yes' && missing=1
-  if command -v hciconfig >/dev/null 2>&1; then
-    hciconfig hci0 2>/dev/null | grep -q 'UP RUNNING' || missing=1
-  elif command -v bluetoothctl >/dev/null 2>&1; then
-    bluetoothctl show 2>/dev/null | grep -q 'Powered: yes' || missing=1
-  fi
+  bluetooth_is_up_running || missing=1
   [ "$missing" -eq 1 ]
 }
 
