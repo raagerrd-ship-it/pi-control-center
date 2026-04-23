@@ -1731,6 +1731,21 @@ _app_try_restart() {
   fi
 }
 
+_app_runtime_ram_mb() {
+  local app="$1" total=0 s
+  if [ "$(registry_has_components "$app")" = "true" ]; then
+    for comp in engine ui; do
+      s=$(registry_get_component "$app" "$comp" "service")
+      [ -n "$s" ] || continue
+      [ "$(service_is_active "$s")" = "true" ] && total=$((total + $(get_service_ram "$s")))
+    done
+  else
+    s=$(registry_get "$app" "service")
+    [ -n "$s" ] && [ "$(service_is_active "$s")" = "true" ] && total=$(get_service_ram "$s")
+  fi
+  echo "$total"
+}
+
 rebalance_memory_budget() {
   local installed_apps=()
   local app
@@ -1743,55 +1758,41 @@ rebalance_memory_budget() {
   local budget
   budget=$(memory_budget_mb)
 
-  # Steg 1: samla nuvarande limits och ge saknade appar sin profilnivå
-  local total_set=0 changed_apps=()
+  # Steg 1: räkna faktisk RAM-användning per app
+  local total_used=0 changed_apps=()
   declare -A current_limits
+  declare -A runtime_ram
   for app in "${installed_apps[@]}"; do
-    local cur floor
-    floor=$(registry_memory_profile_mb "$app")
-    [ -z "$floor" ] && floor=$MIN_MEMORY_MB
+    local cur used
     cur=$(_app_current_limit "$app")
-    [ -z "$cur" ] && cur=$floor
-    if [ "$cur" -lt "$floor" ] 2>/dev/null; then
-      cur=$floor
-      changed_apps+=("$app")
-    fi
+    [ -z "$cur" ] && cur=0
+    used=$(_app_runtime_ram_mb "$app")
+    [ -z "$used" ] && used=0
     current_limits[$app]=$cur
-    total_set=$((total_set + cur))
+    runtime_ram[$app]=$used
+    total_used=$((total_used + used))
   done
 
-  # Steg 2: om det finns ledig budget, dela ut den jämnt mellan apparna
-  if [ "$total_set" -lt "$budget" ]; then
-    local free=$((budget - total_set)) share=$((free / count)) extra=$((free % count)) idx=0
-    if [ "$share" -gt 0 ] || [ "$extra" -gt 0 ]; then
-      for app in "${installed_apps[@]}"; do
-        local old=${current_limits[$app]} add=$share new
-        [ "$idx" -lt "$extra" ] && add=$((add + 1))
-        idx=$((idx + 1))
-        new=$((old + add))
-        [ "$new" -eq "$old" ] && continue
-        current_limits[$app]=$new
-        total_set=$((total_set + add))
-        changed_apps+=("$app")
-      done
+  # Steg 2: ny maxgräns = faktisk användning + lika del av ledigt app-RAM
+  local free=$((budget - total_used)) share=0 extra=0 idx=0
+  [ "$free" -gt 0 ] && share=$((free / count)) && extra=$((free % count))
+  [ "$free" -lt 0 ] && log "RAM-användning ${total_used}MB > budget ${budget}MB — sätter gränser nära aktuell användning"
+  for app in "${installed_apps[@]}"; do
+    local old=${current_limits[$app]} add=$share new floor
+    floor=$(registry_memory_profile_mb "$app")
+    [ -z "$floor" ] && floor=$MIN_MEMORY_MB
+    [ "$idx" -lt "$extra" ] && add=$((add + 1))
+    idx=$((idx + 1))
+    new=$((runtime_ram[$app] + add))
+    [ "$new" -lt "$floor" ] && new=$floor
+    [ "$new" -gt 480 ] && new=480
+    if [ "$new" != "$old" ]; then
+      current_limits[$app]=$new
+      changed_apps+=("$app")
     fi
-  fi
+  done
 
-  # Steg 3: om totalen överskrider budget, skala ned proportionellt
-  if [ "$total_set" -gt "$budget" ]; then
-    log "RAM-totalen ${total_set}MB > budget ${budget}MB — skalar ned proportionellt"
-    for app in "${installed_apps[@]}"; do
-      local old=${current_limits[$app]}
-      local new=$(( old * budget / total_set ))
-      [ "$new" -lt "$MIN_MEMORY_MB" ] && new=$MIN_MEMORY_MB
-      if [ "$new" != "$old" ]; then
-        current_limits[$app]=$new
-        changed_apps+=("$app")
-      fi
-    done
-  fi
-
-  # Steg 4: skriv alla ändrade limits
+  # Steg 3: skriv alla ändrade limits
   if [ ${#changed_apps[@]} -gt 0 ]; then
     local seen=" "
     for app in "${changed_apps[@]}"; do
