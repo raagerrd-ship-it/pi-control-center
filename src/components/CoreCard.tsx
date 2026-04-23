@@ -21,7 +21,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import type { UpdateResult, InstallResult, ServiceActionResult, VersionInfo, ServiceDefinition, ComponentStatus, HealthStatus, WatchdogStatus } from '@/lib/api';
-import { hasComponents, fetchMemoryLimit, setMemoryLimit } from '@/lib/api';
+import { hasComponents, setMemoryLimit } from '@/lib/api';
 
 interface CoreCardProps {
   coreIndex: number;
@@ -177,7 +177,6 @@ export const CoreCard = memo(function CoreCard({
   const [installingService, setInstallingService] = useState<string>('');
   const [checkingVersion, setCheckingVersion] = useState(false);
   const [memLimitSaving, setMemLimitSaving] = useState(false);
-  const [localMemLimit, setLocalMemLimit] = useState<number | null>(null);
 
   const uiPort = 3000 + coreIndex;
   const enginePort = 3050 + coreIndex;
@@ -194,7 +193,7 @@ export const CoreCard = memo(function CoreCard({
   const profile = service?.definition.memoryProfile || service?.memoryProfile;
   const rawMemoryLevel = service?.memoryLevel || (profile && memLimitMb ? Object.entries(profile.levels).find(([, mb]) => mb === memLimitMb)?.[0] : undefined);
   const memoryLevel = rawMemoryLevel && ['low', 'balanced', 'high'].includes(rawMemoryLevel) ? rawMemoryLevel : (profile?.defaultLevel || 'balanced');
-  const sliderValue = Math.max(MIN_MEMORY_MB, localMemLimit ?? service?.memoryMaxMb ?? memLimitMb ?? MIN_MEMORY_MB);
+  const memoryMaxMb = Math.max(MIN_MEMORY_MB, service?.memoryMaxMb ?? memLimitMb ?? MIN_MEMORY_MB);
 
   const handleMemoryLevelChange = async (level: string) => {
     if (!service?.definition?.key || !profile?.levels[level]) return;
@@ -404,17 +403,15 @@ export const CoreCard = memo(function CoreCard({
         </div>
       )}
 
-      {/* RAM slider */}
+      {/* RAM usage */}
       {memLimitMb !== null && (
         <div className="flex flex-col gap-1">
           <div className="flex items-center gap-1.5 font-mono text-[10px] text-muted-foreground">
             <MemoryStick className="h-3 w-3 shrink-0" />
-            <span className="font-medium text-foreground">MemoryMax {sliderValue}MB</span>
-            {online && ramMb > 0 && (
-              <span className={ramMb / sliderValue > 0.8 ? 'text-[hsl(var(--status-warning))]' : ''}>
-                ({ramMb}MB)
-              </span>
-            )}
+            <span className="font-medium text-foreground">Max: {memoryMaxMb}MB</span>
+            <span className={online && ramMb / memoryMaxMb > 0.8 ? 'text-[hsl(var(--status-warning))]' : ''}>
+              Värde: {online ? ramMb : 0}MB
+            </span>
             {memLimitSaving && <Loader2 className="h-2.5 w-2.5 animate-spin" />}
             {profile?.levels && (
               <Select value={memoryLevel} onValueChange={handleMemoryLevelChange}>
@@ -433,12 +430,12 @@ export const CoreCard = memo(function CoreCard({
           <div className="h-1.5 rounded-full bg-secondary/50 overflow-hidden">
             <div
               className="h-full rounded-full bg-primary"
-              style={{ width: `${Math.min(100, (sliderValue / maxForThis) * 100)}%` }}
+              style={{ width: `${Math.min(100, ((online ? ramMb : 0) / memoryMaxMb) * 100)}%` }}
             />
           </div>
           <div className="flex justify-between font-mono text-[9px] text-muted-foreground/40">
-            <span>{MIN_MEMORY_MB}</span>
-            <span>{maxForThis}</span>
+            <span>0</span>
+            <span>{memoryMaxMb}</span>
           </div>
         </div>
       )}
