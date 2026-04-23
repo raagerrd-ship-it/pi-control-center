@@ -2354,7 +2354,7 @@ handle_request() {
           echo "{\"app\":\"${app}\",\"status\":\"updating\",\"progress\":\"Pi upptagen – väntar på uppdateringskö...\",\"timestamp\":\"$(date -Iseconds)\"}" > "$update_json"
           flock 9
         fi
-        local release_url install_dir svc download_url
+        local release_url install_dir svc download_url latest_tag
         release_url=$(registry_get "$app" "releaseUrl")
         install_dir=$(eval echo "$(registry_get "$app" "installDir")")
         svc=$(registry_get "$app" "service")
@@ -2363,14 +2363,18 @@ handle_request() {
 
         # Try release-based update first
         if [ -n "$release_url" ]; then
-          download_url=$(curl -sf "$release_url" 2>/dev/null | jq -r '.assets[] | select(.name == "dist.tar.gz") | .browser_download_url' 2>/dev/null)
+          latest_tag=$(latest_release_tag "$app")
+          download_url=$(latest_release_asset_url "$app")
           if [ -n "$download_url" ] && [ "$download_url" != "null" ]; then
-            echo "Laddar ner ny release..." >> "$update_log"
+            echo "Laddar ner release ${latest_tag:-latest}..." >> "$update_log"
             if curl -sfL "$download_url" -o "/tmp/pi-control-center/${app}-dist.tar.gz" 2>> "$update_log"; then
               echo "Packar upp..." >> "$update_log"
-              rm -rf "$install_dir/dist"
+              rm -rf "$install_dir"/*
               tar xzf "/tmp/pi-control-center/${app}-dist.tar.gz" -C "$install_dir" 2>> "$update_log"
               rm -f "/tmp/pi-control-center/${app}-dist.tar.gz"
+              if [ -n "$latest_tag" ]; then
+                printf '{"tag":"%s","version":"%s","updatedAt":"%s"}\n' "$(escape_json "$latest_tag")" "$(escape_json "$latest_tag")" "$(date -Iseconds)" > "$install_dir/VERSION.json"
+              fi
 
               export XDG_RUNTIME_DIR="$USER_RUNTIME_DIR"
               export DBUS_SESSION_BUS_ADDRESS="$USER_BUS_ADDRESS"
