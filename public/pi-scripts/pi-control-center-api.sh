@@ -1028,7 +1028,10 @@ build_status_json() {
   dash_pid=$(systemctl show "pi-control-center-api.service" --property=MainPID 2>/dev/null | cut -d= -f2)
   [ -n "$dash_pid" ] && [ "$dash_pid" != "0" ] && dash_cpu=$(ps -p "$dash_pid" -o %cpu= 2>/dev/null | tr -d ' ' || echo "0")
 
-  echo "{\"cpu\":${cpu:-0},\"cpuCores\":${cpu_cores:-[]},\"temp\":${temp:-0},\"ramUsed\":${ram_used:-0},\"ramTotal\":${ram_total:-0},\"diskUsed\":${disk_used:-0},\"diskTotal\":${disk_total:-0},\"uptime\":\"${uptime_str}\",\"dashboardCpu\":${dash_cpu:-0},\"dashboardRamMb\":${dash_ram:-0},\"commit\":\"${DASHBOARD_COMMIT_SHORT}\",\"branch\":\"${DASHBOARD_BRANCH}\",\"runtime\":${runtime_json},\"services\":{${svc_json}}}"
+  local reboot_json
+  reboot_json='{"required":false}'
+  [ -f "$REBOOT_REQUIRED_FILE" ] && reboot_json=$(cat "$REBOOT_REQUIRED_FILE" 2>/dev/null || echo '{"required":false}')
+  echo "{\"cpu\":${cpu:-0},\"cpuCores\":${cpu_cores:-[]},\"temp\":${temp:-0},\"ramUsed\":${ram_used:-0},\"ramTotal\":${ram_total:-0},\"diskUsed\":${disk_used:-0},\"diskTotal\":${disk_total:-0},\"uptime\":\"${uptime_str}\",\"dashboardCpu\":${dash_cpu:-0},\"dashboardRamMb\":${dash_ram:-0},\"commit\":\"${DASHBOARD_COMMIT_SHORT}\",\"branch\":\"${DASHBOARD_BRANCH}\",\"runtime\":${runtime_json},\"rebootRequired\":${reboot_json},\"services\":{${svc_json}}}"
 }
 
 get_cached_status() {
