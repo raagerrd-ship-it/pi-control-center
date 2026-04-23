@@ -737,6 +737,8 @@ watchdog_check_component() {
     health_fails=0
   fi
 
+  [ "$comp" = "engine" ] || [ "$comp" = "service" ] && auto_adjust_memory_limit "$app" "$ram"
+
   reason=""; status="ok"
   [ "$limit" -gt 0 ] 2>/dev/null && [ "${mem_pct:-0}" -ge "$WATCHDOG_MEM_WARN" ] && { status="warning"; reason="high_memory"; }
   [ "$cpu_fails" -ge "$WATCHDOG_STRIKES" ] && reason="high_cpu"
