@@ -1100,6 +1100,8 @@ build_status_json() {
       health_uptime=$(echo "$health_json" | jq -r '.uptime // 0' 2>/dev/null)
       health_mem_rss=$(echo "$health_json" | jq -r '.memory.rss // 0' 2>/dev/null)
 
+      [ "$online" = "true" ] && auto_adjust_memory_limit "$app" "$total_ram"
+
       local mem_limit mem_profile mem_level permissions_json cfg_dir data_dir log_dir
       mem_limit=$(_app_current_limit "$app"); [ -z "$mem_limit" ] && mem_limit=$(registry_memory_profile_mb "$app"); [ -z "$mem_limit" ] && mem_limit=128
       mem_profile=$(registry_memory_profile_json "$app"); [ -z "$mem_profile" ] && mem_profile="null"
@@ -1138,6 +1140,8 @@ build_status_json() {
           esac
         fi
       fi
+
+      [ "$online" = "true" ] && auto_adjust_memory_limit "$app" "$s_ram"
 
       [ -n "$svc_json" ] && svc_json="${svc_json},"
       local service_watchdog
