@@ -1100,6 +1100,8 @@ build_status_json() {
       health_uptime=$(echo "$health_json" | jq -r '.uptime // 0' 2>/dev/null)
       health_mem_rss=$(echo "$health_json" | jq -r '.memory.rss // 0' 2>/dev/null)
 
+      [ "$online" = "true" ] && auto_adjust_memory_limit "$app" "$total_ram"
+
       local mem_limit mem_profile mem_level permissions_json cfg_dir data_dir log_dir
       mem_limit=$(_app_current_limit "$app"); [ -z "$mem_limit" ] && mem_limit=$(registry_memory_profile_mb "$app"); [ -z "$mem_limit" ] && mem_limit=128
       mem_profile=$(registry_memory_profile_json "$app"); [ -z "$mem_profile" ] && mem_profile="null"
@@ -1138,6 +1140,8 @@ build_status_json() {
           esac
         fi
       fi
+
+      [ "$online" = "true" ] && auto_adjust_memory_limit "$app" "$s_ram"
 
       [ -n "$svc_json" ] && svc_json="${svc_json},"
       local service_watchdog
@@ -2514,8 +2518,10 @@ handle_request() {
         _app_set_limit "$ml_app" "$ml_new_limit"
         if [ -n "$(_app_current_limit "$ml_app")" ]; then
           sudo systemctl daemon-reload 2>/dev/null || user_systemctl daemon-reload 2>/dev/null || true
+          _app_try_restart "$ml_app"
           rm -f "$CACHE_FILE"
           [ -z "$ml_level" ] && ml_level=$(memory_level_for_mb "$ml_app" "$ml_new_limit")
+          append_memory_change_log "$ml_app" "MEMORY: ${ml_app} MemoryMax satt till ${ml_new_limit}MB (${ml_level}) från UI"
           response="{\"app\":\"${ml_app}\",\"limitMb\":${ml_new_limit},\"level\":\"${ml_level}\",\"status\":\"success\"}"
         else
           status_line="HTTP/1.1 404 Not Found"
