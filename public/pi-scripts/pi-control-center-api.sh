@@ -1861,6 +1861,7 @@ do_install() {
   fi
 
   progress "$sf" "$app" "Sparar konfiguration..." "$start_time"
+  repair_app_managed_dirs "$app" "config-save" || true
 
   # Save assignment
   assignment_set "$app" "$req_core"
@@ -2505,6 +2506,9 @@ handle_request() {
         local svc_ok="false" svc_err="" log_file now
         log_file="$STATUS_DIR/${app}.log"
         now="$(date -Iseconds)"
+        if [ "$action" = "start" ] || [ "$action" = "restart" ]; then
+          repair_app_managed_dirs "$app" "service-${action}" || true
+        fi
         if sudo_run systemctl "$action" "${svc}.service" 2>/tmp/svc-err-$$; then
           svc_ok="true"
         elif user_systemctl "$action" "${svc}.service" 2>/tmp/svc-err-$$; then
@@ -2524,6 +2528,20 @@ handle_request() {
           printf "[%s] service %s %s: %s\n" "$now" "$svc" "$action" "${svc_err:-systemctl ${action} failed}" >> "$log_file"
           response="{\"app\":\"${app}\",\"action\":\"${action}\",\"status\":\"error\",\"message\":\"${svc_err:-systemctl ${action} failed}\"}"
         fi
+      fi
+      ;;
+
+    POST\ /api/repair-dirs/*)
+      local app
+      app=${path#/api/repair-dirs/}
+      app="${app%%[?#]*}"
+      app="${app//[^a-zA-Z0-9_-]/}"
+      if [ -z "$(registry_get "$app" "repo")" ]; then
+        status_line="HTTP/1.1 404 Not Found"
+        response="{\"error\":\"Unknown app: ${app}\"}"
+      else
+        repair_app_managed_dirs "$app" "manual" || ensure_app_managed_dirs "$app"
+        response="{\"app\":\"${app}\",\"status\":\"success\"}"
       fi
       ;;
 
