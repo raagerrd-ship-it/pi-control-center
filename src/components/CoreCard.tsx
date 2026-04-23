@@ -21,7 +21,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import type { UpdateResult, InstallResult, ServiceActionResult, VersionInfo, ServiceDefinition, ComponentStatus, HealthStatus, WatchdogStatus, ServiceStatus } from '@/lib/api';
-import { hasComponents, repairServiceDirs, setMemoryLimit } from '@/lib/api';
+import { hasComponents, repairServiceDirs } from '@/lib/api';
 
 interface CoreCardProps {
   coreIndex: number;
@@ -173,7 +173,6 @@ export const CoreCard = memo(function CoreCard({
   const [selectedService, setSelectedService] = useState<string>('');
   const [installingService, setInstallingService] = useState<string>('');
   const [checkingVersion, setCheckingVersion] = useState(false);
-  const [memLimitSaving, setMemLimitSaving] = useState(false);
   const [repairingDirs, setRepairingDirs] = useState(false);
 
   const uiPort = 3000 + coreIndex;
@@ -186,33 +185,7 @@ export const CoreCard = memo(function CoreCard({
 
   const MIN_MEMORY_MB = 80;
 
-  // Prefer the optimistic local limit while the Pi status poll catches up.
-  const profile = service?.definition.memoryProfile || service?.memoryProfile;
-  const localMemoryLevel = profile && memLimitMb
-    ? Object.entries(profile.levels).find(([, mb]) => mb === memLimitMb)?.[0]
-    : undefined;
-  const rawMemoryLevel = localMemoryLevel || service?.memoryLevel;
-  const memoryLevel = rawMemoryLevel && ['low', 'balanced', 'high'].includes(rawMemoryLevel) ? rawMemoryLevel : (profile?.defaultLevel || 'balanced');
   const memoryMaxMb = Math.max(MIN_MEMORY_MB, memLimitMb ?? service?.memoryMaxMb ?? MIN_MEMORY_MB);
-
-  const handleMemoryLevelChange = async (level: string) => {
-    if (!service?.definition?.key || !profile?.levels[level]) return;
-    const key = service.definition.key;
-    const previousMb = memLimitMb ?? service.memoryMaxMb ?? MIN_MEMORY_MB;
-    const mb = Math.max(profile.levels[level], MIN_MEMORY_MB);
-
-    setMemLimitSaving(true);
-
-    onMemLimitChange(key, mb);
-    try {
-      const result = await setMemoryLimit(key, mb, level);
-      onMemLimitChange(key, result.limitMb);
-    } catch {
-      onMemLimitChange(key, previousMb);
-    } finally {
-      setMemLimitSaving(false);
-    }
-  };
 
   const handleRepairDirs = async () => {
     if (!service?.definition?.key) return;
@@ -432,20 +405,7 @@ export const CoreCard = memo(function CoreCard({
             <span className={online && ramMb / memoryMaxMb > 0.8 ? 'text-[hsl(var(--status-warning))]' : ''}>
               Värde: {online ? ramMb : 0}MB
             </span>
-            {memLimitSaving && <Loader2 className="h-2.5 w-2.5 animate-spin" />}
-            {profile?.levels && (
-              <Select value={memoryLevel} onValueChange={handleMemoryLevelChange}>
-                <SelectTrigger className="ml-auto h-6 w-[86px] px-2 font-mono text-[10px]">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="low" className="font-mono text-xs">Låg</SelectItem>
-                  <SelectItem value="balanced" className="font-mono text-xs">Balans</SelectItem>
-                  <SelectItem value="high" className="font-mono text-xs">Hög</SelectItem>
-                  <SelectItem value="custom" className="font-mono text-xs" disabled>Auto</SelectItem>
-                </SelectContent>
-              </Select>
-            )}
+            <span className="ml-auto text-muted-foreground/60">Auto</span>
           </div>
           <div className="h-1.5 rounded-full bg-secondary/50 overflow-hidden">
             <div
