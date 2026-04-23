@@ -509,10 +509,11 @@ export const CoreCard = memo(function CoreCard({
               variant="ghost"
               size="sm"
               onClick={() => onUpdate(def.key)}
-              className="h-5 w-5 p-0 text-[hsl(var(--status-warning))] hover:text-[hsl(var(--status-warning))] hover:bg-[hsl(var(--status-warning)/0.15)]"
+              className="h-6 px-2 gap-1 text-[10px] text-[hsl(var(--status-warning))] hover:text-[hsl(var(--status-warning))] hover:bg-[hsl(var(--status-warning)/0.15)]"
               title="Uppdatera"
             >
               <RefreshCw className="h-3 w-3" />
+              Uppdatera
             </Button>
           ) : (
             <Button
