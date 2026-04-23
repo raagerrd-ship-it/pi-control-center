@@ -62,6 +62,13 @@ export interface RuntimeStatus {
   status?: 'ok' | 'warning' | string;
 }
 
+export interface RebootRequiredStatus {
+  required: boolean;
+  reason?: string;
+  message?: string;
+  timestamp?: string;
+}
+
 export interface MemoryProfile {
   defaultLevel: 'low' | 'balanced' | 'high' | string;
   levels: Record<string, number>;
@@ -81,6 +88,7 @@ export interface SystemStatus {
   commit: string;
   branch: string;
   runtime?: RuntimeStatus;
+  rebootRequired?: RebootRequiredStatus;
   services: {
     [key: string]: ServiceStatus;
   };
@@ -279,6 +287,15 @@ export async function triggerPiReset(): Promise<FactoryResetResult> {
     signal: AbortSignal.timeout(120000),
   });
   if (!res.ok) throw new Error('Failed to trigger Pi reset');
+  return res.json();
+}
+
+export async function triggerReboot(): Promise<{ status: 'rebooting' | 'error' }> {
+  const res = await fetch(`${getBaseUrl()}/api/reboot`, {
+    method: 'POST',
+    signal: AbortSignal.timeout(5000),
+  });
+  if (!res.ok) throw new Error('Failed to trigger reboot');
   return res.json();
 }
 

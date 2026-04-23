@@ -30,8 +30,21 @@ sudo_available() {
   [ "$(id -u)" -eq 0 ] || sudo -n true >/dev/null 2>&1 || sudo -n /usr/bin/systemctl daemon-reload >/dev/null 2>&1
 }
 
+bluetooth_is_up_running() {
+  if command -v hciconfig >/dev/null 2>&1; then
+    hciconfig hci0 2>/dev/null | grep -q 'UP RUNNING'
+  elif command -v bluetoothctl >/dev/null 2>&1; then
+    bluetoothctl show 2>/dev/null | grep -q 'Powered: yes'
+  else
+    return 0
+  fi
+}
+
 repair_ble_permissions() {
+  local user_name="$(whoami)" group_changed=0 reboot_file="${REBOOT_REQUIRED_FILE:-/tmp/pi-control-center/reboot-required.json}"
+  mkdir -p "$(dirname "$reboot_file")" 2>/dev/null || true
   sudo_run_quiet loginctl enable-linger "$(whoami)" || true
+  id -nG "$user_name" 2>/dev/null | grep -qw bluetooth || group_changed=1
   sudo_run_quiet usermod -aG bluetooth,netdev,audio "$(whoami)" || true
   sudo_run_quiet mkdir -p /etc/polkit-1/rules.d || true
   sudo_run tee /etc/polkit-1/rules.d/49-allow-pi-bluez.rules > /dev/null <<'EOF' || true
@@ -56,6 +69,11 @@ EOF
   sudo_run_quiet hciconfig hci0 up || true
   sudo_run_quiet systemctl enable --now bluetooth || true
   sudo_run_quiet systemctl restart bluetooth || true
+  if [ "$group_changed" -eq 1 ] && ! bluetooth_is_up_running; then
+    echo '{"required":true,"reason":"ble_group_changed","message":"BLE-rättigheter har lagats men kräver omstart för ny gruppsession.","timestamp":"'"$(date -Iseconds)"'"}' > "$reboot_file"
+  elif bluetooth_is_up_running; then
+    rm -f "$reboot_file"
+  fi
 }
 
 ble_permissions_need_repair() {
@@ -66,11 +84,7 @@ ble_permissions_need_repair() {
   grep -q '^DisablePlugins=pnat' /etc/bluetooth/main.conf 2>/dev/null || missing=1
   systemctl is-active --quiet bluetooth 2>/dev/null || missing=1
   rfkill list bluetooth 2>/dev/null | grep -qi 'Soft blocked: yes' && missing=1
-  if command -v hciconfig >/dev/null 2>&1; then
-    hciconfig hci0 2>/dev/null | grep -q 'UP RUNNING' || missing=1
-  elif command -v bluetoothctl >/dev/null 2>&1; then
-    bluetoothctl show 2>/dev/null | grep -q 'Powered: yes' || missing=1
-  fi
+  bluetooth_is_up_running || missing=1
   [ "$missing" -eq 1 ]
 }
 
@@ -114,6 +128,7 @@ STATUS_DIR="/tmp/pi-control-center"
 INSTALL_DIR="/tmp/pi-control-center/install"
 CACHE_FILE="$STATUS_DIR/status-cache.json"
 CACHE_MAX_AGE=4  # seconds
+REBOOT_REQUIRED_FILE="$STATUS_DIR/reboot-required.json"
 USER_ID="$(id -u)"
 USER_RUNTIME_DIR="/run/user/$USER_ID"
 USER_BUS_ADDRESS="unix:path=$USER_RUNTIME_DIR/bus"
@@ -1013,7 +1028,10 @@ build_status_json() {
   dash_pid=$(systemctl show "pi-control-center-api.service" --property=MainPID 2>/dev/null | cut -d= -f2)
   [ -n "$dash_pid" ] && [ "$dash_pid" != "0" ] && dash_cpu=$(ps -p "$dash_pid" -o %cpu= 2>/dev/null | tr -d ' ' || echo "0")
 
-  echo "{\"cpu\":${cpu:-0},\"cpuCores\":${cpu_cores:-[]},\"temp\":${temp:-0},\"ramUsed\":${ram_used:-0},\"ramTotal\":${ram_total:-0},\"diskUsed\":${disk_used:-0},\"diskTotal\":${disk_total:-0},\"uptime\":\"${uptime_str}\",\"dashboardCpu\":${dash_cpu:-0},\"dashboardRamMb\":${dash_ram:-0},\"commit\":\"${DASHBOARD_COMMIT_SHORT}\",\"branch\":\"${DASHBOARD_BRANCH}\",\"runtime\":${runtime_json},\"services\":{${svc_json}}}"
+  local reboot_json
+  reboot_json='{"required":false}'
+  [ -f "$REBOOT_REQUIRED_FILE" ] && reboot_json=$(cat "$REBOOT_REQUIRED_FILE" 2>/dev/null || echo '{"required":false}')
+  echo "{\"cpu\":${cpu:-0},\"cpuCores\":${cpu_cores:-[]},\"temp\":${temp:-0},\"ramUsed\":${ram_used:-0},\"ramTotal\":${ram_total:-0},\"diskUsed\":${disk_used:-0},\"diskTotal\":${disk_total:-0},\"uptime\":\"${uptime_str}\",\"dashboardCpu\":${dash_cpu:-0},\"dashboardRamMb\":${dash_ram:-0},\"commit\":\"${DASHBOARD_COMMIT_SHORT}\",\"branch\":\"${DASHBOARD_BRANCH}\",\"runtime\":${runtime_json},\"rebootRequired\":${reboot_json},\"services\":{${svc_json}}}"
 }
 
 get_cached_status() {
@@ -2003,6 +2021,11 @@ handle_request() {
         echo "Återställning klar. Startar om API..." >> "$reset_log"
         sudo systemctl restart pi-control-center-api >/dev/null 2>&1 || true
       ) >> "$reset_log" 2>&1 &
+      ;;
+
+    "POST /api/reboot")
+      response='{"status":"rebooting"}'
+      ( sleep 1; sudo_run_quiet systemctl reboot || sudo_run_quiet reboot || true ) &
       ;;
 
     "GET /api/factory-reset-status")
