@@ -1273,7 +1273,7 @@ do_install_release() {
   [ -z "$release_url" ] && return 1
 
   progress "$sf" "$app" "Hämtar release-info från GitHub..." "$start_time"
-  download_url=$(curl -sf "$release_url" 2>/dev/null | jq -r '.assets[] | select(.name == "dist.tar.gz") | .browser_download_url' 2>/dev/null)
+  download_url=$(latest_release_asset_url "$app")
 
   [ -z "$download_url" ] || [ "$download_url" = "null" ] && return 1
 
