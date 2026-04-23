@@ -26,6 +26,35 @@ ensure_node24() {
   echo "  Node: $(node -v), npm: $(npm -v)"
 }
 
+repair_ble_permissions() {
+  echo "  Re-applying BLE/Noble permissions..."
+  sudo loginctl enable-linger "$USER" 2>/dev/null || true
+  sudo usermod -aG bluetooth,netdev,audio "$USER" 2>/dev/null || true
+  sudo mkdir -p /etc/polkit-1/rules.d
+  sudo tee /etc/polkit-1/rules.d/49-allow-pi-bluez.rules > /dev/null <<'EOF'
+polkit.addRule(function(action, subject) {
+  if (subject.user == "pi" && action.id.indexOf("org.bluez.") == 0) {
+    return polkit.Result.YES;
+  }
+});
+EOF
+  if [ -f /etc/bluetooth/main.conf ]; then
+    if sudo grep -q '^DisablePlugins=' /etc/bluetooth/main.conf; then
+      sudo sed -i 's/^DisablePlugins=.*/DisablePlugins=pnat/' /etc/bluetooth/main.conf
+    elif sudo grep -q '^\[General\]' /etc/bluetooth/main.conf; then
+      sudo sed -i '/^\[General\]/a DisablePlugins=pnat' /etc/bluetooth/main.conf
+    else
+      printf '\n[General]\nDisablePlugins=pnat\n' | sudo tee -a /etc/bluetooth/main.conf > /dev/null
+    fi
+  else
+    printf '[General]\nDisablePlugins=pnat\n' | sudo tee /etc/bluetooth/main.conf > /dev/null
+  fi
+  sudo rfkill unblock bluetooth 2>/dev/null || true
+  sudo hciconfig hci0 up 2>/dev/null || true
+  sudo systemctl enable --now bluetooth 2>/dev/null || true
+  sudo systemctl restart bluetooth 2>/dev/null || true
+}
+
 cd "$DASHBOARD_DIR"
 
 echo "[1/6] Pulling latest code..."
@@ -73,6 +102,7 @@ sudo cp -r "$DASHBOARD_DIR/public/pi-scripts/." "$NGINX_DIR/pi-scripts/"
 sudo chmod +x "$NGINX_DIR/pi-scripts/"*.sh 2>/dev/null || true
 
 echo "[6/6] Cleaning up & restarting..."
+repair_ble_permissions
 rm -rf node_modules
 npm cache clean --force 2>/dev/null || true
 sudo systemctl restart pi-control-center-api 2>/dev/null || true

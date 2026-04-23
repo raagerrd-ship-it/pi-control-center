@@ -30,6 +30,34 @@ sudo_available() {
   [ "$(id -u)" -eq 0 ] || sudo -n true >/dev/null 2>&1 || sudo -n /usr/bin/systemctl daemon-reload >/dev/null 2>&1
 }
 
+repair_ble_permissions() {
+  sudo_run_quiet loginctl enable-linger "$(whoami)" || true
+  sudo_run_quiet usermod -aG bluetooth,netdev,audio "$(whoami)" || true
+  sudo_run_quiet mkdir -p /etc/polkit-1/rules.d || true
+  sudo_run tee /etc/polkit-1/rules.d/49-allow-pi-bluez.rules > /dev/null <<'EOF' || true
+polkit.addRule(function(action, subject) {
+  if (subject.user == "pi" && action.id.indexOf("org.bluez.") == 0) {
+    return polkit.Result.YES;
+  }
+});
+EOF
+  if [ -f /etc/bluetooth/main.conf ]; then
+    if sudo_run_quiet grep -q '^DisablePlugins=' /etc/bluetooth/main.conf; then
+      sudo_run_quiet sed -i 's/^DisablePlugins=.*/DisablePlugins=pnat/' /etc/bluetooth/main.conf || true
+    elif sudo_run_quiet grep -q '^\[General\]' /etc/bluetooth/main.conf; then
+      sudo_run_quiet sed -i '/^\[General\]/a DisablePlugins=pnat' /etc/bluetooth/main.conf || true
+    else
+      printf '\n[General]\nDisablePlugins=pnat\n' | sudo_run tee -a /etc/bluetooth/main.conf > /dev/null || true
+    fi
+  else
+    printf '[General]\nDisablePlugins=pnat\n' | sudo_run tee /etc/bluetooth/main.conf > /dev/null || true
+  fi
+  sudo_run_quiet rfkill unblock bluetooth || true
+  sudo_run_quiet hciconfig hci0 up || true
+  sudo_run_quiet systemctl enable --now bluetooth || true
+  sudo_run_quiet systemctl restart bluetooth || true
+}
+
 case "$REQUEST_MODE" in
   --handle-request)
     shift
@@ -2043,6 +2071,9 @@ handle_request() {
           fi
           unset src dst
         fi
+
+        dashboard_progress "Återställer BLE-rättigheter..."
+        repair_ble_permissions
 
         dashboard_progress "Startar om tjänster..."
         restart_app_services
