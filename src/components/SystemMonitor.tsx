@@ -1,4 +1,4 @@
-import { Cpu, Thermometer, HardDrive, Clock, MemoryStick, RefreshCw, CheckCircle2, AlertCircle, Loader2 } from 'lucide-react';
+import { Cpu, Thermometer, HardDrive, Clock, MemoryStick, RefreshCw, CheckCircle2, AlertCircle, Loader2, Power } from 'lucide-react';
 import { Progress } from '@/components/ui/progress';
 import { Button } from '@/components/ui/button';
 import type { SystemStatus, UpdateResult, VersionInfo } from '@/lib/api';
@@ -39,15 +39,17 @@ interface SystemMonitorProps {
   isUpdatingDashboard: boolean;
   checkingVersions: boolean;
   updatesAvailable: boolean;
+  rebooting: boolean;
   onCheckVersions: () => void;
   onDashboardUpdate: () => void;
+  onReboot: () => void;
 }
 
 export function SystemMonitor({
   status, error, loading, connection,
   dashboardVersion, dashboardUpdate, isUpdatingDashboard,
   checkingVersions, updatesAvailable,
-  onCheckVersions, onDashboardUpdate,
+  rebooting, onCheckVersions, onDashboardUpdate, onReboot,
 }: SystemMonitorProps) {
   if (loading) {
     return (
@@ -87,6 +89,23 @@ export function SystemMonitor({
           ) : (
             <><AlertCircle className="h-3 w-3" /> Ingen anslutning till Pi</>
           )}
+        </div>
+      )}
+      {status?.rebootRequired?.required && (
+        <div className="rounded-md border border-[hsl(var(--status-warning)/0.35)] bg-[hsl(var(--status-warning)/0.1)] p-3">
+          <div className="flex items-start gap-3">
+            <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-[hsl(var(--status-warning))]" />
+            <div className="min-w-0 flex-1">
+              <p className="font-mono text-xs font-semibold text-[hsl(var(--status-warning))]">Omstart krävs</p>
+              <p className="mt-1 font-mono text-[11px] leading-relaxed text-muted-foreground">
+                {status.rebootRequired.message || 'BLE-rättigheter har ändrats och kräver ny systemsession.'}
+              </p>
+            </div>
+            <Button size="sm" className="h-8 shrink-0 gap-1.5 font-mono text-[11px]" onClick={onReboot} disabled={rebooting}>
+              <Power className="h-3.5 w-3.5" />
+              {rebooting ? 'Startar...' : 'Starta om'}
+            </Button>
+          </div>
         </div>
       )}
       {/* System gauges */}
