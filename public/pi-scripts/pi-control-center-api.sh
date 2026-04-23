@@ -514,6 +514,11 @@ WATCHDOG_MEM_WARN=85
 WATCHDOG_MEM_RESTART=95
 WATCHDOG_STRIKES=3
 WATCHDOG_MAX_RESTARTS=3
+MEMORY_AUTOSCALE_UP_PCT=85
+MEMORY_AUTOSCALE_DOWN_PCT=45
+MEMORY_AUTOSCALE_UP_STRIKES=2
+MEMORY_AUTOSCALE_DOWN_STRIKES=6
+MEMORY_AUTOSCALE_COOLDOWN_SECONDS=120
 
 watchdog_key() { echo "${1}-${2}" | tr -cd 'a-zA-Z0-9_.-'; }
 
@@ -584,6 +589,94 @@ watchdog_reset() {
   rm -f "$WATCHDOG_DIR/$(watchdog_key "$app" "$comp").state"
 }
 
+memory_autoscale_get() {
+  local app=$1 field=$2 file="$WATCHDOG_DIR/$(watchdog_key "$app" "memory-autoscale").state"
+  [ -f "$file" ] && grep -E "^${field}=" "$file" 2>/dev/null | tail -1 | cut -d= -f2-
+}
+
+memory_autoscale_write() {
+  local app=$1 up_fails=$2 down_fails=$3 last_change=$4 file tmp
+  file="$WATCHDOG_DIR/$(watchdog_key "$app" "memory-autoscale").state"
+  tmp="${file}.tmp.$$"
+  {
+    echo "up_fails=${up_fails:-0}"
+    echo "down_fails=${down_fails:-0}"
+    echo "last_change=${last_change:-0}"
+    echo "timestamp=$(date -Iseconds)"
+  } > "$tmp"
+  mv "$tmp" "$file"
+}
+
+memory_profile_adjacent_level() {
+  local app=$1 current_mb=$2 direction=$3 op
+  [ "$direction" = "up" ] && op='select(.value > $mb)' || op='select(.value < $mb)'
+  jq -r --arg k "$app" --argjson mb "${current_mb:-0}" --arg op "$direction" '
+    .[] | select(.key == $k) | (.memoryProfile.levels // {}) | to_entries
+    | map(select((if $op == "up" then .value > $mb else .value < $mb end)))
+    | sort_by(.value)
+    | (if $op == "up" then .[0] else .[-1] end)
+    | if . then "\(.key):\(.value)" else empty end
+  ' "$REGISTRY_FILE" 2>/dev/null
+}
+
+append_memory_change_log() {
+  local app=$1 message=$2 log_file app_mem_log now
+  now="$(date -Iseconds)"
+  log_file="$STATUS_DIR/${app}.log"
+  app_mem_log="$(app_log_dir "$app")/memory.log"
+  mkdir -p "$(dirname "$app_mem_log")" 2>/dev/null || true
+  printf "[%s] %s\n" "$now" "$message" >> "$log_file"
+  printf "[%s] %s\n" "$now" "$message" >> "$app_mem_log" 2>/dev/null || true
+  log "$message"
+}
+
+auto_adjust_memory_limit() {
+  local app=$1 ram=$2 current_limit current_level pct up_fails down_fails last_change now adjacent next_level next_mb direction old_limit
+  [ -n "$(assignment_get_core "$app")" ] || return
+  current_limit=$(_app_current_limit "$app")
+  [ -z "$current_limit" ] && current_limit=$(registry_memory_profile_mb "$app")
+  [ -z "$current_limit" ] || [ "$current_limit" -le 0 ] 2>/dev/null && return
+  [ -z "$ram" ] || [ "$ram" -le 0 ] 2>/dev/null && return
+
+  current_level=$(memory_level_for_mb "$app" "$current_limit")
+  [ "$current_level" = "custom" ] && return
+  pct=$((ram * 100 / current_limit))
+  up_fails=$(memory_autoscale_get "$app" up_fails); up_fails=${up_fails:-0}
+  down_fails=$(memory_autoscale_get "$app" down_fails); down_fails=${down_fails:-0}
+  last_change=$(memory_autoscale_get "$app" last_change); last_change=${last_change:-0}
+  now=$(date +%s)
+
+  direction=""
+  if [ "$pct" -ge "$MEMORY_AUTOSCALE_UP_PCT" ] 2>/dev/null; then
+    up_fails=$((up_fails + 1)); down_fails=0
+    [ "$up_fails" -ge "$MEMORY_AUTOSCALE_UP_STRIKES" ] && direction="up"
+  elif [ "$pct" -le "$MEMORY_AUTOSCALE_DOWN_PCT" ] 2>/dev/null; then
+    down_fails=$((down_fails + 1)); up_fails=0
+    [ "$down_fails" -ge "$MEMORY_AUTOSCALE_DOWN_STRIKES" ] && direction="down"
+  else
+    up_fails=0; down_fails=0
+  fi
+
+  if [ -z "$direction" ] || [ $((now - last_change)) -lt "$MEMORY_AUTOSCALE_COOLDOWN_SECONDS" ] 2>/dev/null; then
+    memory_autoscale_write "$app" "$up_fails" "$down_fails" "$last_change"
+    return
+  fi
+
+  adjacent=$(memory_profile_adjacent_level "$app" "$current_limit" "$direction")
+  [ -z "$adjacent" ] && { memory_autoscale_write "$app" 0 0 "$last_change"; return; }
+  next_level=${adjacent%%:*}
+  next_mb=${adjacent##*:}
+  [ -z "$next_mb" ] || [ "$next_mb" -lt "$MIN_MEMORY_MB" ] 2>/dev/null && return
+
+  old_limit=$current_limit
+  _app_set_limit "$app" "$next_mb"
+  sudo_run_quiet systemctl daemon-reload || user_systemctl daemon-reload 2>/dev/null || true
+  _app_try_restart "$app"
+  rm -f "$CACHE_FILE"
+  memory_autoscale_write "$app" 0 0 "$now"
+  append_memory_change_log "$app" "MEMORY: ${app} MemoryMax ${old_limit}MB → ${next_mb}MB (${current_level} → ${next_level}) efter ${ram}MB/${old_limit}MB (${pct}%)"
+}
+
 watchdog_restart_or_protect() {
   local app=$1 comp=$2 svc=$3 reason=$4 cpu_fails=$5 mem_fails=$6 health_fails=$7 restarts=$8
   local last_action
@@ -643,6 +736,8 @@ watchdog_check_component() {
   else
     health_fails=0
   fi
+
+  [ "$comp" = "engine" ] || [ "$comp" = "service" ] && auto_adjust_memory_limit "$app" "$ram"
 
   reason=""; status="ok"
   [ "$limit" -gt 0 ] 2>/dev/null && [ "${mem_pct:-0}" -ge "$WATCHDOG_MEM_WARN" ] && { status="warning"; reason="high_memory"; }
