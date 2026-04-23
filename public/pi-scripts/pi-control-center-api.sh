@@ -2833,6 +2833,16 @@ migrate_assignments() {
 }
 migrate_assignments
 
+startup_repair_app_dirs() {
+  local app assigned
+  for app in $(registry_keys); do
+    assigned=$(assignment_get_core "$app")
+    [ -n "$assigned" ] || continue
+    repair_app_managed_dirs "$app" "api-startup" || true
+  done
+}
+startup_repair_app_dirs
+
 echo "Pi Control Center API listening on port $PORT"
 
 # Start health polling in background
