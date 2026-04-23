@@ -187,41 +187,18 @@ export const CoreCard = memo(function CoreCard({
     onInstall(app, uiPort, coreIndex);
   };
 
-  const maxForThis = Math.max(16, ramBudgetMb - otherAllocatedMb);
+  const MIN_MEMORY_MB = 80;
+  const maxForThis = Math.max(MIN_MEMORY_MB, ramBudgetMb - otherAllocatedMb);
 
   // Sync local slider value with prop
   const profile = service?.definition.memoryProfile || service?.memoryProfile;
-  const memoryLevel = service?.memoryLevel || (profile && memLimitMb ? Object.entries(profile.levels).find(([, mb]) => mb === memLimitMb)?.[0] : undefined) || 'custom';
-  const sliderValue = localMemLimit ?? service?.memoryMaxMb ?? memLimitMb ?? 0;
-
-  const handleSliderChange = (val: number) => {
-    const clamped = Math.min(Math.max(val, 16), maxForThis);
-    setLocalMemLimit(clamped);
-    // Optimistic update so other sliders react instantly
-    if (service?.definition?.key) {
-      onMemLimitChange(service.definition.key, clamped);
-    }
-  };
-
-  const handleSliderCommit = async () => {
-    if (!service?.definition?.key || localMemLimit === null) return;
-    setMemLimitSaving(true);
-    try {
-      await setMemoryLimit(service.definition.key, localMemLimit);
-    } catch {
-      // revert on failure
-      if (memLimitMb !== null) {
-        onMemLimitChange(service.definition.key, memLimitMb);
-      }
-    } finally {
-      setMemLimitSaving(false);
-      setLocalMemLimit(null);
-    }
-  };
+  const rawMemoryLevel = service?.memoryLevel || (profile && memLimitMb ? Object.entries(profile.levels).find(([, mb]) => mb === memLimitMb)?.[0] : undefined);
+  const memoryLevel = rawMemoryLevel && ['low', 'balanced', 'high'].includes(rawMemoryLevel) ? rawMemoryLevel : (profile?.defaultLevel || 'balanced');
+  const sliderValue = Math.max(MIN_MEMORY_MB, localMemLimit ?? service?.memoryMaxMb ?? memLimitMb ?? MIN_MEMORY_MB);
 
   const handleMemoryLevelChange = async (level: string) => {
     if (!service?.definition?.key || !profile?.levels[level]) return;
-    const mb = Math.min(profile.levels[level], maxForThis);
+    const mb = Math.min(Math.max(profile.levels[level], MIN_MEMORY_MB), maxForThis);
     setMemLimitSaving(true);
     onMemLimitChange(service.definition.key, mb);
     try {
