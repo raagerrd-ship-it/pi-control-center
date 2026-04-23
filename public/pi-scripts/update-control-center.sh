@@ -30,7 +30,14 @@ cd "$DASHBOARD_DIR"
 
 echo "[1/6] Pulling latest code..."
 git checkout -- . 2>/dev/null || true
-git pull
+REMOTE_BRANCH=$(git remote show origin 2>/tmp/pcc-update-git-fetch.err | awk '/HEAD branch/ {print $NF}' | head -1)
+[ -n "$REMOTE_BRANCH" ] || REMOTE_BRANCH="main"
+if git fetch origin "$REMOTE_BRANCH" --depth=1 --prune --quiet 2>/tmp/pcc-update-git-fetch.err; then
+  git reset --hard "origin/$REMOTE_BRANCH"
+else
+  git fetch origin --depth=1 --prune --quiet 2>>/tmp/pcc-update-git-fetch.err
+  git reset --hard "origin/$REMOTE_BRANCH"
+fi
 sed -i 's/\r$//' "$DASHBOARD_DIR/public/pi-scripts/"*.sh
 chmod +x "$DASHBOARD_DIR/public/pi-scripts/"*.sh
 

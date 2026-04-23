@@ -1972,12 +1972,17 @@ handle_request() {
 
         dashboard_progress "Hämtar senaste kod..."
         fetch_err="$STATUS_DIR/dashboard-git-fetch.err"
-        if nice -n 15 git fetch origin main --depth=1 --quiet 2>"$fetch_err"; then
-          remote_ref="origin/main"
-        elif nice -n 15 git fetch origin master --depth=1 --quiet 2>"$fetch_err"; then
-          remote_ref="origin/master"
+        remote_branch=$(git remote show origin 2>"$fetch_err" | awk '/HEAD branch/ {print $NF}' | head -1)
+        [ -n "$remote_branch" ] || remote_branch="main"
+        if nice -n 15 git fetch origin "$remote_branch" --depth=1 --prune --quiet 2>"$fetch_err"; then
+          remote_ref="origin/$remote_branch"
+        elif nice -n 15 git fetch origin --depth=1 --prune --quiet 2>>"$fetch_err"; then
+          remote_ref=$(git symbolic-ref --quiet --short refs/remotes/origin/HEAD 2>/dev/null | sed 's#^origin/##')
+          [ -n "$remote_ref" ] && remote_ref="origin/$remote_ref" || remote_ref="origin/main"
+        elif nice -n 15 git fetch --unshallow origin "$remote_branch" --prune --quiet 2>>"$fetch_err"; then
+          remote_ref="origin/$remote_branch"
         else
-          fetch_msg=$(head -2 "$fetch_err" 2>/dev/null | tr '\n' ' ' | sed 's/"/\\"/g' | cut -c1-140)
+          fetch_msg=$(head -4 "$fetch_err" 2>/dev/null | tr '\n' ' ' | sed 's/"/\\"/g' | cut -c1-180)
           dashboard_fail "Git fetch misslyckades${fetch_msg:+: ${fetch_msg}}"
           rm -f "$fetch_err"
           exit 1
