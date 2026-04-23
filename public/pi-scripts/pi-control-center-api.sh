@@ -1295,6 +1295,12 @@ do_install_release() {
   fi
   rm -f "/tmp/pi-control-center/${app}-dist.tar.gz"
 
+  local latest_tag
+  latest_tag=$(latest_release_tag "$app")
+  if [ -n "$latest_tag" ]; then
+    printf '{"tag":"%s","version":"%s","installedAt":"%s"}\n' "$(escape_json "$latest_tag")" "$(escape_json "$latest_tag")" "$(date -Iseconds)" > "$install_dir/VERSION.json"
+  fi
+
   # Verify extraction produced files
   local file_count
   file_count=$(find "$install_dir" -mindepth 1 -maxdepth 1 | head -1)
