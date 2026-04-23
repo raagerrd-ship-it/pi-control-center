@@ -8,6 +8,7 @@ REQUEST_MODE="${1:-}"
 INSTALL_APP=""
 INSTALL_PORT=""
 INSTALL_CORE=""
+MIN_MEMORY_MB=80
 
 sudo_run() {
   if [ "$(id -u)" -eq 0 ]; then
@@ -187,7 +188,10 @@ registry_memory_profile_default_level() {
 registry_memory_profile_mb() {
   local app=$1 level=${2:-}
   [ -z "$level" ] && level=$(registry_memory_profile_default_level "$app")
-  jq -r --arg k "$app" --arg l "$level" '.[] | select(.key == $k) | .memoryProfile.levels[$l] // empty' "$REGISTRY_FILE" 2>/dev/null
+  local mb
+  mb=$(jq -r --arg k "$app" --arg l "$level" '.[] | select(.key == $k) | .memoryProfile.levels[$l] // empty' "$REGISTRY_FILE" 2>/dev/null)
+  [ -n "$mb" ] && [ "$mb" -lt "$MIN_MEMORY_MB" ] 2>/dev/null && mb="$MIN_MEMORY_MB"
+  echo "$mb"
 }
 
 registry_permissions_json() {
@@ -2215,9 +2219,9 @@ handle_request() {
       if [ -z "$ml_new_limit" ] && [ -n "$ml_level" ]; then
         ml_new_limit=$(registry_memory_profile_mb "$ml_app" "$ml_level")
       fi
-      if [ -z "$ml_new_limit" ] || [ "$ml_new_limit" -lt 16 ] 2>/dev/null || [ "$ml_new_limit" -gt 480 ] 2>/dev/null; then
+      if [ -z "$ml_new_limit" ] || [ "$ml_new_limit" -lt "$MIN_MEMORY_MB" ] 2>/dev/null || [ "$ml_new_limit" -gt 480 ] 2>/dev/null; then
         status_line="HTTP/1.1 400 Bad Request"
-        response="{\"error\":\"limitMb måste vara 16-480\"}"
+        response="{\"error\":\"limitMb måste vara ${MIN_MEMORY_MB}-480\"}"
       else
         _app_set_limit "$ml_app" "$ml_new_limit"
         if [ -n "$(_app_current_limit "$ml_app")" ]; then
