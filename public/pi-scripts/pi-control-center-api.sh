@@ -2518,8 +2518,10 @@ handle_request() {
         _app_set_limit "$ml_app" "$ml_new_limit"
         if [ -n "$(_app_current_limit "$ml_app")" ]; then
           sudo systemctl daemon-reload 2>/dev/null || user_systemctl daemon-reload 2>/dev/null || true
+          _app_try_restart "$ml_app"
           rm -f "$CACHE_FILE"
           [ -z "$ml_level" ] && ml_level=$(memory_level_for_mb "$ml_app" "$ml_new_limit")
+          append_memory_change_log "$ml_app" "MEMORY: ${ml_app} MemoryMax satt till ${ml_new_limit}MB (${ml_level}) från UI"
           response="{\"app\":\"${ml_app}\",\"limitMb\":${ml_new_limit},\"level\":\"${ml_level}\",\"status\":\"success\"}"
         else
           status_line="HTTP/1.1 404 Not Found"
