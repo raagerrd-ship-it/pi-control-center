@@ -460,6 +460,22 @@ export const CoreCard = memo(function CoreCard({
 
       {(permissions.length > 0 || service.configDir || service.dataDir || service.logDir) && (
         <div className="flex flex-col gap-1 rounded bg-secondary/20 px-2 py-1.5 font-mono text-[10px] text-muted-foreground">
+          {hasSystemdWarning && (
+            <div className="flex items-center gap-1.5 min-w-0 text-[hsl(var(--status-warning))]">
+              <AlertCircle className="h-3 w-3 shrink-0" />
+              <span className="truncate">systemd-varning: katalogrättigheter</span>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="ml-auto h-5 px-1.5 text-[10px] text-[hsl(var(--status-warning))] hover:text-[hsl(var(--status-warning))]"
+                onClick={handleRepairDirs}
+                disabled={repairingDirs}
+                title="Reparera katalogrättigheter"
+              >
+                {repairingDirs ? <Loader2 className="h-3 w-3 animate-spin" /> : 'Repair'}
+              </Button>
+            </div>
+          )}
           {permissions.length > 0 && (
             <div className="flex items-center gap-1.5 min-w-0">
               <KeyRound className="h-3 w-3 shrink-0" />
