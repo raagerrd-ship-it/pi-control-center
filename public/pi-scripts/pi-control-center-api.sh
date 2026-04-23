@@ -1699,6 +1699,7 @@ _app_set_limit() {
       else
         sudo_run sed -i "/^\[Service\]/a MemoryMax=${limit_mb}M" "$f"
       fi
+      sudo_run_quiet systemctl set-property "${s}.service" "MemoryMax=${limit_mb}M" || user_systemctl set-property "${s}.service" "MemoryMax=${limit_mb}M" 2>/dev/null || true
     done
   else
     s=$(registry_get "$app" "service")
@@ -1710,6 +1711,7 @@ _app_set_limit() {
     else
       sudo_run sed -i "/^\[Service\]/a MemoryMax=${limit_mb}M" "$f"
     fi
+    sudo_run_quiet systemctl set-property "${s}.service" "MemoryMax=${limit_mb}M" || user_systemctl set-property "${s}.service" "MemoryMax=${limit_mb}M" 2>/dev/null || true
   fi
 }
 
@@ -1797,12 +1799,6 @@ rebalance_memory_budget() {
       _app_set_limit "$app" "${current_limits[$app]}"
     done
     sudo_run_quiet systemctl daemon-reload || user_systemctl daemon-reload 2>/dev/null || true
-    seen=" "
-    for app in "${changed_apps[@]}"; do
-      case "$seen" in *" $app "*) continue;; esac
-      seen="$seen$app "
-      _app_try_restart "$app"
-    done
     rm -f "$CACHE_FILE"
     log "RAM-budget fördelad: ${budget}MB över ${count} tjänst(er)"
   fi
