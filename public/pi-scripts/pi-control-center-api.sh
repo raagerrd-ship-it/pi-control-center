@@ -41,8 +41,8 @@ bluetooth_is_up_running() {
 }
 
 repair_ble_permissions() {
-  local user_name="$(whoami)" group_changed=0 reboot_file="/tmp/pi-control-center/reboot-required.json"
-  mkdir -p /tmp/pi-control-center 2>/dev/null || true
+  local user_name="$(whoami)" group_changed=0 reboot_file="${REBOOT_REQUIRED_FILE:-/tmp/pi-control-center/reboot-required.json}"
+  mkdir -p "$(dirname "$reboot_file")" 2>/dev/null || true
   sudo_run_quiet loginctl enable-linger "$(whoami)" || true
   id -nG "$user_name" 2>/dev/null | grep -qw bluetooth || group_changed=1
   sudo_run_quiet usermod -aG bluetooth,netdev,audio "$(whoami)" || true
@@ -128,6 +128,7 @@ STATUS_DIR="/tmp/pi-control-center"
 INSTALL_DIR="/tmp/pi-control-center/install"
 CACHE_FILE="$STATUS_DIR/status-cache.json"
 CACHE_MAX_AGE=4  # seconds
+REBOOT_REQUIRED_FILE="$STATUS_DIR/reboot-required.json"
 USER_ID="$(id -u)"
 USER_RUNTIME_DIR="/run/user/$USER_ID"
 USER_BUS_ADDRESS="unix:path=$USER_RUNTIME_DIR/bus"
