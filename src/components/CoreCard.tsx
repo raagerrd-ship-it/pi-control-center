@@ -442,7 +442,7 @@ export const CoreCard = memo(function CoreCard({
                   <SelectItem value="low" className="font-mono text-xs">Låg</SelectItem>
                   <SelectItem value="balanced" className="font-mono text-xs">Balans</SelectItem>
                   <SelectItem value="high" className="font-mono text-xs">Hög</SelectItem>
-                  <SelectItem value="custom" className="font-mono text-xs" disabled>Manuell</SelectItem>
+                  <SelectItem value="custom" className="font-mono text-xs" disabled>Auto</SelectItem>
                 </SelectContent>
               </Select>
             )}

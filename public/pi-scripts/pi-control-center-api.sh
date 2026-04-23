@@ -1057,6 +1057,7 @@ build_status_json() {
   disk=$(get_disk)
   uptime_str=$(get_uptime)
   runtime_json=$(node_runtime_json)
+  rebalance_memory_budget
 
   ram_used=${ram%%,*}
   ram_total=${ram##*,}
