@@ -350,11 +350,6 @@ const Index = () => {
                 watchdog: svcStatus.watchdog,
               } : undefined;
 
-              // Calculate other installed services' allocated RAM
-              const otherAllocated = Object.entries(memLimits)
-                .filter(([key]) => key !== serviceKey && status?.services?.[key]?.installed)
-                .reduce((sum, [, mb]) => sum + mb, 0);
-
               return (
                 <CoreCard
                   key={coreIdx}
@@ -363,8 +358,6 @@ const Index = () => {
                   availableServices={uninstalledServices}
                   allInstalls={installs}
                   memLimitMb={serviceKey ? (memLimits[serviceKey] ?? null) : null}
-                  otherAllocatedMb={otherAllocated}
-                  ramBudgetMb={330}
                   onMemLimitChange={handleMemLimitChange}
                   onUpdate={startUpdate}
                   onCheckVersion={handleCheckVersion}
