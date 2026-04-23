@@ -2602,13 +2602,11 @@ handle_request() {
           v_remote_hash=""
           v_has_update="false"
 
-          if [ -f "$v_install_dir/VERSION.json" ]; then
-            # Release-based install: compare tag from VERSION.json against latest GitHub release
-            v_local_hash=$(jq -r '.tag // .version // empty' "$v_install_dir/VERSION.json" 2>/dev/null)
-            v_local=$(jq -r '.version // .tag // empty' "$v_install_dir/VERSION.json" 2>/dev/null)
-            if [ -n "$v_release_url" ]; then
-              v_remote_hash=$(curl -sf --max-time 10 "$v_release_url" 2>/dev/null | jq -r '.tag_name // empty' 2>/dev/null)
-            fi
+          if [ -n "$v_release_url" ]; then
+            # Release-based install: compare local VERSION/package version against latest GitHub release
+            v_local_hash=$(installed_release_version "$v_install_dir")
+            v_local="$v_local_hash"
+            v_remote_hash=$(latest_release_tag "$vapp")
             [ -n "$v_local_hash" ] && [ -n "$v_remote_hash" ] && [ "$v_local_hash" != "$v_remote_hash" ] && v_has_update="true"
           elif [ -d "$v_install_dir/.git" ]; then
             # Legacy git-based install: compare commit hashes
@@ -2638,13 +2636,11 @@ handle_request() {
         remote_hash=""
         has_update="false"
 
-        if [ -f "$install_dir/VERSION.json" ]; then
+        if [ -n "$rel_url" ]; then
           # Release-based install
-          local_hash=$(jq -r '.tag // .version // empty' "$install_dir/VERSION.json" 2>/dev/null)
-          local_v=$(jq -r '.version // .tag // empty' "$install_dir/VERSION.json" 2>/dev/null)
-          if [ -n "$rel_url" ]; then
-            remote_hash=$(curl -sf --max-time 10 "$rel_url" 2>/dev/null | jq -r '.tag_name // empty' 2>/dev/null)
-          fi
+          local_hash=$(installed_release_version "$install_dir")
+          local_v="$local_hash"
+          remote_hash=$(latest_release_tag "$app")
           [ -n "$local_hash" ] && [ -n "$remote_hash" ] && [ "$local_hash" != "$remote_hash" ] && has_update="true"
         elif [ -d "$install_dir/.git" ]; then
           # Legacy git-based install
