@@ -59,14 +59,26 @@ cd "$DASHBOARD_DIR"
 
 echo "[1/6] Pulling latest code..."
 git checkout -- . 2>/dev/null || true
-REMOTE_BRANCH=$(git remote show origin 2>/tmp/pcc-update-git-fetch.err | awk '/HEAD branch/ {print $NF}' | head -1)
+REMOTE_BRANCH=$(git remote show origin 2>>/tmp/pcc-update-git-fetch.err | awk '/HEAD branch/ {print $NF}' | head -1)
 [ -n "$REMOTE_BRANCH" ] || REMOTE_BRANCH="main"
-if git fetch origin "$REMOTE_BRANCH" --depth=1 --prune --quiet 2>/tmp/pcc-update-git-fetch.err; then
-  git reset --hard "origin/$REMOTE_BRANCH"
-else
-  git fetch origin --depth=1 --prune --quiet 2>>/tmp/pcc-update-git-fetch.err
-  git reset --hard "origin/$REMOTE_BRANCH"
-fi
+: > /tmp/pcc-update-git-fetch.err
+for attempt in 1 2 3; do
+  echo "  Git fetch attempt $attempt/3 ($REMOTE_BRANCH)..."
+  if git -c http.version=HTTP/1.1 -c protocol.version=2 fetch origin "$REMOTE_BRANCH" --depth=1 --prune --no-tags 2>>/tmp/pcc-update-git-fetch.err; then
+    git reset --hard "origin/$REMOTE_BRANCH"
+    break
+  fi
+  if [ "$REMOTE_BRANCH" = "main" ] && git -c http.version=HTTP/1.1 fetch origin master --depth=1 --prune --no-tags 2>>/tmp/pcc-update-git-fetch.err; then
+    git reset --hard origin/master
+    break
+  fi
+  if [ "$attempt" -eq 3 ]; then
+    echo "Git fetch failed:"
+    tail -8 /tmp/pcc-update-git-fetch.err
+    exit 1
+  fi
+  sleep 2
+done
 sed -i 's/\r$//' "$DASHBOARD_DIR/public/pi-scripts/"*.sh
 chmod +x "$DASHBOARD_DIR/public/pi-scripts/"*.sh
 
