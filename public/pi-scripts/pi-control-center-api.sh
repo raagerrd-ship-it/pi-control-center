@@ -2302,6 +2302,26 @@ handle_request() {
           done
         }
 
+        dashboard_git_fetch() {
+          local fetch_err="$1" branch="" attempt=1
+          branch=$(git remote show origin 2>>"$fetch_err" | awk '/HEAD branch/ {print $NF}' | head -1)
+          [ -z "$branch" ] && branch="main"
+          while [ "$attempt" -le 3 ]; do
+            echo "Git fetch försök ${attempt}/3 (${branch})..." >> "$dashboard_log"
+            if git -c http.version=HTTP/1.1 -c protocol.version=2 fetch origin "$branch" --depth=1 --prune --no-tags 2>>"$fetch_err"; then
+              remote_ref="origin/$branch"
+              return 0
+            fi
+            [ "$branch" = "main" ] && git -c http.version=HTTP/1.1 fetch origin master --depth=1 --prune --no-tags 2>>"$fetch_err" && { remote_ref="origin/master"; return 0; }
+            sleep 2
+            attempt=$((attempt + 1))
+          done
+          git -c http.version=HTTP/1.1 fetch origin --depth=1 --prune --no-tags 2>>"$fetch_err" || return 1
+          if git show-ref --verify --quiet refs/remotes/origin/main; then remote_ref="origin/main"; return 0; fi
+          if git show-ref --verify --quiet refs/remotes/origin/master; then remote_ref="origin/master"; return 0; fi
+          return 1
+        }
+
         trap 'code=$?; if [ "$code" -ne 0 ] && grep -q "\"status\":\"updating\"" "$sf" 2>/dev/null; then dashboard_fail "Uppdateringen avbröts oväntat"; fi; restart_app_services' EXIT
 
         cd "$ddir" 2>/dev/null || { dashboard_fail "Dashboard-katalog saknas"; exit 1; }
@@ -2312,23 +2332,10 @@ handle_request() {
 
         dashboard_progress "Hämtar senaste kod..."
         fetch_err="$STATUS_DIR/dashboard-git-fetch.err"
-        if nice -n 15 git fetch origin main --depth=1 --prune --quiet 2>"$fetch_err"; then
-          remote_ref="origin/main"
-        elif nice -n 15 git fetch origin master --depth=1 --prune --quiet 2>>"$fetch_err"; then
-          remote_ref="origin/master"
-        elif nice -n 15 git fetch origin --depth=1 --prune --quiet 2>>"$fetch_err"; then
-          if git show-ref --verify --quiet refs/remotes/origin/main; then
-            remote_ref="origin/main"
-          elif git show-ref --verify --quiet refs/remotes/origin/master; then
-            remote_ref="origin/master"
-          else
-            remote_ref=$(git symbolic-ref --quiet --short refs/remotes/origin/HEAD 2>/dev/null | sed 's#^origin/##')
-            [ -n "$remote_ref" ] && remote_ref="origin/$remote_ref" || remote_ref="origin/main"
-          fi
-        else
-          fetch_msg=$(head -4 "$fetch_err" 2>/dev/null | tr '\n' ' ' | sed 's/"/\\"/g' | cut -c1-180)
+        : > "$fetch_err"
+        if ! nice -n 15 dashboard_git_fetch "$fetch_err"; then
+          fetch_msg=$(tail -8 "$fetch_err" 2>/dev/null | tr '\n' ' ' | sed 's/"/\\"/g' | cut -c1-260)
           dashboard_fail "Git fetch misslyckades${fetch_msg:+: ${fetch_msg}}"
-          rm -f "$fetch_err"
           exit 1
         fi
         rm -f "$fetch_err"
