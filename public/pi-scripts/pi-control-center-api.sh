@@ -2207,6 +2207,7 @@ handle_request() {
               fi
 
               updated=true
+              release_heal_mark "$app"
               echo "{\"app\":\"${app}\",\"status\":\"success\",\"timestamp\":\"$(date -Iseconds)\"}" > "$update_json"
             fi
           fi
@@ -2221,6 +2222,7 @@ handle_request() {
             nice -n 15 ionice -c 3 bash "$uscript" >> "$update_log" 2>&1
             exit_code=$?
             if [ "$exit_code" -eq 0 ]; then
+              release_heal_mark "$app"
               echo "{\"app\":\"${app}\",\"status\":\"success\",\"timestamp\":\"$(date -Iseconds)\"}" > "$update_json"
             else
               tail_err=$(tail -5 "$update_log" 2>/dev/null | tr '\n' ' ' | sed 's/"/\\"/g' | cut -c1-200)
