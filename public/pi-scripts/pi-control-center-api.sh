@@ -351,6 +351,59 @@ try_heal_component() {
   user_systemctl restart "${svc}.service" 2>/dev/null || systemctl restart "${svc}.service" 2>/dev/null
 }
 
+release_heal_mark() {
+  local app=$1 file="$RELEASE_HEAL_DIR/${app}.state"
+  echo "timestamp=$(date +%s)" > "$file"
+  echo "last_online=true" >> "$file"
+  echo "attempts=0" >> "$file"
+}
+
+release_heal_get() {
+  local app=$1 field=$2 file="$RELEASE_HEAL_DIR/${app}.state"
+  [ -f "$file" ] && grep -E "^${field}=" "$file" 2>/dev/null | tail -1 | cut -d= -f2-
+}
+
+release_heal_set() {
+  local app=$1 field=$2 value=$3 file="$RELEASE_HEAL_DIR/${app}.state" tmp="$RELEASE_HEAL_DIR/${app}.tmp.$$"
+  [ -f "$file" ] || return
+  if grep -qE "^${field}=" "$file" 2>/dev/null; then
+    sed "s/^${field}=.*/${field}=${value}/" "$file" > "$tmp"
+  else
+    cat "$file" > "$tmp"
+    echo "${field}=${value}" >> "$tmp"
+  fi
+  mv "$tmp" "$file"
+}
+
+release_update_heal_if_needed() {
+  local app=$1 online=$2 file="$RELEASE_HEAL_DIR/${app}.state"
+  [ -f "$file" ] || return
+
+  local ts age last_online attempts
+  ts=$(release_heal_get "$app" timestamp); ts=${ts:-0}
+  age=$(( $(date +%s) - ts ))
+  if [ "$age" -gt "$RELEASE_HEAL_WINDOW_SECONDS" ]; then
+    rm -f "$file"
+    return
+  fi
+
+  last_online=$(release_heal_get "$app" last_online)
+  attempts=$(release_heal_get "$app" attempts); attempts=${attempts:-0}
+  [ "$online" = "true" ] && { release_heal_set "$app" last_online true; return; }
+  [ "$last_online" = "true" ] || return
+  [ "$attempts" -ge 2 ] 2>/dev/null && return
+  registry_needs_permission "$app" "bluetooth" || registry_needs_permission "$app" "rfkill" || return
+
+  attempts=$((attempts + 1))
+  release_heal_set "$app" attempts "$attempts"
+  release_heal_set "$app" last_online false
+  log "SELF-HEAL: $app gick offline efter release-update — återställer BLE/Noble och startar om tjänsten"
+  repair_ble_permissions
+  sleep 2
+  _app_try_restart "$app"
+  rm -f "$CACHE_FILE"
+}
+
 health_poll_loop() {
   local cleanup_counter=0
   while true; do
@@ -365,7 +418,7 @@ health_poll_loop() {
         engine_svc=$(registry_get_component "$app" "engine" "service")
         [ -z "$engine_svc" ] && continue
         engine_active=$(service_is_active "$engine_svc")
-        [ "$engine_active" != "true" ] && { echo '{"status":"offline"}' > "$HEALTH_DIR/${app}.json"; continue; }
+        [ "$engine_active" != "true" ] && { echo '{"status":"offline"}' > "$HEALTH_DIR/${app}.json"; release_update_heal_if_needed "$app" false; continue; }
         engine_port=$(engine_port_for_core "$core")
         poll_engine_health "$app" "$engine_port"
 
@@ -376,11 +429,13 @@ health_poll_loop() {
         fi
 
         try_heal_component "$app" "$engine_svc" "engine" "$engine_port"
+        release_update_heal_if_needed "$app" true
       else
         local svc_active
         svc_active=$(service_is_active "$(registry_get "$app" "service")")
-        [ "$svc_active" != "true" ] && { echo '{"status":"offline"}' > "$HEALTH_DIR/${app}.json"; continue; }
+        [ "$svc_active" != "true" ] && { echo '{"status":"offline"}' > "$HEALTH_DIR/${app}.json"; release_update_heal_if_needed "$app" false; continue; }
         poll_engine_health "$app" "$port"
+        release_update_heal_if_needed "$app" true
       fi
     done
     sleep 30
