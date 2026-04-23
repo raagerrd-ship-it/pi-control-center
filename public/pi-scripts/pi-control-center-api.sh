@@ -111,8 +111,10 @@ OP_LOCK_FILE="/tmp/pi-control-center/operation.lock"
 
 HEALTH_DIR="$STATUS_DIR/health"
 WATCHDOG_DIR="$STATUS_DIR/watchdog"
+RELEASE_HEAL_DIR="$STATUS_DIR/release-heal"
+RELEASE_HEAL_WINDOW_SECONDS=900
 
-mkdir -p "$STATUS_DIR" "$INSTALL_DIR" "$HEALTH_DIR" "$WATCHDOG_DIR"
+mkdir -p "$STATUS_DIR" "$INSTALL_DIR" "$HEALTH_DIR" "$WATCHDOG_DIR" "$RELEASE_HEAL_DIR"
 sudo_run_quiet mkdir -p /etc/pi-control-center || true
 sudo_run_quiet mkdir -p "$APPS_CONFIG_DIR" || true
 sudo_run_quiet mkdir -p "$APPS_DATA_DIR" || true
