@@ -1649,10 +1649,22 @@ UNIT
 }
 
 # --- RAM-budget: hantera MemoryMax per installerad tjänst ---
-# Manuellt satta värden respekteras. Endast tjänster utan limit (nyinstallerade)
-# får automatisk tilldelning av kvarvarande budget. Vid överskridande av budget
-# skalas alla limits ned proportionellt.
+# Alla installerade appar får minst sin profilnivå. Finns ledig budget kvar
+# fördelas den jämnt mellan apparna så MemoryMax växer automatiskt.
+# Vid överskridande av budget skalas alla limits ned proportionellt.
 RAM_BUDGET_MB=330
+
+memory_budget_mb() {
+  local total budget
+  total=$(awk '/^MemTotal:/{print int($2/1024)}' /proc/meminfo 2>/dev/null)
+  budget=$RAM_BUDGET_MB
+  if [ -n "$total" ] && [ "$total" -gt 0 ] 2>/dev/null; then
+    budget=$((total - 86))
+    [ "$budget" -lt 240 ] && budget=240
+    [ "$budget" -gt 480 ] && budget=480
+  fi
+  echo "$budget"
+}
 
 # Hämta primär service-fil för en app (engine om components, annars legacy service)
 _app_primary_svc_file() {
@@ -1727,42 +1739,76 @@ rebalance_memory_budget() {
   local count=${#installed_apps[@]}
   [ "$count" -eq 0 ] && return 0
 
-  # Steg 1: samla nuvarande limits, identifiera tjänster utan limit
-  local total_set=0
-  local unset_apps=()
+  local budget
+  budget=$(memory_budget_mb)
+
+  # Steg 1: samla nuvarande limits och ge saknade appar sin profilnivå
+  local total_set=0 changed_apps=()
   declare -A current_limits
   for app in "${installed_apps[@]}"; do
-    local cur
+    local cur floor
+    floor=$(registry_memory_profile_mb "$app")
+    [ -z "$floor" ] && floor=$MIN_MEMORY_MB
     cur=$(_app_current_limit "$app")
-    if [ -n "$cur" ]; then
-      current_limits[$app]=$cur
-      total_set=$((total_set + cur))
-    else
-      local prof
-      prof=$(registry_memory_profile_mb "$app")
-      if [ -n "$prof" ]; then
-        _app_set_limit "$app" "$prof"
-        current_limits[$app]=$prof
-        total_set=$((total_set + prof))
-        changed_apps+=("$app")
-      else
-        unset_apps+=("$app")
-      fi
+    [ -z "$cur" ] && cur=$floor
+    if [ "$cur" -lt "$floor" ] 2>/dev/null; then
+      cur=$floor
+      changed_apps+=("$app")
     fi
+    current_limits[$app]=$cur
+    total_set=$((total_set + cur))
   done
 
-  local changed_apps=()
+  # Steg 2: om det finns ledig budget, dela ut den jämnt mellan apparna
+  if [ "$total_set" -lt "$budget" ]; then
+    local free=$((budget - total_set)) share=$((free / count)) extra=$((free % count)) idx=0
+    if [ "$share" -gt 0 ] || [ "$extra" -gt 0 ]; then
+      for app in "${installed_apps[@]}"; do
+        local old=${current_limits[$app]} add=$share new
+        [ "$idx" -lt "$extra" ] && add=$((add + 1))
+        idx=$((idx + 1))
+        new=$((old + add))
+        [ "$new" -eq "$old" ] && continue
+        current_limits[$app]=$new
+        total_set=$((total_set + add))
+        changed_apps+=("$app")
+      done
+    fi
+  fi
 
-  # Steg 2: tilldela osatta tjänster en del av kvarvarande budget
-  local unset_count=${#unset_apps[@]}
-  if [ "$unset_count" -gt 0 ]; then
-    local remaining=$(( RAM_BUDGET_MB - total_set ))
-    local per_unset=$(( remaining / unset_count ))
-    [ "$per_unset" -lt 16 ] && per_unset=16
-    for app in "${unset_apps[@]}"; do
-      _app_set_limit "$app" "$per_unset"
-      current_limits[$app]=$per_unset
-      total_set=$((total_set + per_unset))
+  # Steg 3: om totalen överskrider budget, skala ned proportionellt
+  if [ "$total_set" -gt "$budget" ]; then
+    log "RAM-totalen ${total_set}MB > budget ${budget}MB — skalar ned proportionellt"
+    for app in "${installed_apps[@]}"; do
+      local old=${current_limits[$app]}
+      local new=$(( old * budget / total_set ))
+      [ "$new" -lt "$MIN_MEMORY_MB" ] && new=$MIN_MEMORY_MB
+      if [ "$new" != "$old" ]; then
+        current_limits[$app]=$new
+        changed_apps+=("$app")
+      fi
+    done
+  fi
+
+  # Steg 4: skriv alla ändrade limits
+  if [ ${#changed_apps[@]} -gt 0 ]; then
+    local seen=" "
+    for app in "${changed_apps[@]}"; do
+      case "$seen" in *" $app "*) continue;; esac
+      seen="$seen$app "
+      _app_set_limit "$app" "${current_limits[$app]}"
+    done
+    sudo_run_quiet systemctl daemon-reload || user_systemctl daemon-reload 2>/dev/null || true
+    seen=" "
+    for app in "${changed_apps[@]}"; do
+      case "$seen" in *" $app "*) continue;; esac
+      seen="$seen$app "
+      _app_try_restart "$app"
+    done
+    rm -f "$CACHE_FILE"
+    log "RAM-budget fördelad: ${budget}MB över ${count} tjänst(er)"
+  fi
+}
       changed_apps+=("$app")
     done
   fi
