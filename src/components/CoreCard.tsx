@@ -308,6 +308,8 @@ export const CoreCard = memo(function CoreCard({
   const isUpdating = updateStatus?.status === 'updating';
   const isPending = actionStatus?.status === 'pending';
   const hasUpdate = versionInfo?.hasUpdate ?? false;
+  const installedVersion = versionInfo?.local || version || '—';
+  const latestVersion = versionInfo?.remote || '—';
   const piIp = window.location.hostname;
   const isComponentBased = hasComponents(def);
   const permissions = service.permissions || def.permissions || [];
@@ -494,7 +496,9 @@ export const CoreCard = memo(function CoreCard({
 
       {/* Version bar */}
       <div className={`flex items-center justify-between rounded px-2 py-1 text-[10px] font-mono ${hasUpdate ? 'bg-[hsl(var(--status-warning)/0.08)] border border-[hsl(var(--status-warning)/0.25)]' : 'bg-secondary/30'}`}>
-        <span className="text-muted-foreground truncate">Version {version || '—'}</span>
+        <span className="text-muted-foreground truncate" title={`Installerad: ${installedVersion} · GitHub: ${latestVersion}`}>
+          Installerad {installedVersion} · GitHub {latestVersion}
+        </span>
         <div className="flex items-center gap-1 shrink-0">
           {isUpdating ? (
             <span className="flex items-center gap-1 text-[hsl(var(--status-warning))]">
