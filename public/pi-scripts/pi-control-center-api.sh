@@ -151,7 +151,15 @@ WATCHDOG_DIR="$STATUS_DIR/watchdog"
 RELEASE_HEAL_DIR="$STATUS_DIR/release-heal"
 RELEASE_HEAL_WINDOW_SECONDS=900
 
-mkdir -p "$STATUS_DIR" "$INSTALL_DIR" "$HEALTH_DIR" "$WATCHDOG_DIR" "$RELEASE_HEAL_DIR"
+mkdir -p "$STATUS_DIR" "$INSTALL_DIR" "$HEALTH_DIR" "$WATCHDOG_DIR" "$RELEASE_HEAL_DIR" 2>/dev/null || true
+# Defensive: if /tmp/pi-control-center was created by an earlier root-owned
+# process (legacy socat/bash service), reclaim ownership for the current user
+# so watchdog/status loops can write their .tmp files. /tmp is wiped on reboot
+# but a service-user change does not trigger a reboot, so we self-heal here.
+if [ -d "$STATUS_DIR" ] && [ ! -w "$STATUS_DIR" ] || [ -d "$WATCHDOG_DIR" ] && [ ! -w "$WATCHDOG_DIR" ]; then
+  sudo_run_quiet chown -R "$(id -u):$(id -g)" "$STATUS_DIR" || true
+fi
+chmod -R u+rwX "$STATUS_DIR" 2>/dev/null || true
 sudo_run_quiet mkdir -p /etc/pi-control-center || true
 sudo_run_quiet mkdir -p "$APPS_CONFIG_DIR" || true
 sudo_run_quiet mkdir -p "$APPS_DATA_DIR" || true
