@@ -2875,6 +2875,10 @@ handle_request() {
   len=${#response}
   printf "%s\r\nContent-Type: %s\r\nContent-Length: %d\r\nAccess-Control-Allow-Origin: *\r\nAccess-Control-Allow-Methods: GET, POST, OPTIONS\r\nAccess-Control-Allow-Headers: Content-Type\r\nConnection: close\r\n\r\n%s" \
     "$status_line" "$ct" "$len" "$response"
+  # Close stdout so the Python proxy's subprocess.run() returns immediately
+  # even if we forked background jobs (install/update/factory-reset) that
+  # would otherwise keep the inherited stdout pipe open until completion.
+  exec 1>&- 2>&-
 }
 
 if [ "$REQUEST_MODE" = "--handle-request" ]; then
