@@ -2458,6 +2458,14 @@ handle_request() {
         fi
         rm -f "$fetch_err"
         git reset --hard "$remote_ref" --quiet || git reset --hard origin/main --quiet 2>/dev/null || git reset --hard origin/master --quiet 2>/dev/null || { dashboard_fail "Git reset misslyckades"; exit 1; }
+        # Verifiera att local HEAD nu matchar remote — annars har git reset tyst misslyckats
+        local_head=$(git -C "$ddir" rev-parse --short=7 HEAD 2>/dev/null)
+        remote_head=$(git -C "$ddir" rev-parse --short=7 "$remote_ref" 2>/dev/null)
+        if [ -z "$local_head" ] || [ "$local_head" != "$remote_head" ]; then
+          dashboard_fail "Git reset verifiering misslyckades: local=${local_head:-tom} remote=${remote_head:-tom}"
+          exit 1
+        fi
+        echo "Git HEAD uppdaterad till ${local_head}" >> "$dashboard_log"
         git clean -fd -e node_modules >/dev/null 2>&1 || true
         sed -i 's/\r$//' "$ddir/public/pi-scripts/"*.sh
         chmod +x "$ddir/public/pi-scripts/"*.sh
@@ -2490,6 +2498,11 @@ handle_request() {
         dashboard_progress "Deployar..."
         sudo mkdir -p "$ndir"
         sudo cp -r dist/* "$ndir/" || { dashboard_fail "Deploy misslyckades"; exit 1; }
+        # Verifiera att något faktiskt kopierades
+        if [ -z "$(find "$ndir" -maxdepth 2 -name "index.html" | head -1)" ]; then
+          dashboard_fail "Deploy verifiering misslyckades — index.html saknas i $ndir"
+          exit 1
+        fi
         sudo chown -R pi:pi "$ddir/dist" 2>/dev/null || true
         [ -f "$ddir/public/services.json" ] && sudo cp "$ddir/public/services.json" "$ndir/" || true
         if [ -f "$ddir/public/pi-scripts/pi-control-center-api.sh" ]; then
@@ -2929,9 +2942,9 @@ handle_request() {
       local ddir2="$PI_HOME/pi-control-center"
       d_repo_url=$(grep -A1 '\[remote "origin"\]' "$ddir2/.git/config" 2>/dev/null | grep 'url' | sed 's/.*= //')
       if [ -d "$ddir2/.git" ]; then
-        d_hash=$(cat "$ddir2/.git/refs/heads/main" 2>/dev/null || cat "$ddir2/.git/refs/heads/master" 2>/dev/null)
-        d_hash=${d_hash:0:7}
-        d_local=$(sudo -u pi git -C "$ddir2" log -1 --format='%cd' --date=format:'%-d %b' 2>/dev/null)
+        # rev-parse fungerar oavsett om refs är lösa eller packed (vilket cat inte gör)
+        d_hash=$(git -C "$ddir2" rev-parse --short=7 HEAD 2>/dev/null)
+        d_local=$(git -C "$ddir2" log -1 --format='%cd' --date=format:'%-d %b' 2>/dev/null)
         d_local="${d_local,,}"
       fi
       [ -n "$d_repo_url" ] && d_remote_hash=$(git ls-remote --heads "$d_repo_url" main 2>/dev/null | cut -c1-7)
