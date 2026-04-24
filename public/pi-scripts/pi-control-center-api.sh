@@ -1121,6 +1121,22 @@ get_version() {
   printf '%s' "$val"
 }
 
+# Invalidera version-cachen för en specifik tjänst (anropa efter install/update).
+# Om port utelämnas rensas alla version-cache-filer för det install_dir
+# (täcker både UI-port och engine-port för component-baserade tjänster).
+_invalidate_version_cache() {
+  local install_dir="$1" port="${2:-}" key prefix
+  if [ -n "$port" ]; then
+    key=$(printf '%s|%s' "$install_dir" "$port" | tr -c 'a-zA-Z0-9' '_' | cut -c1-120)
+    rm -f "$STATUS_DIR/version-${key}.cache"
+  else
+    prefix=$(printf '%s|' "$install_dir" | tr -c 'a-zA-Z0-9' '_')
+    # Ta de första 120 tecknen för att matcha get_version's cut -c1-120
+    prefix=$(printf '%s' "$prefix" | cut -c1-120)
+    rm -f "$STATUS_DIR/version-${prefix}"*.cache 2>/dev/null || true
+  fi
+}
+
 get_service_ram() {
   local val pid
   val=$(systemctl show "$1.service" --property=MemoryCurrent 2>/dev/null | cut -d= -f2)
