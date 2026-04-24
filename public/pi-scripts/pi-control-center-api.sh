@@ -2560,11 +2560,61 @@ handle_request() {
             echo "Laddar ner release ${latest_tag:-latest}..." >> "$update_log"
             if curl -sfL "$download_url" -o "/tmp/pi-control-center/${app}-dist.tar.gz" 2>> "$update_log"; then
               echo "Packar upp..." >> "$update_log"
-              rm -rf "$install_dir"/*
-              tar xzf "/tmp/pi-control-center/${app}-dist.tar.gz" -C "$install_dir" 2>> "$update_log"
+
+              # Använd sudo_run för att matcha install — install använder sudo_run chown
+              # så att filer kan vara ägda av andra users efter service-restart
+              if ! sudo_run rm -rf "$install_dir"/* "$install_dir"/.[!.]* 2>> "$update_log"; then
+                echo "Kunde inte rensa gamla filer" >> "$update_log"
+                echo "{\"app\":\"${app}\",\"status\":\"error\",\"message\":\"Kunde inte rensa gamla filer\",\"timestamp\":\"$(date -Iseconds)\"}" > "$update_json"
+                rm -f "/tmp/pi-control-center/${app}-dist.tar.gz"
+                exit 0
+              fi
+
+              # Extrahera med error check
+              if ! tar xzf "/tmp/pi-control-center/${app}-dist.tar.gz" -C "$install_dir" 2>> "$update_log"; then
+                echo "Uppackning misslyckades" >> "$update_log"
+                echo "{\"app\":\"${app}\",\"status\":\"error\",\"message\":\"Uppackning misslyckades\",\"timestamp\":\"$(date -Iseconds)\"}" > "$update_json"
+                rm -f "/tmp/pi-control-center/${app}-dist.tar.gz"
+                exit 0
+              fi
               rm -f "/tmp/pi-control-center/${app}-dist.tar.gz"
+
+              # Hantera tarballs som extraherar till en enda subdirektory
+              # (vanligt för GitHub source-archives). Flytta upp innehållet till install_dir.
+              local top_entries top_dir
+              top_entries=$(find "$install_dir" -mindepth 1 -maxdepth 1 | wc -l)
+              if [ "$top_entries" = "1" ]; then
+                top_dir=$(find "$install_dir" -mindepth 1 -maxdepth 1 -type d | head -1)
+                if [ -n "$top_dir" ] && [ -d "$top_dir" ]; then
+                  echo "Lyfter innehåll från $(basename "$top_dir")/..." >> "$update_log"
+                  sudo_run sh -c "mv '$top_dir'/* '$install_dir'/ 2>/dev/null; mv '$top_dir'/.[!.]* '$install_dir'/ 2>/dev/null; rmdir '$top_dir'" 2>> "$update_log" || true
+                fi
+              fi
+
+              # Verifiera att extraktionen producerade filer
+              if [ -z "$(find "$install_dir" -mindepth 1 -maxdepth 1 | head -1)" ]; then
+                echo "Uppackning tom — inga filer extraherades" >> "$update_log"
+                echo "{\"app\":\"${app}\",\"status\":\"error\",\"message\":\"Uppackning tom — inga filer extraherades\",\"timestamp\":\"$(date -Iseconds)\"}" > "$update_json"
+                exit 0
+              fi
+
+              # Skriv VERSION.json med error check
               if [ -n "$latest_tag" ]; then
-                printf '{"tag":"%s","version":"%s","updatedAt":"%s"}\n' "$(escape_json "$latest_tag")" "$(escape_json "$latest_tag")" "$(date -Iseconds)" > "$install_dir/VERSION.json"
+                if ! printf '{"tag":"%s","version":"%s","updatedAt":"%s"}\n' \
+                  "$(escape_json "$latest_tag")" "$(escape_json "$latest_tag")" "$(date -Iseconds)" \
+                  > "$install_dir/VERSION.json" 2>> "$update_log"; then
+                  echo "Kunde inte skriva VERSION.json" >> "$update_log"
+                  echo "{\"app\":\"${app}\",\"status\":\"error\",\"message\":\"Kunde inte skriva VERSION.json\",\"timestamp\":\"$(date -Iseconds)\"}" > "$update_json"
+                  exit 0
+                fi
+                # Verifiera att VERSION.json är läsbar med förväntad tagg
+                local written_tag
+                written_tag=$(jq -r '.tag // empty' "$install_dir/VERSION.json" 2>/dev/null)
+                if [ "$written_tag" != "$latest_tag" ]; then
+                  echo "VERSION.json verifiering misslyckades: skrev '$latest_tag', läste '$written_tag'" >> "$update_log"
+                  echo "{\"app\":\"${app}\",\"status\":\"error\",\"message\":\"VERSION.json kunde inte verifieras\",\"timestamp\":\"$(date -Iseconds)\"}" > "$update_json"
+                  exit 0
+                fi
               fi
 
               export XDG_RUNTIME_DIR="$USER_RUNTIME_DIR"
@@ -2587,6 +2637,8 @@ handle_request() {
               updated=true
               release_heal_mark "$app"
               _invalidate_version_cache "$install_dir"
+              # Invalidera också GitHub release-cachen så nästa hasUpdate-check får färska data
+              rm -f "$STATUS_DIR/${app}-latest-release.json"
               rm -f "$CACHE_FILE"
               echo "{\"app\":\"${app}\",\"status\":\"success\",\"timestamp\":\"$(date -Iseconds)\"}" > "$update_json"
             fi
