@@ -220,9 +220,16 @@ ensure_app_managed_dirs() {
   sudo_run_quiet chown -R "$(whoami):$(id -gn)" "$cfg" "$data_dir" "$logdir" || true
   sudo_run_quiet chmod 700 "$cfg" "$data_dir" "$home_dir" || true
   sudo_run_quiet chmod 755 "$xdg_share_dir" "$logdir" || true
+  # Permissions may have changed; drop any cached "needs repair" verdict.
+  unset "_APP_DIR_REPAIR_CACHE[$app]" 2>/dev/null || true
 }
 
-app_dirs_need_repair() {
+# Result cache for app_dirs_need_repair to avoid 9 stat calls every poll cycle.
+# Format: associative array app -> "expires_epoch:0|1" (1 = needs repair)
+declare -A _APP_DIR_REPAIR_CACHE
+_APP_DIR_REPAIR_TTL=60
+
+_app_dirs_check() {
   local app=$1 expected_owner cfg data_dir logdir path mode owner want_mode
   expected_owner="$(whoami):$(id -gn)"
   cfg=$(app_config_dir "$app")
@@ -239,12 +246,39 @@ app_dirs_need_repair() {
   return 1
 }
 
+# Cached wrapper. Returns 0 if dirs need repair, 1 otherwise.
+app_dirs_need_repair() {
+  local app=$1 entry now expires verdict
+  now=$(date +%s)
+  entry=${_APP_DIR_REPAIR_CACHE[$app]:-}
+  if [ -n "$entry" ]; then
+    expires=${entry%%:*}
+    verdict=${entry##*:}
+    if [ "$now" -lt "$expires" ]; then
+      [ "$verdict" = "1" ] && return 0 || return 1
+    fi
+  fi
+  if _app_dirs_check "$app"; then
+    _APP_DIR_REPAIR_CACHE[$app]="$((now + _APP_DIR_REPAIR_TTL)):1"
+    return 0
+  else
+    _APP_DIR_REPAIR_CACHE[$app]="$((now + _APP_DIR_REPAIR_TTL)):0"
+    return 1
+  fi
+}
+
+# Force re-check on next call (used after a repair)
+invalidate_app_dirs_cache() {
+  unset "_APP_DIR_REPAIR_CACHE[$1]"
+}
+
 repair_app_managed_dirs() {
   local app=$1 reason=${2:-preflight} log_file="$STATUS_DIR/${app}.log"
   app_dirs_need_repair "$app" || return 1
   log "SYSTEMD WARNING: reparerar katalogrättigheter för $app ($reason)"
   printf '[%s] systemd warning: reparerar katalogrättigheter (%s)\n' "$(date -Iseconds)" "$reason" >> "$log_file"
   ensure_app_managed_dirs "$app"
+  invalidate_app_dirs_cache "$app"
   rm -f "$CACHE_FILE"
   return 0
 }
@@ -269,8 +303,14 @@ escape_json() {
 # --- Dynamic registry helpers ---
 
 # Get a field from services.json: registry_get <key> <field>
+# Uses _REGISTRY_CACHE_JSON when set (one parse per build_status_json) to avoid
+# forking jq many times per status refresh on the Pi Zero 2.
 registry_get() {
-  jq -r --arg k "$1" --arg f "$2" '.[] | select(.key == $k) | .[$f] // empty' "$REGISTRY_FILE" 2>/dev/null
+  if [ -n "${_REGISTRY_CACHE_JSON:-}" ]; then
+    printf '%s' "$_REGISTRY_CACHE_JSON" | jq -r --arg k "$1" --arg f "$2" '.[] | select(.key == $k) | .[$f] // empty' 2>/dev/null
+  else
+    jq -r --arg k "$1" --arg f "$2" '.[] | select(.key == $k) | .[$f] // empty' "$REGISTRY_FILE" 2>/dev/null
+  fi
 }
 
 registry_release_asset() {
@@ -312,31 +352,43 @@ installed_release_version() {
   echo "$version"
 }
 
+# Helper: run a jq filter against the cached registry JSON when available,
+# otherwise read from disk. Args: <jq_flag> <filter> [jq args...]
+_registry_jq() {
+  local flag=$1 filter=$2; shift 2
+  if [ -n "${_REGISTRY_CACHE_JSON:-}" ]; then
+    printf '%s' "$_REGISTRY_CACHE_JSON" | jq "$flag" "$@" "$filter" 2>/dev/null
+  else
+    jq "$flag" "$@" "$filter" "$REGISTRY_FILE" 2>/dev/null
+  fi
+}
+
 # Get a component field: registry_get_component <key> <component> <field>
 registry_get_component() {
-  jq -r --arg k "$1" --arg c "$2" --arg f "$3" '.[] | select(.key == $k) | .components[$c][$f] // empty' "$REGISTRY_FILE" 2>/dev/null
+  _registry_jq -r '.[] | select(.key == $k) | .components[$c][$f] // empty' \
+    --arg k "$1" --arg c "$2" --arg f "$3"
 }
 
 registry_memory_profile_json() {
-  jq -c --arg k "$1" '.[] | select(.key == $k) | .memoryProfile // empty' "$REGISTRY_FILE" 2>/dev/null
+  _registry_jq -c '.[] | select(.key == $k) | .memoryProfile // empty' --arg k "$1"
 }
 
 registry_memory_profile_default_level() {
-  jq -r --arg k "$1" '.[] | select(.key == $k) | .memoryProfile.defaultLevel // "balanced"' "$REGISTRY_FILE" 2>/dev/null
+  _registry_jq -r '.[] | select(.key == $k) | .memoryProfile.defaultLevel // "balanced"' --arg k "$1"
 }
 
 registry_memory_profile_mb() {
   local app=$1 level=${2:-}
   [ -z "$level" ] && level=$(registry_memory_profile_default_level "$app")
   local mb
-  mb=$(jq -r --arg k "$app" --arg l "$level" '.[] | select(.key == $k) | .memoryProfile.levels[$l] // empty' "$REGISTRY_FILE" 2>/dev/null)
+  mb=$(_registry_jq -r '.[] | select(.key == $k) | .memoryProfile.levels[$l] // empty' --arg k "$app" --arg l "$level")
   [ -n "$mb" ] && [ "$mb" -lt "$MIN_MEMORY_MB" ] 2>/dev/null && mb="$MIN_MEMORY_MB"
   echo "$mb"
 }
 
 registry_permissions_json() {
   local raw
-  raw=$(jq -c --arg k "$1" '.[] | select(.key == $k) | .permissions // []' "$REGISTRY_FILE" 2>/dev/null)
+  raw=$(_registry_jq -c '.[] | select(.key == $k) | .permissions // []' --arg k "$1")
   [ -n "$raw" ] && echo "$raw" || echo "[]"
 }
 
@@ -855,55 +907,60 @@ watchdog_loop() {
   done
 }
 
-get_cpu() {
-  read -r _ t1_u t1_n t1_s t1_i t1_w t1_x t1_y _ < /proc/stat
-  local total1=$((t1_u + t1_n + t1_s + t1_i + t1_w + t1_x + t1_y))
-  local idle1=$t1_i
+# Combined CPU sampler: reads /proc/stat once, sleeps once, reads again.
+# Populates two globals to avoid double-sampling per status build:
+#   _CPU_TOTAL_PCT  — aggregate cpu usage (0-100)
+#   _CPU_PER_CORE   — JSON array string, e.g. "[12,3,7,0]"
+sample_cpu_stats() {
+  local agg_total1=0 agg_idle1=0 agg_total2=0 agg_idle2=0
+  local cores_before=() cores_after=()
 
-  sleep 0.2
-
-  read -r _ t2_u t2_n t2_s t2_i t2_w t2_x t2_y _ < /proc/stat
-  local total2=$((t2_u + t2_n + t2_s + t2_i + t2_w + t2_x + t2_y))
-  local idle2=$t2_i
-
-  local td=$((total2 - total1))
-  local id=$((idle2 - idle1))
-
-  [ "$td" -gt 0 ] && echo $(((td - id) * 100 / td)) || echo 0
-}
-
-get_cpu_per_core() {
-  # Read per-core stats from /proc/stat (cpu0, cpu1, cpu2, ...)
-  local cores_before=()
-  local i=0
+  local label u n s idle w x y _rest total
   while IFS=' ' read -r label u n s idle w x y _rest; do
-    [[ "$label" =~ ^cpu[0-9]+$ ]] || continue
-    local total=$((u + n + s + idle + w + x + y))
-    cores_before+=("$total:$idle")
-    i=$((i + 1))
+    if [ "$label" = "cpu" ]; then
+      agg_total1=$((u + n + s + idle + w + x + y))
+      agg_idle1=$idle
+    elif [[ "$label" =~ ^cpu[0-9]+$ ]]; then
+      total=$((u + n + s + idle + w + x + y))
+      cores_before+=("$total:$idle")
+    fi
   done < /proc/stat
 
   sleep 0.2
 
-  local cores_after=()
   while IFS=' ' read -r label u n s idle w x y _rest; do
-    [[ "$label" =~ ^cpu[0-9]+$ ]] || continue
-    local total=$((u + n + s + idle + w + x + y))
-    cores_after+=("$total:$idle")
+    if [ "$label" = "cpu" ]; then
+      agg_total2=$((u + n + s + idle + w + x + y))
+      agg_idle2=$idle
+    elif [[ "$label" =~ ^cpu[0-9]+$ ]]; then
+      total=$((u + n + s + idle + w + x + y))
+      cores_after+=("$total:$idle")
+    fi
   done < /proc/stat
 
-  local result=""
+  local td=$((agg_total2 - agg_total1)) id=$((agg_idle2 - agg_idle1))
+  if [ "$td" -gt 0 ]; then
+    _CPU_TOTAL_PCT=$(((td - id) * 100 / td))
+  else
+    _CPU_TOTAL_PCT=0
+  fi
+
+  local result="" j t1 i1 t2 i2 pct
   for j in $(seq 0 $((${#cores_before[@]} - 1))); do
-    local t1=${cores_before[$j]%%:*} i1=${cores_before[$j]##*:}
-    local t2=${cores_after[$j]%%:*} i2=${cores_after[$j]##*:}
-    local td=$((t2 - t1)) id=$((i2 - i1))
-    local pct=0
+    t1=${cores_before[$j]%%:*}; i1=${cores_before[$j]##*:}
+    t2=${cores_after[$j]%%:*};  i2=${cores_after[$j]##*:}
+    td=$((t2 - t1)); id=$((i2 - i1))
+    pct=0
     [ "$td" -gt 0 ] && pct=$(((td - id) * 100 / td))
     [ -n "$result" ] && result="${result},"
     result="${result}${pct}"
   done
-  echo "[${result}]"
+  _CPU_PER_CORE="[${result}]"
 }
+
+# Backwards-compatible wrappers (single sample each, kept for ad-hoc callers).
+get_cpu()          { sample_cpu_stats; echo "$_CPU_TOTAL_PCT"; }
+get_cpu_per_core() { sample_cpu_stats; echo "$_CPU_PER_CORE"; }
 
 get_temp() {
   if [ -f /sys/class/thermal/thermal_zone0/temp ]; then
@@ -959,10 +1016,11 @@ service_is_active() {
 get_service_pid() {
   local svc=$1 pid
   pid=$(user_systemctl show "$svc.service" --property=MainPID 2>/dev/null | cut -d= -f2)
-  if [ -z "$pid" ] || [ "$pid" = "0" ]; then
-    pid=$(systemctl show "$svc.service" --property=MainPID 2>/dev/null | cut -d= -f2)
+  if [ -n "$pid" ] && [ "$pid" != "0" ]; then
+    echo "$pid"
+    return
   fi
-
+  pid=$(systemctl show "$svc.service" --property=MainPID 2>/dev/null | cut -d= -f2)
   if [ -n "$pid" ] && [ "$pid" != "0" ]; then
     echo "$pid"
   else
@@ -1050,14 +1108,19 @@ get_service_ram() {
 
 build_status_json() {
   local cpu temp ram disk uptime_str ram_used ram_total disk_used disk_total svc_json cpu_cores runtime_json
-  cpu=$(get_cpu)
-  cpu_cores=$(get_cpu_per_core)
+  # Single CPU sample populates both aggregate and per-core in one sleep
+  sample_cpu_stats
+  cpu="$_CPU_TOTAL_PCT"
+  cpu_cores="$_CPU_PER_CORE"
   temp=$(get_temp)
   ram=$(get_ram)
   disk=$(get_disk)
   uptime_str=$(get_uptime)
   runtime_json=$(node_runtime_json)
   rebalance_memory_budget
+
+  # Cache registry once for this build to avoid forking jq dozens of times
+  _REGISTRY_CACHE_JSON=$(cat "$REGISTRY_FILE" 2>/dev/null)
 
   ram_used=${ram%%,*}
   ram_total=${ram##*,}
@@ -1130,7 +1193,7 @@ build_status_json() {
       ui_watchdog=$(watchdog_json "$app" "ui")
 
       local total_cpu total_ram
-      total_cpu=$(echo "$engine_cpu + $ui_cpu" | bc 2>/dev/null || echo "0")
+      total_cpu=$(awk -v a="${engine_cpu:-0}" -v b="${ui_cpu:-0}" 'BEGIN{printf "%.1f", a+b}')
       total_ram=$((engine_ram + ui_ram))
 
       # Read cached health data for engine
@@ -1209,6 +1272,7 @@ build_status_json() {
   reboot_json='{"required":false}'
   [ -f "$REBOOT_REQUIRED_FILE" ] && reboot_json=$(cat "$REBOOT_REQUIRED_FILE" 2>/dev/null || echo '{"required":false}')
   echo "{\"cpu\":${cpu:-0},\"cpuCores\":${cpu_cores:-[]},\"temp\":${temp:-0},\"ramUsed\":${ram_used:-0},\"ramTotal\":${ram_total:-0},\"diskUsed\":${disk_used:-0},\"diskTotal\":${disk_total:-0},\"uptime\":\"${uptime_str}\",\"dashboardCpu\":${dash_cpu:-0},\"dashboardRamMb\":${dash_ram:-0},\"commit\":\"${DASHBOARD_COMMIT_SHORT}\",\"branch\":\"${DASHBOARD_BRANCH}\",\"runtime\":${runtime_json},\"rebootRequired\":${reboot_json},\"services\":{${svc_json}}}"
+  unset _REGISTRY_CACHE_JSON
 }
 
 get_cached_status() {
