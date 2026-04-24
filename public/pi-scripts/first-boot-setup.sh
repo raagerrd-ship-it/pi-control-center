@@ -278,22 +278,26 @@ sudo nginx -t && sudo systemctl restart nginx
 # 8. API service with hard CPU pinning
 echo "[8/9] Setting up API service..."
 chmod +x "$DASHBOARD_DIR/public/pi-scripts/pi-control-center-api.sh"
+chmod +x "$DASHBOARD_DIR/public/pi-scripts/pi-control-center-api.py"
 
 sudo tee /etc/systemd/system/pi-control-center-api.service > /dev/null << EOF
 [Unit]
-Description=Pi Control Center API
+Description=Pi Control Center API (Python HTTP + bash backend)
 After=network.target
 
 [Service]
 Type=simple
 User=$PI_USER
-ExecStart=$DASHBOARD_DIR/public/pi-scripts/pi-control-center-api.sh $API_PORT
+Environment=PORT=$API_PORT
+ExecStart=/usr/bin/python3 -u $DASHBOARD_DIR/public/pi-scripts/pi-control-center-api.py
 Restart=always
 RestartSec=10
-MemoryMax=30M
+MemoryMax=64M
 Nice=10
 CPUAffinity=0
 AllowedCPUs=0
+KillMode=mixed
+TimeoutStopSec=15
 AmbientCapabilities=CAP_NET_RAW CAP_NET_ADMIN
 CapabilityBoundingSet=CAP_NET_RAW CAP_NET_ADMIN CAP_NET_BIND_SERVICE
 ExecStartPre=+/usr/sbin/rfkill unblock bluetooth
