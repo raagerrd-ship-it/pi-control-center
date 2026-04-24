@@ -235,12 +235,12 @@ ensure_app_managed_dirs() {
   sudo_run_quiet chmod 700 "$cfg" "$data_dir" "$home_dir" || true
   sudo_run_quiet chmod 755 "$xdg_share_dir" "$logdir" || true
   # Permissions may have changed; drop any cached "needs repair" verdict.
-  unset "_APP_DIR_REPAIR_CACHE[$app]" 2>/dev/null || true
+  invalidate_app_dirs_cache "$app"
 }
 
 # Result cache for app_dirs_need_repair to avoid 9 stat calls every poll cycle.
-# Format: associative array app -> "expires_epoch:0|1" (1 = needs repair)
-declare -A _APP_DIR_REPAIR_CACHE
+# Filbaserad så att invalidering från per-request-processer syns av
+# status_cache_loop-bakgrundsprocessen (in-memory cache delas inte mellan processer).
 _APP_DIR_REPAIR_TTL=60
 
 _app_dirs_check() {
@@ -262,28 +262,28 @@ _app_dirs_check() {
 
 # Cached wrapper. Returns 0 if dirs need repair, 1 otherwise.
 app_dirs_need_repair() {
-  local app=$1 entry now expires verdict
+  local app=$1 cache_file now age verdict
+  cache_file="$STATUS_DIR/dir-repair-${app}.cache"
   now=$(date +%s)
-  entry=${_APP_DIR_REPAIR_CACHE[$app]:-}
-  if [ -n "$entry" ]; then
-    expires=${entry%%:*}
-    verdict=${entry##*:}
-    if [ "$now" -lt "$expires" ]; then
+  if [ -f "$cache_file" ]; then
+    age=$(( now - $(stat -c %Y "$cache_file" 2>/dev/null || echo 0) ))
+    if [ "$age" -lt "$_APP_DIR_REPAIR_TTL" ]; then
+      verdict=$(cat "$cache_file" 2>/dev/null)
       [ "$verdict" = "1" ] && return 0 || return 1
     fi
   fi
   if _app_dirs_check "$app"; then
-    _APP_DIR_REPAIR_CACHE[$app]="$((now + _APP_DIR_REPAIR_TTL)):1"
+    echo 1 > "$cache_file"
     return 0
   else
-    _APP_DIR_REPAIR_CACHE[$app]="$((now + _APP_DIR_REPAIR_TTL)):0"
+    echo 0 > "$cache_file"
     return 1
   fi
 }
 
 # Force re-check on next call (used after a repair)
 invalidate_app_dirs_cache() {
-  unset "_APP_DIR_REPAIR_CACHE[$1]"
+  rm -f "$STATUS_DIR/dir-repair-${1}.cache"
 }
 
 repair_app_managed_dirs() {
