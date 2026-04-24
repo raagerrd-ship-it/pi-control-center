@@ -855,55 +855,60 @@ watchdog_loop() {
   done
 }
 
-get_cpu() {
-  read -r _ t1_u t1_n t1_s t1_i t1_w t1_x t1_y _ < /proc/stat
-  local total1=$((t1_u + t1_n + t1_s + t1_i + t1_w + t1_x + t1_y))
-  local idle1=$t1_i
+# Combined CPU sampler: reads /proc/stat once, sleeps once, reads again.
+# Populates two globals to avoid double-sampling per status build:
+#   _CPU_TOTAL_PCT  — aggregate cpu usage (0-100)
+#   _CPU_PER_CORE   — JSON array string, e.g. "[12,3,7,0]"
+sample_cpu_stats() {
+  local agg_total1=0 agg_idle1=0 agg_total2=0 agg_idle2=0
+  local cores_before=() cores_after=()
 
-  sleep 0.2
-
-  read -r _ t2_u t2_n t2_s t2_i t2_w t2_x t2_y _ < /proc/stat
-  local total2=$((t2_u + t2_n + t2_s + t2_i + t2_w + t2_x + t2_y))
-  local idle2=$t2_i
-
-  local td=$((total2 - total1))
-  local id=$((idle2 - idle1))
-
-  [ "$td" -gt 0 ] && echo $(((td - id) * 100 / td)) || echo 0
-}
-
-get_cpu_per_core() {
-  # Read per-core stats from /proc/stat (cpu0, cpu1, cpu2, ...)
-  local cores_before=()
-  local i=0
+  local label u n s idle w x y _rest total
   while IFS=' ' read -r label u n s idle w x y _rest; do
-    [[ "$label" =~ ^cpu[0-9]+$ ]] || continue
-    local total=$((u + n + s + idle + w + x + y))
-    cores_before+=("$total:$idle")
-    i=$((i + 1))
+    if [ "$label" = "cpu" ]; then
+      agg_total1=$((u + n + s + idle + w + x + y))
+      agg_idle1=$idle
+    elif [[ "$label" =~ ^cpu[0-9]+$ ]]; then
+      total=$((u + n + s + idle + w + x + y))
+      cores_before+=("$total:$idle")
+    fi
   done < /proc/stat
 
   sleep 0.2
 
-  local cores_after=()
   while IFS=' ' read -r label u n s idle w x y _rest; do
-    [[ "$label" =~ ^cpu[0-9]+$ ]] || continue
-    local total=$((u + n + s + idle + w + x + y))
-    cores_after+=("$total:$idle")
+    if [ "$label" = "cpu" ]; then
+      agg_total2=$((u + n + s + idle + w + x + y))
+      agg_idle2=$idle
+    elif [[ "$label" =~ ^cpu[0-9]+$ ]]; then
+      total=$((u + n + s + idle + w + x + y))
+      cores_after+=("$total:$idle")
+    fi
   done < /proc/stat
 
-  local result=""
+  local td=$((agg_total2 - agg_total1)) id=$((agg_idle2 - agg_idle1))
+  if [ "$td" -gt 0 ]; then
+    _CPU_TOTAL_PCT=$(((td - id) * 100 / td))
+  else
+    _CPU_TOTAL_PCT=0
+  fi
+
+  local result="" j t1 i1 t2 i2 pct
   for j in $(seq 0 $((${#cores_before[@]} - 1))); do
-    local t1=${cores_before[$j]%%:*} i1=${cores_before[$j]##*:}
-    local t2=${cores_after[$j]%%:*} i2=${cores_after[$j]##*:}
-    local td=$((t2 - t1)) id=$((i2 - i1))
-    local pct=0
+    t1=${cores_before[$j]%%:*}; i1=${cores_before[$j]##*:}
+    t2=${cores_after[$j]%%:*};  i2=${cores_after[$j]##*:}
+    td=$((t2 - t1)); id=$((i2 - i1))
+    pct=0
     [ "$td" -gt 0 ] && pct=$(((td - id) * 100 / td))
     [ -n "$result" ] && result="${result},"
     result="${result}${pct}"
   done
-  echo "[${result}]"
+  _CPU_PER_CORE="[${result}]"
 }
+
+# Backwards-compatible wrappers (single sample each, kept for ad-hoc callers).
+get_cpu()          { sample_cpu_stats; echo "$_CPU_TOTAL_PCT"; }
+get_cpu_per_core() { sample_cpu_stats; echo "$_CPU_PER_CORE"; }
 
 get_temp() {
   if [ -f /sys/class/thermal/thermal_zone0/temp ]; then
