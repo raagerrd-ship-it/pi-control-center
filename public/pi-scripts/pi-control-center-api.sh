@@ -2929,9 +2929,9 @@ handle_request() {
       local ddir2="$PI_HOME/pi-control-center"
       d_repo_url=$(grep -A1 '\[remote "origin"\]' "$ddir2/.git/config" 2>/dev/null | grep 'url' | sed 's/.*= //')
       if [ -d "$ddir2/.git" ]; then
-        d_hash=$(cat "$ddir2/.git/refs/heads/main" 2>/dev/null || cat "$ddir2/.git/refs/heads/master" 2>/dev/null)
-        d_hash=${d_hash:0:7}
-        d_local=$(sudo -u pi git -C "$ddir2" log -1 --format='%cd' --date=format:'%-d %b' 2>/dev/null)
+        # rev-parse fungerar oavsett om refs är lösa eller packed (vilket cat inte gör)
+        d_hash=$(git -C "$ddir2" rev-parse --short=7 HEAD 2>/dev/null)
+        d_local=$(git -C "$ddir2" log -1 --format='%cd' --date=format:'%-d %b' 2>/dev/null)
         d_local="${d_local,,}"
       fi
       [ -n "$d_repo_url" ] && d_remote_hash=$(git ls-remote --heads "$d_repo_url" main 2>/dev/null | cut -c1-7)
