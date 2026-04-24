@@ -2933,7 +2933,11 @@ startup_repair_app_dirs() {
 }
 startup_repair_app_dirs
 
-echo "Pi Control Center API listening on port $PORT"
+if [ "$REQUEST_MODE" = "--background-only" ]; then
+  echo "Pi Control Center API background loops starting (HTTP served by Python on port $PORT)"
+else
+  echo "Pi Control Center API listening on port $PORT"
+fi
 
 # Start health polling in background
 health_poll_loop &
@@ -2948,6 +2952,12 @@ status_cache_loop &
 CACHE_PID=$!
 
 trap "kill $HEALTH_PID $WATCHDOG_PID $CACHE_PID 2>/dev/null; exit" EXIT INT TERM
+
+if [ "$REQUEST_MODE" = "--background-only" ]; then
+  # Wait on the background loops; the Python parent owns the HTTP socket.
+  wait
+  exit 0
+fi
 
 while true; do
   socat TCP-LISTEN:${PORT},reuseaddr,fork EXEC:"${SCRIPT_PATH} --handle-request ${PORT}" 2>/dev/null || sleep 1
