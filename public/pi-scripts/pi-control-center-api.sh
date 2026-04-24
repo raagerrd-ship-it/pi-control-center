@@ -269,8 +269,14 @@ escape_json() {
 # --- Dynamic registry helpers ---
 
 # Get a field from services.json: registry_get <key> <field>
+# Uses _REGISTRY_CACHE_JSON when set (one parse per build_status_json) to avoid
+# forking jq many times per status refresh on the Pi Zero 2.
 registry_get() {
-  jq -r --arg k "$1" --arg f "$2" '.[] | select(.key == $k) | .[$f] // empty' "$REGISTRY_FILE" 2>/dev/null
+  if [ -n "${_REGISTRY_CACHE_JSON:-}" ]; then
+    printf '%s' "$_REGISTRY_CACHE_JSON" | jq -r --arg k "$1" --arg f "$2" '.[] | select(.key == $k) | .[$f] // empty' 2>/dev/null
+  else
+    jq -r --arg k "$1" --arg f "$2" '.[] | select(.key == $k) | .[$f] // empty' "$REGISTRY_FILE" 2>/dev/null
+  fi
 }
 
 registry_release_asset() {
