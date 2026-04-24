@@ -1999,6 +1999,7 @@ do_install() {
   # Omfördela RAM-budgeten mellan alla installerade tjänster
   rebalance_memory_budget
 
+  _invalidate_version_cache "$install_dir"
   rm -f "$CACHE_FILE"
   local total_elapsed=$(( $(date +%s) - start_time ))
   local t_min=$((total_elapsed / 60)) t_sec=$((total_elapsed % 60))
@@ -2585,6 +2586,8 @@ handle_request() {
 
               updated=true
               release_heal_mark "$app"
+              _invalidate_version_cache "$install_dir"
+              rm -f "$CACHE_FILE"
               echo "{\"app\":\"${app}\",\"status\":\"success\",\"timestamp\":\"$(date -Iseconds)\"}" > "$update_json"
             fi
           fi
@@ -2600,6 +2603,8 @@ handle_request() {
             exit_code=$?
             if [ "$exit_code" -eq 0 ]; then
               release_heal_mark "$app"
+              _invalidate_version_cache "$install_dir"
+              rm -f "$CACHE_FILE"
               echo "{\"app\":\"${app}\",\"status\":\"success\",\"timestamp\":\"$(date -Iseconds)\"}" > "$update_json"
             else
               tail_err=$(tail -5 "$update_log" 2>/dev/null | tr '\n' ' ' | sed 's/"/\\"/g' | cut -c1-200)
