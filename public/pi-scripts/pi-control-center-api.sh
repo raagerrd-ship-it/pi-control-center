@@ -2498,6 +2498,11 @@ handle_request() {
         dashboard_progress "Deployar..."
         sudo mkdir -p "$ndir"
         sudo cp -r dist/* "$ndir/" || { dashboard_fail "Deploy misslyckades"; exit 1; }
+        # Verifiera att något faktiskt kopierades
+        if [ -z "$(find "$ndir" -maxdepth 2 -name "index.html" | head -1)" ]; then
+          dashboard_fail "Deploy verifiering misslyckades — index.html saknas i $ndir"
+          exit 1
+        fi
         sudo chown -R pi:pi "$ddir/dist" 2>/dev/null || true
         [ -f "$ddir/public/services.json" ] && sudo cp "$ddir/public/services.json" "$ndir/" || true
         if [ -f "$ddir/public/pi-scripts/pi-control-center-api.sh" ]; then
