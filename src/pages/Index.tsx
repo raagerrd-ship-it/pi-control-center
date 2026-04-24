@@ -282,7 +282,7 @@ const Index = () => {
         else {
           // Last resort: check if commit changed
           try {
-            const freshStatus = await import('@/lib/api').then(m => m.fetchSystemStatus());
+            const freshStatus = await fetchSystemStatus();
             if (freshStatus.commit && freshStatus.commit !== commitBefore) {
               addEntry('DASHBOARD', `Uppdaterad (${commitBefore.slice(0, 7)} → ${freshStatus.commit.slice(0, 7)})`, 'success');
               setDashboardUpdate({ app: 'dashboard', status: 'success' });
