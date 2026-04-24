@@ -2458,6 +2458,14 @@ handle_request() {
         fi
         rm -f "$fetch_err"
         git reset --hard "$remote_ref" --quiet || git reset --hard origin/main --quiet 2>/dev/null || git reset --hard origin/master --quiet 2>/dev/null || { dashboard_fail "Git reset misslyckades"; exit 1; }
+        # Verifiera att local HEAD nu matchar remote — annars har git reset tyst misslyckats
+        local_head=$(git -C "$ddir" rev-parse --short=7 HEAD 2>/dev/null)
+        remote_head=$(git -C "$ddir" rev-parse --short=7 "$remote_ref" 2>/dev/null)
+        if [ -z "$local_head" ] || [ "$local_head" != "$remote_head" ]; then
+          dashboard_fail "Git reset verifiering misslyckades: local=${local_head:-tom} remote=${remote_head:-tom}"
+          exit 1
+        fi
+        echo "Git HEAD uppdaterad till ${local_head}" >> "$dashboard_log"
         git clean -fd -e node_modules >/dev/null 2>&1 || true
         sed -i 's/\r$//' "$ddir/public/pi-scripts/"*.sh
         chmod +x "$ddir/public/pi-scripts/"*.sh
