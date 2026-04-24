@@ -982,10 +982,11 @@ service_is_active() {
 get_service_pid() {
   local svc=$1 pid
   pid=$(user_systemctl show "$svc.service" --property=MainPID 2>/dev/null | cut -d= -f2)
-  if [ -z "$pid" ] || [ "$pid" = "0" ]; then
-    pid=$(systemctl show "$svc.service" --property=MainPID 2>/dev/null | cut -d= -f2)
+  if [ -n "$pid" ] && [ "$pid" != "0" ]; then
+    echo "$pid"
+    return
   fi
-
+  pid=$(systemctl show "$svc.service" --property=MainPID 2>/dev/null | cut -d= -f2)
   if [ -n "$pid" ] && [ "$pid" != "0" ]; then
     echo "$pid"
   else
