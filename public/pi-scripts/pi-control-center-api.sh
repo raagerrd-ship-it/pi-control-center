@@ -100,6 +100,12 @@ case "$REQUEST_MODE" in
     INSTALL_CORE="${3:-1}"
     PORT="8585"
     ;;
+  --background-only)
+    # Run only the long-lived background loops (status cache, health, watchdog)
+    # plus startup hooks. The Python HTTP server owns the listening socket.
+    shift
+    PORT="${1:-8585}"
+    ;;
   *)
     PORT="${1:-8585}"
     ;;
