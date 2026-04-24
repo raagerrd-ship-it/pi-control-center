@@ -222,7 +222,12 @@ ensure_app_managed_dirs() {
   sudo_run_quiet chmod 755 "$xdg_share_dir" "$logdir" || true
 }
 
-app_dirs_need_repair() {
+# Result cache for app_dirs_need_repair to avoid 9 stat calls every poll cycle.
+# Format: associative array app -> "expires_epoch:0|1" (1 = needs repair)
+declare -A _APP_DIR_REPAIR_CACHE
+_APP_DIR_REPAIR_TTL=60
+
+_app_dirs_check() {
   local app=$1 expected_owner cfg data_dir logdir path mode owner want_mode
   expected_owner="$(whoami):$(id -gn)"
   cfg=$(app_config_dir "$app")
@@ -239,12 +244,39 @@ app_dirs_need_repair() {
   return 1
 }
 
+# Cached wrapper. Returns 0 if dirs need repair, 1 otherwise.
+app_dirs_need_repair() {
+  local app=$1 entry now expires verdict
+  now=$(date +%s)
+  entry=${_APP_DIR_REPAIR_CACHE[$app]:-}
+  if [ -n "$entry" ]; then
+    expires=${entry%%:*}
+    verdict=${entry##*:}
+    if [ "$now" -lt "$expires" ]; then
+      [ "$verdict" = "1" ] && return 0 || return 1
+    fi
+  fi
+  if _app_dirs_check "$app"; then
+    _APP_DIR_REPAIR_CACHE[$app]="$((now + _APP_DIR_REPAIR_TTL)):1"
+    return 0
+  else
+    _APP_DIR_REPAIR_CACHE[$app]="$((now + _APP_DIR_REPAIR_TTL)):0"
+    return 1
+  fi
+}
+
+# Force re-check on next call (used after a repair)
+invalidate_app_dirs_cache() {
+  unset "_APP_DIR_REPAIR_CACHE[$1]"
+}
+
 repair_app_managed_dirs() {
   local app=$1 reason=${2:-preflight} log_file="$STATUS_DIR/${app}.log"
   app_dirs_need_repair "$app" || return 1
   log "SYSTEMD WARNING: reparerar katalogrättigheter för $app ($reason)"
   printf '[%s] systemd warning: reparerar katalogrättigheter (%s)\n' "$(date -Iseconds)" "$reason" >> "$log_file"
   ensure_app_managed_dirs "$app"
+  invalidate_app_dirs_cache "$app"
   rm -f "$CACHE_FILE"
   return 0
 }
