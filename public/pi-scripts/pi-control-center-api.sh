@@ -1055,14 +1055,19 @@ get_service_ram() {
 
 build_status_json() {
   local cpu temp ram disk uptime_str ram_used ram_total disk_used disk_total svc_json cpu_cores runtime_json
-  cpu=$(get_cpu)
-  cpu_cores=$(get_cpu_per_core)
+  # Single CPU sample populates both aggregate and per-core in one sleep
+  sample_cpu_stats
+  cpu="$_CPU_TOTAL_PCT"
+  cpu_cores="$_CPU_PER_CORE"
   temp=$(get_temp)
   ram=$(get_ram)
   disk=$(get_disk)
   uptime_str=$(get_uptime)
   runtime_json=$(node_runtime_json)
   rebalance_memory_budget
+
+  # Cache registry once for this build to avoid forking jq dozens of times
+  _REGISTRY_CACHE_JSON=$(cat "$REGISTRY_FILE" 2>/dev/null)
 
   ram_used=${ram%%,*}
   ram_total=${ram##*,}
