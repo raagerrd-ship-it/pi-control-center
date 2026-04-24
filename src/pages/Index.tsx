@@ -228,7 +228,7 @@ const Index = () => {
         // status is idle — API restarted and lost state. Check if commit changed.
         else if (result.status === 'idle' && commitBefore) {
           try {
-            const freshStatus = await import('@/lib/api').then(m => m.fetchSystemStatus());
+            const freshStatus = await fetchSystemStatus();
             if (freshStatus.commit && freshStatus.commit !== commitBefore) {
               addEntry('DASHBOARD', `Uppdaterad (${commitBefore.slice(0, 7)} → ${freshStatus.commit.slice(0, 7)})`, 'success');
               setDashboardUpdate({ app: 'dashboard', status: 'success' });
