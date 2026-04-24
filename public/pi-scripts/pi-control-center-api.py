@@ -139,6 +139,15 @@ def proxy_to_bash(method: str, path: str, body: bytes) -> Tuple[int, bytes, str]
     Builds the same HTTP-1.1 request bytes the bash router expects on stdin,
     parses the status line + body out of stdout, and returns
     (status_code, body_bytes, content_type).
+
+    NOTE: bash often forks long-running background jobs (`( ... ) &`) for
+    install/update/factory-reset. Those jobs inherit our stdout/stderr pipes
+    via fork(), so a naive `subprocess.run(..., capture_output=True)` would
+    block until every background job finished (or our 120s timeout fired,
+    causing the frontend to receive an empty body — "Unexpected end of JSON
+    input"). To avoid this we use Popen + a reader thread per pipe, wait
+    only on the main bash process, and then forcibly close the pipes so
+    any orphaned background fds don't keep us hanging.
     """
 
     request = (
@@ -151,18 +160,58 @@ def proxy_to_bash(method: str, path: str, body: bytes) -> Tuple[int, bytes, str]
     ).encode("utf-8") + body
 
     try:
-        proc = subprocess.run(
+        proc = subprocess.Popen(
             [BASH_SCRIPT, "--handle-request", str(PORT)],
-            input=request,
-            capture_output=True,
-            timeout=120,
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
         )
-    except subprocess.TimeoutExpired:
-        return 504, b'{"error":"bash handler timed out"}', "application/json"
     except FileNotFoundError:
         return 500, b'{"error":"bash handler missing"}', "application/json"
 
-    raw = proc.stdout
+    stdout_chunks: list[bytes] = []
+
+    def drain(pipe, sink):
+        try:
+            for chunk in iter(lambda: pipe.read(65536), b""):
+                if sink is not None:
+                    sink.append(chunk)
+        except Exception:
+            pass
+
+    out_thread = threading.Thread(target=drain, args=(proc.stdout, stdout_chunks), daemon=True)
+    err_thread = threading.Thread(target=drain, args=(proc.stderr, None), daemon=True)
+    out_thread.start()
+    err_thread.start()
+
+    try:
+        proc.stdin.write(request)
+        proc.stdin.close()
+    except BrokenPipeError:
+        pass
+
+    # Wait only for the foreground bash process (handle_request). Background
+    # jobs spawned via `&` keep running detached — we don't care about them.
+    try:
+        proc.wait(timeout=120)
+    except subprocess.TimeoutExpired:
+        proc.kill()
+        return 504, b'{"error":"bash handler timed out"}', "application/json"
+
+    # Force-close the pipes so the reader threads exit even if background
+    # children inherited the fds and are still holding them open.
+    try:
+        proc.stdout.close()
+    except Exception:
+        pass
+    try:
+        proc.stderr.close()
+    except Exception:
+        pass
+    out_thread.join(timeout=1.0)
+    err_thread.join(timeout=1.0)
+
+    raw = b"".join(stdout_chunks)
     if not raw:
         return 502, b'{"error":"empty bash response"}', "application/json"
 
