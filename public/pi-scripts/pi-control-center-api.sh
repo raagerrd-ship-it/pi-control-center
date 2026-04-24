@@ -318,31 +318,43 @@ installed_release_version() {
   echo "$version"
 }
 
+# Helper: run a jq filter against the cached registry JSON when available,
+# otherwise read from disk. Args: <jq_flag> <filter> [jq args...]
+_registry_jq() {
+  local flag=$1 filter=$2; shift 2
+  if [ -n "${_REGISTRY_CACHE_JSON:-}" ]; then
+    printf '%s' "$_REGISTRY_CACHE_JSON" | jq "$flag" "$@" "$filter" 2>/dev/null
+  else
+    jq "$flag" "$@" "$filter" "$REGISTRY_FILE" 2>/dev/null
+  fi
+}
+
 # Get a component field: registry_get_component <key> <component> <field>
 registry_get_component() {
-  jq -r --arg k "$1" --arg c "$2" --arg f "$3" '.[] | select(.key == $k) | .components[$c][$f] // empty' "$REGISTRY_FILE" 2>/dev/null
+  _registry_jq -r '.[] | select(.key == $k) | .components[$c][$f] // empty' \
+    --arg k "$1" --arg c "$2" --arg f "$3"
 }
 
 registry_memory_profile_json() {
-  jq -c --arg k "$1" '.[] | select(.key == $k) | .memoryProfile // empty' "$REGISTRY_FILE" 2>/dev/null
+  _registry_jq -c '.[] | select(.key == $k) | .memoryProfile // empty' --arg k "$1"
 }
 
 registry_memory_profile_default_level() {
-  jq -r --arg k "$1" '.[] | select(.key == $k) | .memoryProfile.defaultLevel // "balanced"' "$REGISTRY_FILE" 2>/dev/null
+  _registry_jq -r '.[] | select(.key == $k) | .memoryProfile.defaultLevel // "balanced"' --arg k "$1"
 }
 
 registry_memory_profile_mb() {
   local app=$1 level=${2:-}
   [ -z "$level" ] && level=$(registry_memory_profile_default_level "$app")
   local mb
-  mb=$(jq -r --arg k "$app" --arg l "$level" '.[] | select(.key == $k) | .memoryProfile.levels[$l] // empty' "$REGISTRY_FILE" 2>/dev/null)
+  mb=$(_registry_jq -r '.[] | select(.key == $k) | .memoryProfile.levels[$l] // empty' --arg k "$app" --arg l "$level")
   [ -n "$mb" ] && [ "$mb" -lt "$MIN_MEMORY_MB" ] 2>/dev/null && mb="$MIN_MEMORY_MB"
   echo "$mb"
 }
 
 registry_permissions_json() {
   local raw
-  raw=$(jq -c --arg k "$1" '.[] | select(.key == $k) | .permissions // []' "$REGISTRY_FILE" 2>/dev/null)
+  raw=$(_registry_jq -c '.[] | select(.key == $k) | .permissions // []' --arg k "$1")
   [ -n "$raw" ] && echo "$raw" || echo "[]"
 }
 
