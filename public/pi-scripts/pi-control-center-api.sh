@@ -235,12 +235,12 @@ ensure_app_managed_dirs() {
   sudo_run_quiet chmod 700 "$cfg" "$data_dir" "$home_dir" || true
   sudo_run_quiet chmod 755 "$xdg_share_dir" "$logdir" || true
   # Permissions may have changed; drop any cached "needs repair" verdict.
-  unset "_APP_DIR_REPAIR_CACHE[$app]" 2>/dev/null || true
+  invalidate_app_dirs_cache "$app"
 }
 
 # Result cache for app_dirs_need_repair to avoid 9 stat calls every poll cycle.
-# Format: associative array app -> "expires_epoch:0|1" (1 = needs repair)
-declare -A _APP_DIR_REPAIR_CACHE
+# Filbaserad så att invalidering från per-request-processer syns av
+# status_cache_loop-bakgrundsprocessen (in-memory cache delas inte mellan processer).
 _APP_DIR_REPAIR_TTL=60
 
 _app_dirs_check() {
@@ -262,28 +262,28 @@ _app_dirs_check() {
 
 # Cached wrapper. Returns 0 if dirs need repair, 1 otherwise.
 app_dirs_need_repair() {
-  local app=$1 entry now expires verdict
+  local app=$1 cache_file now age verdict
+  cache_file="$STATUS_DIR/dir-repair-${app}.cache"
   now=$(date +%s)
-  entry=${_APP_DIR_REPAIR_CACHE[$app]:-}
-  if [ -n "$entry" ]; then
-    expires=${entry%%:*}
-    verdict=${entry##*:}
-    if [ "$now" -lt "$expires" ]; then
+  if [ -f "$cache_file" ]; then
+    age=$(( now - $(stat -c %Y "$cache_file" 2>/dev/null || echo 0) ))
+    if [ "$age" -lt "$_APP_DIR_REPAIR_TTL" ]; then
+      verdict=$(cat "$cache_file" 2>/dev/null)
       [ "$verdict" = "1" ] && return 0 || return 1
     fi
   fi
   if _app_dirs_check "$app"; then
-    _APP_DIR_REPAIR_CACHE[$app]="$((now + _APP_DIR_REPAIR_TTL)):1"
+    echo 1 > "$cache_file"
     return 0
   else
-    _APP_DIR_REPAIR_CACHE[$app]="$((now + _APP_DIR_REPAIR_TTL)):0"
+    echo 0 > "$cache_file"
     return 1
   fi
 }
 
 # Force re-check on next call (used after a repair)
 invalidate_app_dirs_cache() {
-  unset "_APP_DIR_REPAIR_CACHE[$1]"
+  rm -f "$STATUS_DIR/dir-repair-${1}.cache"
 }
 
 repair_app_managed_dirs() {
@@ -1119,6 +1119,22 @@ get_version() {
   val=$(_get_version_resolve "$install_dir" "$port")
   printf '%s' "$val" > "$cache_file" 2>/dev/null
   printf '%s' "$val"
+}
+
+# Invalidera version-cachen för en specifik tjänst (anropa efter install/update).
+# Om port utelämnas rensas alla version-cache-filer för det install_dir
+# (täcker både UI-port och engine-port för component-baserade tjänster).
+_invalidate_version_cache() {
+  local install_dir="$1" port="${2:-}" key prefix
+  if [ -n "$port" ]; then
+    key=$(printf '%s|%s' "$install_dir" "$port" | tr -c 'a-zA-Z0-9' '_' | cut -c1-120)
+    rm -f "$STATUS_DIR/version-${key}.cache"
+  else
+    prefix=$(printf '%s|' "$install_dir" | tr -c 'a-zA-Z0-9' '_')
+    # Ta de första 120 tecknen för att matcha get_version's cut -c1-120
+    prefix=$(printf '%s' "$prefix" | cut -c1-120)
+    rm -f "$STATUS_DIR/version-${prefix}"*.cache 2>/dev/null || true
+  fi
 }
 
 get_service_ram() {
@@ -1983,6 +1999,7 @@ do_install() {
   # Omfördela RAM-budgeten mellan alla installerade tjänster
   rebalance_memory_budget
 
+  _invalidate_version_cache "$install_dir"
   rm -f "$CACHE_FILE"
   local total_elapsed=$(( $(date +%s) - start_time ))
   local t_min=$((total_elapsed / 60)) t_sec=$((total_elapsed % 60))
@@ -2569,6 +2586,8 @@ handle_request() {
 
               updated=true
               release_heal_mark "$app"
+              _invalidate_version_cache "$install_dir"
+              rm -f "$CACHE_FILE"
               echo "{\"app\":\"${app}\",\"status\":\"success\",\"timestamp\":\"$(date -Iseconds)\"}" > "$update_json"
             fi
           fi
@@ -2584,6 +2603,8 @@ handle_request() {
             exit_code=$?
             if [ "$exit_code" -eq 0 ]; then
               release_heal_mark "$app"
+              _invalidate_version_cache "$install_dir"
+              rm -f "$CACHE_FILE"
               echo "{\"app\":\"${app}\",\"status\":\"success\",\"timestamp\":\"$(date -Iseconds)\"}" > "$update_json"
             else
               tail_err=$(tail -5 "$update_log" 2>/dev/null | tr '\n' ' ' | sed 's/"/\\"/g' | cut -c1-200)
