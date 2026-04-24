@@ -1140,7 +1140,7 @@ build_status_json() {
       ui_watchdog=$(watchdog_json "$app" "ui")
 
       local total_cpu total_ram
-      total_cpu=$(echo "$engine_cpu + $ui_cpu" | bc 2>/dev/null || echo "0")
+      total_cpu=$(awk -v a="${engine_cpu:-0}" -v b="${ui_cpu:-0}" 'BEGIN{printf "%.1f", a+b}')
       total_ram=$((engine_ram + ui_ram))
 
       # Read cached health data for engine
