@@ -10,7 +10,7 @@ import { useServiceUpdate } from '@/hooks/useServiceUpdate';
 import { useActivityLog } from '@/hooks/useActivityLog';
 import {
   triggerUpdate, fetchUpdateStatus, fetchVersions, fetchVersion, fetchAvailableServices,
-  fetchMemoryLimit, triggerReboot,
+  fetchMemoryLimit, triggerReboot, fetchSystemStatus,
   type UpdateResult, type VersionMap, type ServiceDefinition, fetchLogs,
 } from '@/lib/api';
 
@@ -50,16 +50,26 @@ const Index = () => {
     handleCheckVersions();
   }, []);
 
-  // Fetch memory limits for installed services and discard stale limits
+  // Stable key for installed services so the memory-limit effect doesn't fire
+  // every 5s just because useSystemStatus parses a fresh JSON object each poll.
+  const installedKeysSig = useMemo(() => {
+    if (!status?.services) return '';
+    return Object.entries(status.services)
+      .filter(([, svc]) => svc.installed)
+      .map(([k]) => k)
+      .sort()
+      .join(',');
+  }, [status?.services]);
+
+  // Fetch memory limits for installed services and discard stale limits.
+  // Runs only when the set of installed services or total RAM actually changes.
   useEffect(() => {
     if (!status?.services) {
       setMemLimits({});
       return;
     }
 
-    const installedKeys = Object.entries(status.services)
-      .filter(([, svc]) => svc.installed)
-      .map(([key]) => key);
+    const installedKeys = installedKeysSig ? installedKeysSig.split(',') : [];
     const installedSet = new Set(installedKeys);
 
     setMemLimits(prev => {
@@ -74,22 +84,38 @@ const Index = () => {
       ? Math.floor(budget / installedKeys.length)
       : Math.floor(budget / 3);
 
+    // Resolve any missing limits — side effects live OUTSIDE the setState
+    // updater so React 18 strict mode's double-invoke is safe.
     setMemLimits(prev => {
       const missing = installedKeys.filter(k => prev[k] == null);
       if (missing.length === 0) return prev;
+
+      // Apply cached limits synchronously, queue fetches for the rest.
+      const cached: Record<string, number> = {};
+      const needsFetch: string[] = [];
       missing.forEach(key => {
-        const cachedLimit = status.services[key]?.memoryMaxMb;
+        const cachedLimit = status.services?.[key]?.memoryMaxMb;
         if (cachedLimit) {
-          setMemLimits(p => ({ ...p, [key]: cachedLimit }));
+          cached[key] = cachedLimit;
         } else {
-          fetchMemoryLimit(key)
-            .then(r => setMemLimits(p => ({ ...p, [key]: r.limitMb })))
-            .catch(() => setMemLimits(p => ({ ...p, [key]: defaultPerApp })));
+          needsFetch.push(key);
         }
       });
-      return prev;
+
+      // Fire-and-forget fetches outside the updater
+      if (needsFetch.length > 0) {
+        queueMicrotask(() => {
+          needsFetch.forEach(key => {
+            fetchMemoryLimit(key)
+              .then(r => setMemLimits(p => ({ ...p, [key]: r.limitMb })))
+              .catch(() => setMemLimits(p => ({ ...p, [key]: defaultPerApp })));
+          });
+        });
+      }
+
+      return Object.keys(cached).length > 0 ? { ...prev, ...cached } : prev;
     });
-  }, [status?.ramTotal, status?.services]);
+  }, [status?.ramTotal, installedKeysSig]);
 
   const handleMemLimitChange = useCallback((app: string, mb: number) => {
     setMemLimits(prev => ({ ...prev, [app]: mb }));
@@ -202,7 +228,7 @@ const Index = () => {
         // status is idle — API restarted and lost state. Check if commit changed.
         else if (result.status === 'idle' && commitBefore) {
           try {
-            const freshStatus = await import('@/lib/api').then(m => m.fetchSystemStatus());
+            const freshStatus = await fetchSystemStatus();
             if (freshStatus.commit && freshStatus.commit !== commitBefore) {
               addEntry('DASHBOARD', `Uppdaterad (${commitBefore.slice(0, 7)} → ${freshStatus.commit.slice(0, 7)})`, 'success');
               setDashboardUpdate({ app: 'dashboard', status: 'success' });
@@ -256,7 +282,7 @@ const Index = () => {
         else {
           // Last resort: check if commit changed
           try {
-            const freshStatus = await import('@/lib/api').then(m => m.fetchSystemStatus());
+            const freshStatus = await fetchSystemStatus();
             if (freshStatus.commit && freshStatus.commit !== commitBefore) {
               addEntry('DASHBOARD', `Uppdaterad (${commitBefore.slice(0, 7)} → ${freshStatus.commit.slice(0, 7)})`, 'success');
               setDashboardUpdate({ app: 'dashboard', status: 'success' });

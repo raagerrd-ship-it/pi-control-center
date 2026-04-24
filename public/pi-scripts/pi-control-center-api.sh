@@ -100,6 +100,12 @@ case "$REQUEST_MODE" in
     INSTALL_CORE="${3:-1}"
     PORT="8585"
     ;;
+  --background-only)
+    # Run only the long-lived background loops (status cache, health, watchdog)
+    # plus startup hooks. The Python HTTP server owns the listening socket.
+    shift
+    PORT="${1:-8585}"
+    ;;
   *)
     PORT="${1:-8585}"
     ;;
@@ -1046,7 +1052,10 @@ service_unit_file() {
   fi
 }
 
-get_version() {
+_GET_VERSION_TTL=30
+
+# Inner resolver — does the actual work (curl/git/file).
+_get_version_resolve() {
   local install_dir="$1" port="$2"
   # 1) Ask the service's own API if it's running
   if [ -n "$port" ] && [ "$port" -gt 0 ] 2>/dev/null; then
@@ -1082,6 +1091,26 @@ get_version() {
     if [ -n "$pv" ]; then echo "$pv"; return; fi
   fi
   echo ""
+}
+
+# Cached wrapper. Versions don't change between status polls — caching for
+# 30s eliminates the worst-case 1s curl/service per installed app per cycle.
+get_version() {
+  local install_dir="$1" port="$2"
+  local key cache_file now age val
+  key=$(printf '%s|%s' "$install_dir" "$port" | tr -c 'a-zA-Z0-9' '_' | cut -c1-120)
+  cache_file="$STATUS_DIR/version-${key}.cache"
+  now=$(date +%s)
+  if [ -f "$cache_file" ]; then
+    age=$(( now - $(stat -c %Y "$cache_file" 2>/dev/null || echo 0) ))
+    if [ "$age" -lt "$_GET_VERSION_TTL" ]; then
+      cat "$cache_file"
+      return
+    fi
+  fi
+  val=$(_get_version_resolve "$install_dir" "$port")
+  printf '%s' "$val" > "$cache_file" 2>/dev/null
+  printf '%s' "$val"
 }
 
 get_service_ram() {
@@ -2927,7 +2956,11 @@ startup_repair_app_dirs() {
 }
 startup_repair_app_dirs
 
-echo "Pi Control Center API listening on port $PORT"
+if [ "$REQUEST_MODE" = "--background-only" ]; then
+  echo "Pi Control Center API background loops starting (HTTP served by Python on port $PORT)"
+else
+  echo "Pi Control Center API listening on port $PORT"
+fi
 
 # Start health polling in background
 health_poll_loop &
@@ -2942,6 +2975,12 @@ status_cache_loop &
 CACHE_PID=$!
 
 trap "kill $HEALTH_PID $WATCHDOG_PID $CACHE_PID 2>/dev/null; exit" EXIT INT TERM
+
+if [ "$REQUEST_MODE" = "--background-only" ]; then
+  # Wait on the background loops; the Python parent owns the HTTP socket.
+  wait
+  exit 0
+fi
 
 while true; do
   socat TCP-LISTEN:${PORT},reuseaddr,fork EXEC:"${SCRIPT_PATH} --handle-request ${PORT}" 2>/dev/null || sleep 1

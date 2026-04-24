@@ -163,22 +163,26 @@ sudo nginx -t && sudo systemctl restart nginx
 # 7. Set up API service + CPU pinning + scoped sudoers
 echo "[7/7] Setting up API service + permissions..."
 chmod +x "$DASHBOARD_DIR/public/pi-scripts/pi-control-center-api.sh"
+chmod +x "$DASHBOARD_DIR/public/pi-scripts/pi-control-center-api.py"
 
 sudo tee /etc/systemd/system/pi-control-center-api.service > /dev/null << EOF
 [Unit]
-Description=Pi Control Center API
+Description=Pi Control Center API (Python HTTP + bash backend)
 After=network.target
 
 [Service]
 Type=simple
 User=$USER
-ExecStart=$DASHBOARD_DIR/public/pi-scripts/pi-control-center-api.sh $API_PORT
+Environment=PORT=$API_PORT
+ExecStart=/usr/bin/python3 -u $DASHBOARD_DIR/public/pi-scripts/pi-control-center-api.py
 Restart=always
 RestartSec=10
-MemoryMax=30M
+MemoryMax=64M
 Nice=10
 CPUAffinity=0
 AllowedCPUs=0
+KillMode=mixed
+TimeoutStopSec=15
 
 [Install]
 WantedBy=multi-user.target

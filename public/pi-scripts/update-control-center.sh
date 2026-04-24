@@ -112,6 +112,38 @@ fi
 sudo mkdir -p "$NGINX_DIR/pi-scripts"
 sudo cp -r "$DASHBOARD_DIR/public/pi-scripts/." "$NGINX_DIR/pi-scripts/"
 sudo chmod +x "$NGINX_DIR/pi-scripts/"*.sh 2>/dev/null || true
+sudo chmod +x "$DASHBOARD_DIR/public/pi-scripts/pi-control-center-api.py" 2>/dev/null || true
+
+# Migrate systemd unit to the Python HTTP frontend (replaces the legacy
+# bash+socat per-request server). Idempotent — rewrites every run so config
+# changes (MemoryMax, ExecStart) propagate cleanly.
+echo "  ↳ Skriver om systemd-unit till Python-servern..."
+API_PY="$DASHBOARD_DIR/public/pi-scripts/pi-control-center-api.py"
+API_PORT_ENV="$(systemctl show pi-control-center-api.service -p Environment --value 2>/dev/null | tr ' ' '\n' | awk -F= '$1=="PORT"{print $2}')"
+[ -z "$API_PORT_ENV" ] && API_PORT_ENV="8585"
+sudo tee /etc/systemd/system/pi-control-center-api.service > /dev/null << EOF
+[Unit]
+Description=Pi Control Center API (Python HTTP + bash backend)
+After=network.target
+
+[Service]
+Type=simple
+User=$USER
+Environment=PORT=$API_PORT_ENV
+ExecStart=/usr/bin/python3 -u $API_PY
+Restart=always
+RestartSec=10
+MemoryMax=64M
+Nice=10
+CPUAffinity=0
+AllowedCPUs=0
+KillMode=mixed
+TimeoutStopSec=15
+
+[Install]
+WantedBy=multi-user.target
+EOF
+sudo systemctl daemon-reload
 
 echo "[6/6] Cleaning up & restarting..."
 repair_ble_permissions
