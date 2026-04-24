@@ -220,6 +220,8 @@ ensure_app_managed_dirs() {
   sudo_run_quiet chown -R "$(whoami):$(id -gn)" "$cfg" "$data_dir" "$logdir" || true
   sudo_run_quiet chmod 700 "$cfg" "$data_dir" "$home_dir" || true
   sudo_run_quiet chmod 755 "$xdg_share_dir" "$logdir" || true
+  # Permissions may have changed; drop any cached "needs repair" verdict.
+  unset "_APP_DIR_REPAIR_CACHE[$app]" 2>/dev/null || true
 }
 
 # Result cache for app_dirs_need_repair to avoid 9 stat calls every poll cycle.
