@@ -10,7 +10,7 @@ import { useServiceUpdate } from '@/hooks/useServiceUpdate';
 import { useActivityLog } from '@/hooks/useActivityLog';
 import {
   triggerUpdate, fetchUpdateStatus, fetchVersions, fetchVersion, fetchAvailableServices,
-  fetchMemoryLimit, triggerReboot,
+  fetchMemoryLimit, triggerReboot, fetchSystemStatus,
   type UpdateResult, type VersionMap, type ServiceDefinition, fetchLogs,
 } from '@/lib/api';
 
