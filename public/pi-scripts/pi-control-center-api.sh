@@ -2806,7 +2806,13 @@ handle_request() {
 
               export XDG_RUNTIME_DIR="$USER_RUNTIME_DIR"
               export DBUS_SESSION_BUS_ADDRESS="$USER_BUS_ADDRESS"
+              # Synkron rättighetsfix INNAN restart — tar/cp som root lämnar nya
+              # filer root-ägda; engine får annars EACCES på första writeFileSync.
+              # Vi kör detta proaktivt här istället för att vänta på poll-loopen.
+              echo "Säkerställer ägarskap på app-mappar..." >> "$update_log"
+              ensure_app_managed_dirs "$app" >> "$update_log" 2>&1 || true
               # Restart services (skip if managed: false)
+
               if [ "$(registry_is_managed "$app")" != "false" ]; then
                 local has_comp_upd
                 has_comp_upd=$(registry_has_components "$app")
@@ -2840,6 +2846,11 @@ handle_request() {
           else
             nice -n 15 ionice -c 3 bash "$uscript" >> "$update_log" 2>&1
             exit_code=$?
+            # Synkron rättighetsfix oavsett uscript-utfall — uscript kör som root
+            # och kan lämna writableDirs/installDir-filer root-ägda. Görs INNAN
+            # eventuell restart så engine aldrig hinner se EACCES.
+            echo "Säkerställer ägarskap på app-mappar..." >> "$update_log"
+            ensure_app_managed_dirs "$app" >> "$update_log" 2>&1 || true
             if [ "$exit_code" -eq 0 ]; then
               release_heal_mark "$app"
               _invalidate_version_cache "$install_dir"
