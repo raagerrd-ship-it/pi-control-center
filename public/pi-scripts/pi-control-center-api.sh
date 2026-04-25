@@ -18,6 +18,26 @@ sudo_run() {
   fi
 }
 
+# PCC-tjänsten kör som root (för att kunna styra systemd m.m.) men app-kataloger
+# i /etc/pi-control-center/apps/ MÅSTE ägas av den oprivilegierade pi-användaren
+# eftersom apparnas systemd-units kör som User=pi. Använd ALDRIG `whoami` här —
+# det returnerar "root" när API:t körs som root och leder till att appen
+# inte kan skriva till sin egen settings.json (Permission denied).
+pcc_owner_user() {
+  if id -u pi >/dev/null 2>&1; then
+    echo "pi"
+  else
+    # Fallback: ägaren av repo-katalogen (där detta skript ligger).
+    stat -c '%U' "${BASH_SOURCE[0]%/*}" 2>/dev/null || echo "pi"
+  fi
+}
+
+pcc_owner_group() {
+  local u
+  u=$(pcc_owner_user)
+  id -gn "$u" 2>/dev/null || echo "$u"
+}
+
 sudo_run_quiet() {
   if [ "$(id -u)" -eq 0 ]; then
     "$@" 2>/dev/null
