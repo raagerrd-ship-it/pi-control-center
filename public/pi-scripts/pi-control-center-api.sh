@@ -2246,12 +2246,6 @@ handle_request() {
         sudo mkdir -p "$APPS_CONFIG_DIR" "$APPS_DATA_DIR" "$APPS_LOG_DIR" >> "$reset_log" 2>&1 || true
         sudo chown -R pi:pi "$APPS_CONFIG_DIR" "$APPS_DATA_DIR" "$APPS_LOG_DIR" >> "$reset_log" 2>&1 || true
 
-        # Clear assignments
-        # Clear persistent app config/data/logs during full Pi reset
-        sudo rm -rf "$APPS_CONFIG_DIR" "$APPS_DATA_DIR" "$APPS_LOG_DIR" >> "$reset_log" 2>&1 || true
-        sudo mkdir -p "$APPS_CONFIG_DIR" "$APPS_DATA_DIR" "$APPS_LOG_DIR" >> "$reset_log" 2>&1 || true
-        sudo chown -R pi:pi "$APPS_CONFIG_DIR" "$APPS_DATA_DIR" "$APPS_LOG_DIR" >> "$reset_log" 2>&1 || true
-
         echo '{}' | sudo tee "$ASSIGNMENTS_FILE" > /dev/null
         # Clear health cache and status files
         rm -rf "$HEALTH_DIR"/* "$STATUS_DIR"/*.json "$INSTALL_DIR"/*.json "$INSTALL_DIR"/*.log 2>/dev/null
@@ -2361,6 +2355,15 @@ handle_request() {
         sudo rm -rf "$ddir/dist"
         sudo systemd-run --scope --quiet -p MemoryMax=384M bash -lc "cd '$ddir' && NODE_OPTIONS='--max-old-space-size=320' npx vite build" >> "$reset_log" 2>&1 || true
 
+        # Verifiera att vite faktiskt producerade en dist/index.html.
+        # Vite kan misslyckas tyst på Pi Zero 2 W om swap är otillräckligt.
+        if [ ! -f "$ddir/dist/index.html" ]; then
+          echo '{"status":"error","message":"Dashboard-build misslyckades — index.html saknas"}' > "$STATUS_DIR/factory-reset.json"
+          echo "❌ vite build producerade ingen dist/index.html" >> "$reset_log"
+          tail -30 "$reset_log" >> "$reset_log.fail"
+          exit 1
+        fi
+
         echo '{"status":"resetting","phase":"Deployar..."}' > "$STATUS_DIR/factory-reset.json"
         sudo mkdir -p "$ndir"
         sudo cp -r dist/* "$ndir/" 2>> "$reset_log" || true
@@ -2375,6 +2378,22 @@ handle_request() {
             sudo install -m 755 "$src" "$dst" || true
           fi
           unset src dst
+        fi
+
+        # Återställ rättigheter via first-boot-setup --repair-permissions så
+        # sudoers/polkit/bluetooth/units alltid matchar senaste PCC-version.
+        echo '{"status":"resetting","phase":"Återställer rättigheter..."}' > "$STATUS_DIR/factory-reset.json"
+        echo "Återställer sudoers, polkit, bluetooth..." >> "$reset_log"
+        local fbs="$ddir/public/pi-scripts/first-boot-setup.sh"
+        if [ -f "$fbs" ]; then
+          chmod +x "$fbs" 2>/dev/null || true
+          if sudo bash "$fbs" --repair-permissions >> "$reset_log" 2>&1; then
+            echo "Rättigheter återställda" >> "$reset_log"
+          else
+            echo "VARNING: Permission repair returnerade icke-noll, fortsätter ändå" >> "$reset_log"
+          fi
+        else
+          echo "VARNING: $fbs hittades inte — hoppar över permission repair" >> "$reset_log"
         fi
 
         echo '{"status":"success","timestamp":"'"$(date -Iseconds)"'"}' > "$STATUS_DIR/factory-reset.json"
