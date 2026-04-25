@@ -160,7 +160,17 @@ EOF
   sudo mkdir -p /var/lib/pi-control-center/apps
   sudo mkdir -p /var/log/pi-control-center
   sudo mkdir -p /var/log/pi-control-center/apps
-  sudo chown -R "$PI_USER:$PI_USER" /var/lib/pi-control-center /var/log/pi-control-center /etc/pi-control-center/apps 2>/dev/null || true
+  # Kör chown separat per katalog och logga fel — annars sväljer "|| true" tysta
+  # misslyckanden (t.ex. om en sub-katalog ägs av root och $PI_USER inte har sudo
+  # på den specifika filen). Vi behöver veta om någon app-katalog inte kunde
+  # chown:as så att vi kan rapportera det istället för att låtsas att allt gick bra.
+  for _root_dir in /var/lib/pi-control-center /var/log/pi-control-center /etc/pi-control-center/apps; do
+    if [ -d "$_root_dir" ]; then
+      if ! sudo chown -R "$PI_USER:$PI_USER" "$_root_dir" 2>&1; then
+        echo "  ⚠ chown misslyckades för $_root_dir — apparna där kan inte spara inställningar"
+      fi
+    fi
+  done
   # Sätt mode 700 på rot-katalogerna så att de matchar API:ets ensure_app_managed_dirs.
   # Använd INTE -R med fast mode här — det skulle skriva 700 även på filer
   # (settings.json m.m.) och göra dem oläsbara/oexekverbara på fel sätt.
