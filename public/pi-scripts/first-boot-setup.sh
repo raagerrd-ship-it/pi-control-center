@@ -161,7 +161,32 @@ EOF
   sudo mkdir -p /var/log/pi-control-center
   sudo mkdir -p /var/log/pi-control-center/apps
   sudo chown -R "$PI_USER:$PI_USER" /var/lib/pi-control-center /var/log/pi-control-center /etc/pi-control-center/apps 2>/dev/null || true
-  sudo chmod -R u+rwX,g+rX,o+rX /etc/pi-control-center/apps 2>/dev/null || true
+  # Sätt mode 700 på rot-katalogerna så att de matchar API:ets ensure_app_managed_dirs.
+  # Använd INTE -R med fast mode här — det skulle skriva 700 även på filer
+  # (settings.json m.m.) och göra dem oläsbara/oexekverbara på fel sätt.
+  # Per-app-kataloger får sina exakta modes (700 för config/data, 755 för log)
+  # från ensure_app_managed_dirs när tjänsten startas/installeras.
+  sudo chmod 700 /etc/pi-control-center/apps 2>/dev/null || true
+  # Justera befintliga app-underkataloger så de matchar API:ets förväntningar
+  # (annars triggar app_dirs_need_repair varningen direkt efter --repair-permissions).
+  if [ -d /etc/pi-control-center/apps ]; then
+    for _app_subdir in /etc/pi-control-center/apps/*/; do
+      [ -d "$_app_subdir" ] && sudo chmod 700 "$_app_subdir" 2>/dev/null || true
+    done
+  fi
+  if [ -d /var/lib/pi-control-center/apps ]; then
+    for _app_subdir in /var/lib/pi-control-center/apps/*/; do
+      [ -d "$_app_subdir" ] && sudo chmod 700 "$_app_subdir" 2>/dev/null || true
+    done
+  fi
+  if [ -d /var/log/pi-control-center/apps ]; then
+    for _app_subdir in /var/log/pi-control-center/apps/*/; do
+      [ -d "$_app_subdir" ] && sudo chmod 755 "$_app_subdir" 2>/dev/null || true
+    done
+  fi
+  # Rensa ev. cachade "needs repair"-verdikt så att UI:t inte visar varningen
+  # baserat på gammal data efter att modes precis korrigerats.
+  rm -f /tmp/pi-control-center/status/dir-repair-*.cache 2>/dev/null || true
 
   sudo systemctl daemon-reload
 }
