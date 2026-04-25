@@ -18,6 +18,26 @@ sudo_run() {
   fi
 }
 
+# PCC-tjänsten kör som root (för att kunna styra systemd m.m.) men app-kataloger
+# i /etc/pi-control-center/apps/ MÅSTE ägas av den oprivilegierade pi-användaren
+# eftersom apparnas systemd-units kör som User=pi. Använd ALDRIG `whoami` här —
+# det returnerar "root" när API:t körs som root och leder till att appen
+# inte kan skriva till sin egen settings.json (Permission denied).
+pcc_owner_user() {
+  if id -u pi >/dev/null 2>&1; then
+    echo "pi"
+  else
+    # Fallback: ägaren av repo-katalogen (där detta skript ligger).
+    stat -c '%U' "${BASH_SOURCE[0]%/*}" 2>/dev/null || echo "pi"
+  fi
+}
+
+pcc_owner_group() {
+  local u
+  u=$(pcc_owner_user)
+  id -gn "$u" 2>/dev/null || echo "$u"
+}
+
 sudo_run_quiet() {
   if [ "$(id -u)" -eq 0 ]; then
     "$@" 2>/dev/null
@@ -231,7 +251,7 @@ ensure_app_managed_dirs() {
   home_dir="$data_dir/home"
   xdg_share_dir="$home_dir/.local/share"
   sudo_run_quiet mkdir -p "$cfg" "$data_dir" "$logdir" "$xdg_share_dir" || true
-  sudo_run_quiet chown -R "$(whoami):$(id -gn)" "$cfg" "$data_dir" "$logdir" || true
+  sudo_run_quiet chown -R "$(pcc_owner_user):$(pcc_owner_group)" "$cfg" "$data_dir" "$logdir" || true
   sudo_run_quiet chmod 700 "$cfg" "$data_dir" "$home_dir" || true
   sudo_run_quiet chmod 755 "$xdg_share_dir" "$logdir" || true
   # Permissions may have changed; drop any cached "needs repair" verdict.
@@ -245,7 +265,7 @@ _APP_DIR_REPAIR_TTL=60
 
 _app_dirs_check() {
   local app=$1 expected_owner cfg data_dir logdir path mode owner want_mode
-  expected_owner="$(whoami):$(id -gn)"
+  expected_owner="$(pcc_owner_user):$(pcc_owner_group)"
   cfg=$(app_config_dir "$app")
   data_dir=$(app_data_dir "$app")
   logdir=$(app_log_dir "$app")
@@ -1448,7 +1468,7 @@ do_install_release() {
   progress "$sf" "$app" "Förbereder katalog..." "$start_time"
   [ -d "$install_dir" ] && sudo_run rm -rf "$install_dir"
   sudo_run mkdir -p "$install_dir"
-  sudo_run chown "$(whoami):$(whoami)" "$install_dir"
+  sudo_run chown "$(pcc_owner_user):$(pcc_owner_group)" "$install_dir"
 
   progress "$sf" "$app" "Laddar ner förbyggd release..." "$start_time"
   if ! curl -sfL "$download_url" -o "/tmp/pi-control-center/${app}-dist.tar.gz" >> "$INSTALL_DIR/${app}.log" 2>&1; then
@@ -1985,7 +2005,7 @@ do_install() {
       echo "{\"app\":\"${app}\",\"status\":\"error\",\"message\":\"Git clone misslyckades\",\"timestamp\":\"$(date -Iseconds)\"}" > "$sf"
       return 1
     fi
-    sudo_run chown -R "$(whoami):$(whoami)" "$install_dir"
+    sudo_run chown -R "$(pcc_owner_user):$(pcc_owner_group)" "$install_dir"
 
     # Fix CRLF line endings in all shell scripts
     find "$install_dir" -name '*.sh' -exec sed -i 's/\r$//' {} +
@@ -2667,7 +2687,7 @@ handle_request() {
                 rm -f "/tmp/pi-control-center/${app}-dist.tar.gz"
                 exit 0
               fi
-              sudo_run chown -R "$(whoami):$(id -gn)" "$install_dir" 2>> "$update_log" || true
+              sudo_run chown -R "$(pcc_owner_user):$(pcc_owner_group)" "$install_dir" 2>> "$update_log" || true
 
               # Extrahera med error check
               if ! tar xzf "/tmp/pi-control-center/${app}-dist.tar.gz" -C "$install_dir" 2>> "$update_log"; then
