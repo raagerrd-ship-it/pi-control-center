@@ -2610,14 +2610,23 @@ handle_request() {
             if curl -sfL "$download_url" -o "/tmp/pi-control-center/${app}-dist.tar.gz" 2>> "$update_log"; then
               echo "Packar upp..." >> "$update_log"
 
-              # Använd sudo_run för att matcha install — install använder sudo_run chown
-              # så att filer kan vara ägda av andra users efter service-restart
-              if ! sudo_run rm -rf "$install_dir"/* "$install_dir"/.[!.]* 2>> "$update_log"; then
+              # Rensa install_dir genom att ta bort hela mappen och återskapa den.
+              # sudoers-regeln /usr/bin/rm -rf /opt/* matchar en path-komponent under /opt
+              # (t.ex. /opt/cast-away). Glob /opt/cast-away/* matchas INTE av samma regel,
+              # vilket var orsaken till tyst fel tidigare.
+              if ! sudo_run rm -rf "$install_dir" 2>> "$update_log"; then
                 echo "Kunde inte rensa gamla filer" >> "$update_log"
                 echo "{\"app\":\"${app}\",\"status\":\"error\",\"message\":\"Kunde inte rensa gamla filer\",\"timestamp\":\"$(date -Iseconds)\"}" > "$update_json"
                 rm -f "/tmp/pi-control-center/${app}-dist.tar.gz"
                 exit 0
               fi
+              if ! sudo_run mkdir -p "$install_dir" 2>> "$update_log"; then
+                echo "Kunde inte återskapa install-katalog" >> "$update_log"
+                echo "{\"app\":\"${app}\",\"status\":\"error\",\"message\":\"Kunde inte återskapa install-katalog\",\"timestamp\":\"$(date -Iseconds)\"}" > "$update_json"
+                rm -f "/tmp/pi-control-center/${app}-dist.tar.gz"
+                exit 0
+              fi
+              sudo_run chown -R "$(whoami):$(id -gn)" "$install_dir" 2>> "$update_log" || true
 
               # Extrahera med error check
               if ! tar xzf "/tmp/pi-control-center/${app}-dist.tar.gz" -C "$install_dir" 2>> "$update_log"; then
@@ -2636,7 +2645,15 @@ handle_request() {
                 top_dir=$(find "$install_dir" -mindepth 1 -maxdepth 1 -type d | head -1)
                 if [ -n "$top_dir" ] && [ -d "$top_dir" ]; then
                   echo "Lyfter innehåll från $(basename "$top_dir")/..." >> "$update_log"
-                  sudo_run sh -c "mv '$top_dir'/* '$install_dir'/ 2>/dev/null; mv '$top_dir'/.[!.]* '$install_dir'/ 2>/dev/null; rmdir '$top_dir'" 2>> "$update_log" || true
+                  # Loopa filerna och mv var och en via sudo_run direkt — slipper
+                  # sudo sh -c som inte är tillåten i sudoers.
+                  local entry
+                  shopt -s dotglob nullglob
+                  for entry in "$top_dir"/*; do
+                    [ -e "$entry" ] && sudo_run mv "$entry" "$install_dir/" 2>> "$update_log" || true
+                  done
+                  shopt -u dotglob nullglob
+                  sudo_run rmdir "$top_dir" 2>> "$update_log" || true
                 fi
               fi
 
@@ -2647,11 +2664,13 @@ handle_request() {
                 exit 0
               fi
 
-              # Skriv VERSION.json med error check
+              # Skriv VERSION.json via sudo tee — install_dir kan vara root-ägd
+              # efter sudo_run mkdir ovan, så direkt > redirect skulle nekas.
               if [ -n "$latest_tag" ]; then
-                if ! printf '{"tag":"%s","version":"%s","updatedAt":"%s"}\n' \
-                  "$(escape_json "$latest_tag")" "$(escape_json "$latest_tag")" "$(date -Iseconds)" \
-                  > "$install_dir/VERSION.json" 2>> "$update_log"; then
+                local version_json
+                version_json=$(printf '{"tag":"%s","version":"%s","updatedAt":"%s"}\n' \
+                  "$(escape_json "$latest_tag")" "$(escape_json "$latest_tag")" "$(date -Iseconds)")
+                if ! echo "$version_json" | sudo_run tee "$install_dir/VERSION.json" >/dev/null 2>> "$update_log"; then
                   echo "Kunde inte skriva VERSION.json" >> "$update_log"
                   echo "{\"app\":\"${app}\",\"status\":\"error\",\"message\":\"Kunde inte skriva VERSION.json\",\"timestamp\":\"$(date -Iseconds)\"}" > "$update_json"
                   exit 0
