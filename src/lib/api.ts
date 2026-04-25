@@ -271,8 +271,13 @@ export async function triggerUninstall(app: string): Promise<UninstallResult> {
     method: 'POST',
     signal: AbortSignal.timeout(60000),
   });
-  if (!res.ok) throw new Error('Failed to trigger uninstall');
-  return res.json();
+  // Accept both 2xx and 5xx — backend returns structured error JSON on failure
+  let data: Partial<UninstallResult> = {};
+  try { data = await res.json(); } catch { /* ignore */ }
+  if (!res.ok && !data.status) {
+    throw new Error(data.message || `Uninstall failed (HTTP ${res.status})`);
+  }
+  return { app, status: data.status || (res.ok ? 'success' : 'error'), message: data.message };
 }
 
 export async function fetchLogs(app: string, type: 'update' | 'install' | 'service' = 'update'): Promise<string> {
