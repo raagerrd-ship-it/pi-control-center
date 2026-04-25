@@ -161,6 +161,11 @@ export interface ServiceDefinition {
   releaseUrl?: string;
   memoryProfile?: MemoryProfile;
   permissions?: string[];
+  /** App-specifika writable-mappar inom installDir (relativa paths).
+   *  PCC återställer ägarskap på dessa efter varje update så att
+   *  engine inte får EACCES på t.ex. storage.json om update-scriptet
+   *  glömmer chown:a. Exempel: ["pi/data"] för Lotus. */
+  writableDirs?: string[];
   installDir: string;
   installScript: string;
   updateScript: string;
