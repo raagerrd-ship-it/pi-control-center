@@ -369,6 +369,18 @@ $PI_USER ALL=(ALL) NOPASSWD: /usr/bin/rm -f /etc/systemd/system/*.service
 $PI_USER ALL=(ALL) NOPASSWD: /usr/bin/mkdir -p /opt/*
 $PI_USER ALL=(ALL) NOPASSWD: /usr/bin/journalctl *
 $PI_USER ALL=(ALL) NOPASSWD: /usr/bin/systemd-run *
+$PI_USER ALL=(ALL) NOPASSWD: /usr/bin/rm -rf /opt/*/*
+$PI_USER ALL=(ALL) NOPASSWD: /usr/bin/rm -rf /opt/*/.*
+$PI_USER ALL=(ALL) NOPASSWD: /usr/bin/rm -rf /tmp/pi-control-center
+$PI_USER ALL=(ALL) NOPASSWD: /usr/bin/rm -rf /tmp/pi-control-center/*
+$PI_USER ALL=(ALL) NOPASSWD: /usr/bin/rm -f /opt/*/VERSION.json
+$PI_USER ALL=(ALL) NOPASSWD: /usr/bin/mv /opt/*
+$PI_USER ALL=(ALL) NOPASSWD: /usr/bin/mv /opt/*/*
+$PI_USER ALL=(ALL) NOPASSWD: /usr/bin/rmdir /opt/*
+$PI_USER ALL=(ALL) NOPASSWD: /usr/bin/rmdir /opt/*/*
+$PI_USER ALL=(ALL) NOPASSWD: /usr/bin/tar xzf /tmp/pi-control-center/* -C /opt/*
+$PI_USER ALL=(ALL) NOPASSWD: /usr/bin/tee /opt/*/VERSION.json
+$PI_USER ALL=(ALL) NOPASSWD: /usr/bin/tee /etc/bluetooth/main.conf
 EOF
 sudo chmod 440 /etc/sudoers.d/pi-control-center
 
