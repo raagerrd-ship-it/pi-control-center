@@ -2851,9 +2851,9 @@ handle_request() {
           else
             nice -n 15 ionice -c 3 bash "$uscript" >> "$update_log" 2>&1
             exit_code=$?
-            # Synkron rättighetsfix oavsett uscript-utfall — uscript kör som root
-            # och kan lämna writableDirs/installDir-filer root-ägda. Görs INNAN
-            # eventuell restart så engine aldrig hinner se EACCES.
+            # Skyddsnät: även om uscript kör som pi kan det internt köra
+            # `sudo cp` etc. som lämnar enstaka filer root-ägda. Säkerställ
+            # ägarskap INNAN eventuell restart så engine slipper EACCES.
             echo "Säkerställer ägarskap på app-mappar..." >> "$update_log"
             ensure_app_managed_dirs "$app" >> "$update_log" 2>&1 || true
             if [ "$exit_code" -eq 0 ]; then
