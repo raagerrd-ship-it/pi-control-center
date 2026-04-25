@@ -1567,10 +1567,12 @@ do_install_release() {
     for pkg_dir in $pkg_dirs; do
       if [ -d "$pkg_dir/node_modules" ]; then
         progress "$sf" "$app" "Bygger om native-moduler i ${pkg_dir##*/}..." "$start_time"
-        if ! sudo_run systemd-run --scope --quiet -p MemoryMax=256M \
+        # Kör som app-usern (pi) — annars blir node_modules root-ägda och
+        # engine får EACCES på första write. Native modules kräver INTE root.
+        if ! sudo_run systemd-run --scope --quiet -p MemoryMax=256M -p User="$(pcc_owner_user)" -p Group="$(pcc_owner_group)" \
           bash -lc "cd '$pkg_dir' && NPM_CONFIG_CACHE='${install_dir}/.npm-cache' nice -n 15 ionice -c 3 npm rebuild --no-audit --no-fund" >> "$INSTALL_DIR/${app}.log" 2>&1; then
           progress "$sf" "$app" "npm rebuild misslyckades i ${pkg_dir##*/}, försöker npm install..." "$start_time"
-          sudo_run systemd-run --scope --quiet -p MemoryMax=256M \
+          sudo_run systemd-run --scope --quiet -p MemoryMax=256M -p User="$(pcc_owner_user)" -p Group="$(pcc_owner_group)" \
             bash -lc "cd '$pkg_dir' && NPM_CONFIG_CACHE='${install_dir}/.npm-cache' nice -n 15 ionice -c 3 npm install --omit=dev --no-audit --no-fund" >> "$INSTALL_DIR/${app}.log" 2>&1 || {
             echo "{\"app\":\"${app}\",\"status\":\"error\",\"message\":\"npm install misslyckades i ${pkg_dir##*/}\",\"timestamp\":\"$(date -Iseconds)\"}" > "$sf"
             return 1
@@ -1586,7 +1588,10 @@ do_install_release() {
       progress "$sf" "$app" "Kör installationsskript..." "$start_time"
       chmod +x "$install_dir/$install_script"
       find "$install_dir" -name '*.sh' -exec sed -i 's/\r$//' {} +
-        sudo_run systemd-run --scope --quiet -p MemoryMax=256M \
+      # Kör install-script som app-usern. Om scriptet behöver root för enstaka
+      # operationer (systemd, apt) ska det själv göra `sudo` — så att alla
+      # vanliga filskrivningar (storage.json, config) sker som pi.
+        sudo_run systemd-run --scope --quiet -p MemoryMax=256M -p User="$(pcc_owner_user)" -p Group="$(pcc_owner_group)" \
           env PCC_MANAGED=1 nice -n 15 ionice -c 3 bash "$install_dir/$install_script" --port "$req_port" --core "$req_core" >> "$INSTALL_DIR/${app}.log" 2>&1 || true
     fi
   fi
