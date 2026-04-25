@@ -184,6 +184,15 @@ sudo_run_quiet mkdir -p /etc/pi-control-center || true
 sudo_run_quiet mkdir -p "$APPS_CONFIG_DIR" || true
 sudo_run_quiet mkdir -p "$APPS_DATA_DIR" || true
 sudo_run_quiet mkdir -p "$APPS_LOG_DIR" || true
+# CRITICAL: parent app-dirs must be owned by the unprivileged user, otherwise
+# every per-app subdirectory created later inherits root and triggers the
+# systemd directory-permissions warning. Self-heal on every API start so legacy
+# installations get fixed without manual intervention or reinstall.
+_pcc_owner="$(pcc_owner_user):$(pcc_owner_group)"
+sudo_run_quiet chown "$_pcc_owner" /etc/pi-control-center "$APPS_CONFIG_DIR" "$APPS_DATA_DIR" "$APPS_LOG_DIR" || true
+# Recursively fix any existing app subdirs that were created as root by a
+# previous version of this script (covers all currently-installed apps).
+sudo_run_quiet chown -R "$_pcc_owner" "$APPS_CONFIG_DIR" "$APPS_DATA_DIR" "$APPS_LOG_DIR" || true
 
 # Read git info once at startup
 DASHBOARD_COMMIT=""
