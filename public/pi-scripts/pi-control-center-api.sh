@@ -2166,11 +2166,17 @@ handle_request() {
         status_line="HTTP/1.1 404 Not Found"
         response="{\"error\":\"Unknown app: ${app}\"}"
       else
+        local uninst_rc
         uninst_err=$(do_uninstall "$app" 2>&1 >/dev/null)
-        if [ $? -eq 0 ] && [ -z "$uninst_err" ]; then
+        uninst_rc=$?
+        # Endast rader med UNINSTALL_ERROR-prefix räknas som fel; övrig stderr
+        # (t.ex. "PCC API: RAM-budget fördelad...") är informationsloggar.
+        local err_line
+        err_line=$(printf '%s\n' "$uninst_err" | grep -m1 '^UNINSTALL_ERROR:' || true)
+        if [ "$uninst_rc" -eq 0 ] && [ -z "$err_line" ]; then
           response="{\"app\":\"${app}\",\"status\":\"success\"}"
         else
-          local msg="${uninst_err#UNINSTALL_ERROR: }"
+          local msg="${err_line#UNINSTALL_ERROR: }"
           msg=${msg//\\/\\\\}
           msg=${msg//\"/\\\"}
           msg=${msg//$'\n'/ }
