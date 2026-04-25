@@ -1430,12 +1430,20 @@ do_install_release() {
   install_dir=$(eval echo "$(registry_get "$app" "installDir")")
   svc=$(registry_get "$app" "service")
 
-  [ -z "$release_url" ] && return 1
+  if [ -z "$release_url" ]; then
+    printf '[%s] release: ingen releaseUrl i services.json — hoppar över release-install\n' "$(date -Iseconds)" >> "$INSTALL_DIR/${app}.log"
+    return 1
+  fi
 
   progress "$sf" "$app" "Hämtar release-info från GitHub..." "$start_time"
   download_url=$(latest_release_asset_url "$app")
 
-  [ -z "$download_url" ] || [ "$download_url" = "null" ] && return 1
+  if [ -z "$download_url" ] || [ "$download_url" = "null" ]; then
+    printf '[%s] release: kunde inte hitta nedladdnings-URL för senaste release (asset=%s, url=%s)\n' \
+      "$(date -Iseconds)" "$(registry_release_asset "$app")" "$release_url" >> "$INSTALL_DIR/${app}.log"
+    echo "{\"app\":\"${app}\",\"status\":\"error\",\"message\":\"Ingen release-asset hittad på GitHub (kontrollera att senaste release har $(registry_release_asset "$app"))\",\"timestamp\":\"$(date -Iseconds)\"}" > "$sf"
+    return 1
+  fi
 
   progress "$sf" "$app" "Förbereder katalog..." "$start_time"
   [ -d "$install_dir" ] && sudo_run rm -rf "$install_dir"
@@ -1444,6 +1452,8 @@ do_install_release() {
 
   progress "$sf" "$app" "Laddar ner förbyggd release..." "$start_time"
   if ! curl -sfL "$download_url" -o "/tmp/pi-control-center/${app}-dist.tar.gz" >> "$INSTALL_DIR/${app}.log" 2>&1; then
+    printf '[%s] release: curl-nedladdning misslyckades från %s\n' "$(date -Iseconds)" "$download_url" >> "$INSTALL_DIR/${app}.log"
+    echo "{\"app\":\"${app}\",\"status\":\"error\",\"message\":\"Nedladdning av release-asset misslyckades\",\"timestamp\":\"$(date -Iseconds)\"}" > "$sf"
     return 1
   fi
 
@@ -1957,6 +1967,12 @@ do_install() {
   if do_install_release "$app" "$req_port" "$req_core" "$sf" "$start_time"; then
     install_message="Installation klar (release)"
   else
+    # Om release-vägen redan skrev ett tydligt felmeddelande, behåll det
+    # istället för att falla tillbaka till git clone (som annars döljer
+    # det verkliga felet bakom "Git clone misslyckades").
+    if [ -f "$sf" ] && grep -q '"status":"error"' "$sf" 2>/dev/null; then
+      return 1
+    fi
     # Fallback to legacy git clone + build
     install_message="Installation klar"
 
