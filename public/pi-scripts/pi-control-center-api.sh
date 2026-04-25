@@ -2806,7 +2806,13 @@ handle_request() {
 
               export XDG_RUNTIME_DIR="$USER_RUNTIME_DIR"
               export DBUS_SESSION_BUS_ADDRESS="$USER_BUS_ADDRESS"
+              # Synkron rättighetsfix INNAN restart — tar/cp som root lämnar nya
+              # filer root-ägda; engine får annars EACCES på första writeFileSync.
+              # Vi kör detta proaktivt här istället för att vänta på poll-loopen.
+              echo "Säkerställer ägarskap på app-mappar..." >> "$update_log"
+              ensure_app_managed_dirs "$app" >> "$update_log" 2>&1 || true
               # Restart services (skip if managed: false)
+
               if [ "$(registry_is_managed "$app")" != "false" ]; then
                 local has_comp_upd
                 has_comp_upd=$(registry_has_components "$app")
