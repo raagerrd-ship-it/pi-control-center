@@ -160,7 +160,8 @@ EOF
   sudo mkdir -p /var/lib/pi-control-center/apps
   sudo mkdir -p /var/log/pi-control-center
   sudo mkdir -p /var/log/pi-control-center/apps
-  sudo chown -R "$PI_USER:$PI_USER" /var/lib/pi-control-center /var/log/pi-control-center 2>/dev/null || true
+  sudo chown -R "$PI_USER:$PI_USER" /var/lib/pi-control-center /var/log/pi-control-center /etc/pi-control-center/apps 2>/dev/null || true
+  sudo chmod -R u+rwX,g+rX,o+rX /etc/pi-control-center/apps 2>/dev/null || true
 
   sudo systemctl daemon-reload
 }
