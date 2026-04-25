@@ -2009,6 +2009,7 @@ do_install() {
 }
 
 do_uninstall() {
+  # Returns 0 on success, 1 on failure. On failure, prints reason to stderr.
   local app install_dir svc uninstall_script has_comp
   app=$1
   install_dir=$(eval echo "$(registry_get "$app" "installDir")")
@@ -2016,19 +2017,20 @@ do_uninstall() {
   uninstall_script=$(registry_get "$app" "uninstallScript")
   has_comp=$(registry_has_components "$app")
 
+  local svc_list=()
   if [ "$has_comp" = "true" ]; then
-    # Stop all component services
     for comp in engine ui; do
       local comp_svc
       comp_svc=$(registry_get_component "$app" "$comp" "service")
       [ -z "$comp_svc" ] && continue
+      svc_list+=("$comp_svc")
       sudo_run_quiet systemctl --no-block stop "${comp_svc}.service" || sudo_run_quiet systemctl stop "${comp_svc}.service" || user_systemctl stop "${comp_svc}.service" 2>/dev/null || true
       sudo_run_quiet systemctl disable "${comp_svc}.service" || user_systemctl disable "${comp_svc}.service" 2>/dev/null || true
       sudo_run_quiet rm -f "/etc/systemd/system/${comp_svc}.service" || true
       rm -f "$PI_HOME/.config/systemd/user/${comp_svc}.service" 2>/dev/null || true
     done
   else
-    # Legacy single service
+    [ -n "$svc" ] && svc_list+=("$svc")
     sudo_run_quiet systemctl --no-block stop "${svc}.service" || sudo_run_quiet systemctl stop "${svc}.service" || user_systemctl stop "${svc}.service" 2>/dev/null || true
     sudo_run_quiet systemctl disable "${svc}.service" || user_systemctl disable "${svc}.service" 2>/dev/null || true
     sudo_run_quiet rm -f "/etc/systemd/system/${svc}.service" || true
@@ -2038,16 +2040,20 @@ do_uninstall() {
 
   # Run uninstall script if it exists
   if [ -n "$uninstall_script" ] && [ -f "$install_dir/$uninstall_script" ]; then
-    chmod +x "$install_dir/$uninstall_script"
+    chmod +x "$install_dir/$uninstall_script" 2>/dev/null || true
     timeout 20 bash "$install_dir/$uninstall_script" 2>/dev/null || true
   fi
 
   sudo_run_quiet systemctl daemon-reload || true
   user_systemctl daemon-reload 2>/dev/null || true
 
-  # Remove install directory
+  # Remove install directory (try sudo, then non-sudo as fallback)
+  local rm_err=""
   if [ -n "$install_dir" ] && [ -d "$install_dir" ]; then
-    sudo_run rm -rf "$install_dir"
+    rm_err=$(sudo_run rm -rf "$install_dir" 2>&1) || true
+    if [ -d "$install_dir" ]; then
+      rm_err=$(rm -rf "$install_dir" 2>&1) || true
+    fi
   fi
 
   # Remove assignment
@@ -2058,6 +2064,26 @@ do_uninstall() {
 
   rm -f "$CACHE_FILE"
   rm -f "$HEALTH_DIR/${app}.json"
+
+  # Verify removal — collect leftovers
+  local leftovers=()
+  if [ -n "$install_dir" ] && [ -d "$install_dir" ]; then
+    leftovers+=("install-dir kvar: $install_dir")
+  fi
+  for s in "${svc_list[@]}"; do
+    if [ -f "/etc/systemd/system/${s}.service" ] || [ -f "$PI_HOME/.config/systemd/user/${s}.service" ]; then
+      leftovers+=("service-fil kvar: ${s}.service")
+    fi
+  done
+
+  if [ ${#leftovers[@]} -gt 0 ]; then
+    local reason
+    reason=$(IFS='; '; echo "${leftovers[*]}")
+    [ -n "$rm_err" ] && reason="${reason}; rm-fel: ${rm_err}"
+    echo "UNINSTALL_ERROR: ${reason}" >&2
+    return 1
+  fi
+  return 0
 }
 
 handle_request() {
