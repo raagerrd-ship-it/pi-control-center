@@ -253,7 +253,7 @@ app_data_dir() { echo "$APPS_DATA_DIR/$(echo "$1" | tr -cd 'a-zA-Z0-9_-')"; }
 app_log_dir() { echo "$APPS_LOG_DIR/$(echo "$1" | tr -cd 'a-zA-Z0-9_-')"; }
 
 ensure_app_managed_dirs() {
-  local app=$1 cfg data_dir logdir home_dir xdg_share_dir
+  local app=$1 cfg data_dir logdir home_dir xdg_share_dir wpath
   cfg=$(app_config_dir "$app")
   data_dir=$(app_data_dir "$app")
   logdir=$(app_log_dir "$app")
@@ -263,6 +263,14 @@ ensure_app_managed_dirs() {
   sudo_run_quiet chown -R "$(pcc_owner_user):$(pcc_owner_group)" "$cfg" "$data_dir" "$logdir" || true
   sudo_run_quiet chmod 700 "$cfg" "$data_dir" "$home_dir" || true
   sudo_run_quiet chmod 755 "$xdg_share_dir" "$logdir" || true
+  # App-specifika writable-mappar inom installDir (t.ex. lotus pi/data/storage.json).
+  # Update-scripts som körs som root lämnar ofta dessa root-ägda → engine får EACCES.
+  while IFS= read -r wpath; do
+    [ -n "$wpath" ] || continue
+    sudo_run_quiet mkdir -p "$wpath" || true
+    sudo_run_quiet chown -R "$(pcc_owner_user):$(pcc_owner_group)" "$wpath" || true
+    sudo_run_quiet chmod -R u+rwX,g+rX "$wpath" || true
+  done < <(app_writable_dir_paths "$app")
   # Permissions may have changed; drop any cached "needs repair" verdict.
   invalidate_app_dirs_cache "$app"
 }
@@ -273,7 +281,7 @@ ensure_app_managed_dirs() {
 _APP_DIR_REPAIR_TTL=60
 
 _app_dirs_check() {
-  local app=$1 expected_owner cfg data_dir logdir path mode owner want_mode
+  local app=$1 expected_owner cfg data_dir logdir path mode owner want_mode wpath
   expected_owner="$(pcc_owner_user):$(pcc_owner_group)"
   cfg=$(app_config_dir "$app")
   data_dir=$(app_data_dir "$app")
@@ -286,6 +294,14 @@ _app_dirs_check() {
     mode=$(stat -c '%a' "$path" 2>/dev/null || echo '')
     [ "$owner" = "$expected_owner" ] && [ "$mode" = "$want_mode" ] || return 0
   done
+  # Kontrollera även app-specifika writable-mappar (registry: writableDirs).
+  # Om en sådan mapp finns men ägs av fel user → repair behövs.
+  while IFS= read -r wpath; do
+    [ -n "$wpath" ] || continue
+    [ -d "$wpath" ] || continue
+    owner=$(stat -c '%U:%G' "$wpath" 2>/dev/null || echo '')
+    [ "$owner" = "$expected_owner" ] || return 0
+  done < <(app_writable_dir_paths "$app")
   return 1
 }
 
@@ -360,6 +376,32 @@ registry_release_asset() {
   local asset
   asset=$(registry_get "$1" "releaseAsset")
   [ -n "$asset" ] && echo "$asset" || echo "dist.tar.gz"
+}
+
+# App-specifika writable-mappar inom installDir (relativa paths).
+# Definieras i services.json som "writableDirs": ["pi/data", ...].
+# Används för att återställa ägarskap efter update-scripts som kör som root
+# och annars lämnar dessa mappar root-ägda → engine får EACCES på writeFileSync.
+registry_writable_dirs() {
+  local app=$1
+  if [ -n "${_REGISTRY_CACHE_JSON:-}" ]; then
+    printf '%s' "$_REGISTRY_CACHE_JSON" | jq -r --arg k "$app" '.[] | select(.key == $k) | .writableDirs[]? // empty' 2>/dev/null
+  else
+    jq -r --arg k "$app" '.[] | select(.key == $k) | .writableDirs[]? // empty' "$REGISTRY_FILE" 2>/dev/null
+  fi
+}
+
+# Resolva absolut path för en writable-katalog: <installDir>/<relPath>
+app_writable_dir_paths() {
+  local app=$1 install_dir rel
+  install_dir=$(eval echo "$(registry_get "$app" "installDir")")
+  [ -n "$install_dir" ] || return 0
+  while IFS= read -r rel; do
+    [ -n "$rel" ] || continue
+    # Strip leading slash så path alltid blir relativ
+    rel="${rel#/}"
+    printf '%s\n' "$install_dir/$rel"
+  done < <(registry_writable_dirs "$app")
 }
 
 latest_release_json() {
