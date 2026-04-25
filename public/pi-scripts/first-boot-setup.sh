@@ -3,25 +3,30 @@
 # Pi Control Center — Auto-Setup
 # ============================================================
 #
-# USAGE (pick one):
+# USAGE:
+#   (no args)               Full first-boot setup (default)
+#   --repair-permissions    Reapply sudoers, polkit, bluetooth, systemd-units only
+#                           (used by Återställ Pi for permission consistency)
+#   --help|-h               Show usage
 #
-# A) SSH one-liner (recommended):
-#    ssh pi@<pi-ip>
-#    curl -sL https://raw.githubusercontent.com/raagerrd-ship-it/pi-control-center/main/public/pi-scripts/first-boot-setup.sh | sudo bash
-#
-#    Or with custom repo:
-#    curl -sL <url>/first-boot-setup.sh | sudo PI_REPO=https://github.com/you/repo.git bash
-#
-# B) Pre-baked on SD card (advanced):
-#    Mount rootfs, copy script + service, boot — see prep-sd-card.sh
-#
-# The script runs ONCE, installs everything, and marks itself done.
-# Progress: /var/log/pi-control-center-setup.log
-# LED: slow blink=network, fast blink=installing, solid=done
+# SSH one-liner:
+#   curl -sL https://raw.githubusercontent.com/raagerrd-ship-it/pi-control-center/main/public/pi-scripts/first-boot-setup.sh | sudo bash
 #
 # ============================================================
 
 set -euo pipefail
+
+# Mode-flaggor
+MODE="full"
+case "${1:-}" in
+  --repair-permissions) MODE="repair-permissions" ;;
+  --help|-h)
+    echo "Usage: $0 [--repair-permissions]"
+    echo "  (no args)             Full first-boot setup"
+    echo "  --repair-permissions  Reapply sudoers, polkit, bluetooth, systemd-units"
+    exit 0
+    ;;
+esac
 
 LOG="/var/log/pi-control-center-setup.log"
 MARKER="/opt/.pi-control-center-installed"
@@ -40,6 +45,140 @@ DASHBOARD_DIR="/home/$PI_USER/pi-control-center"
 NGINX_DIR="/var/www/pi-control-center"
 LED="/sys/class/leds/ACT/brightness"
 LED_TRIGGER="/sys/class/leds/ACT/trigger"
+
+# ─── Permission setup ─────────────────────────────────────────────
+# Allt som rör sudoers, polkit, bluetooth, systemd-units, och katalog-
+# rättigheter. Anropas både från full first-boot och från --repair-permissions.
+setup_permissions() {
+  local PI_USER="${PI_USER:-pi}"
+
+  echo "→ Konfigurerar grupp-medlemskap..."
+  sudo loginctl enable-linger "$PI_USER" 2>/dev/null || true
+  sudo usermod -aG bluetooth,netdev,audio "$PI_USER" 2>/dev/null || true
+
+  echo "→ Konfigurerar polkit för bluetooth..."
+  sudo mkdir -p /etc/polkit-1/rules.d
+  sudo tee /etc/polkit-1/rules.d/49-allow-pi-bluez.rules > /dev/null <<'EOF'
+polkit.addRule(function(action, subject) {
+  if ((action.id.indexOf("org.bluez.") === 0 ||
+       action.id.indexOf("org.freedesktop.bluetooth.") === 0) &&
+      subject.user === "pi") {
+    return polkit.Result.YES;
+  }
+});
+EOF
+
+  echo "→ Konfigurerar bluetooth main.conf..."
+  if [ -f /etc/bluetooth/main.conf ]; then
+    if sudo grep -q '^DisablePlugins=' /etc/bluetooth/main.conf; then
+      sudo sed -i 's/^DisablePlugins=.*/DisablePlugins=pnat/' /etc/bluetooth/main.conf
+    elif sudo grep -q '^\[General\]' /etc/bluetooth/main.conf; then
+      sudo sed -i '/^\[General\]/a DisablePlugins=pnat' /etc/bluetooth/main.conf
+    else
+      printf '\n[General]\nDisablePlugins=pnat\n' | sudo tee -a /etc/bluetooth/main.conf > /dev/null
+    fi
+  else
+    printf '[General]\nDisablePlugins=pnat\n' | sudo tee /etc/bluetooth/main.conf > /dev/null
+  fi
+  sudo rfkill unblock bluetooth 2>/dev/null || true
+  sudo hciconfig hci0 up 2>/dev/null || true
+  sudo systemctl enable --now bluetooth 2>/dev/null || true
+  sudo systemctl restart bluetooth 2>/dev/null || true
+
+  echo "→ Skriver sudoers-regler..."
+  sudo tee /etc/sudoers.d/pi-control-center > /dev/null <<EOF
+# Pi Control Center — scoped permissions
+$PI_USER ALL=(ALL) NOPASSWD: /usr/bin/true
+$PI_USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl start pi-control-center-api.service
+$PI_USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl stop pi-control-center-api.service
+$PI_USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl restart pi-control-center-api.service
+$PI_USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl restart nginx.service
+$PI_USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl daemon-reload
+$PI_USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl start *.service
+$PI_USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl --no-block start *.service
+$PI_USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl stop *.service
+$PI_USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl --no-block stop *.service
+$PI_USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl enable *.service
+$PI_USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl disable *.service
+$PI_USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl try-restart *.service
+$PI_USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl restart *.service
+$PI_USER ALL=(ALL) NOPASSWD: /usr/bin/mkdir -p /etc/pi-control-center
+$PI_USER ALL=(ALL) NOPASSWD: /usr/bin/mkdir -p /etc/pi-control-center/apps
+$PI_USER ALL=(ALL) NOPASSWD: /usr/bin/mkdir -p /etc/pi-control-center/apps/*
+$PI_USER ALL=(ALL) NOPASSWD: /usr/bin/mkdir -p /var/log/pi-control-center
+$PI_USER ALL=(ALL) NOPASSWD: /usr/bin/mkdir -p /var/log/pi-control-center/apps
+$PI_USER ALL=(ALL) NOPASSWD: /usr/bin/mkdir -p /var/log/pi-control-center/apps/*
+$PI_USER ALL=(ALL) NOPASSWD: /usr/bin/mkdir -p /var/lib/pi-control-center
+$PI_USER ALL=(ALL) NOPASSWD: /usr/bin/mkdir -p /var/lib/pi-control-center/apps
+$PI_USER ALL=(ALL) NOPASSWD: /usr/bin/mkdir -p /var/lib/pi-control-center/apps/*
+$PI_USER ALL=(ALL) NOPASSWD: /usr/bin/tee /etc/pi-control-center/*
+$PI_USER ALL=(ALL) NOPASSWD: /usr/bin/chmod * /etc/pi-control-center/apps/*
+$PI_USER ALL=(ALL) NOPASSWD: /usr/bin/chmod * /var/lib/pi-control-center/apps/*
+$PI_USER ALL=(ALL) NOPASSWD: /usr/bin/chmod * /var/log/pi-control-center/apps/*
+$PI_USER ALL=(ALL) NOPASSWD: /usr/bin/tee /etc/systemd/system/*.service
+$PI_USER ALL=(ALL) NOPASSWD: /usr/bin/tee /etc/bluetooth/main.conf
+$PI_USER ALL=(ALL) NOPASSWD: /usr/bin/mkdir -p /var/www/pi-control-center
+$PI_USER ALL=(ALL) NOPASSWD: /usr/bin/cp -r *
+$PI_USER ALL=(ALL) NOPASSWD: /usr/bin/cp *
+$PI_USER ALL=(ALL) NOPASSWD: /usr/bin/install -m 755 *
+$PI_USER ALL=(ALL) NOPASSWD: /usr/bin/git clone *
+$PI_USER ALL=(ALL) NOPASSWD: /usr/bin/chown *
+$PI_USER ALL=(ALL) NOPASSWD: /usr/bin/ln -sf *
+$PI_USER ALL=(ALL) NOPASSWD: /usr/bin/mv /tmp/pi-control-center/* /etc/pi-control-center/*
+$PI_USER ALL=(ALL) NOPASSWD: /usr/bin/mv /opt/*
+$PI_USER ALL=(ALL) NOPASSWD: /usr/bin/mv /opt/*/*
+$PI_USER ALL=(ALL) NOPASSWD: /usr/bin/sed -i * /etc/systemd/system/*.service
+$PI_USER ALL=(ALL) NOPASSWD: /usr/bin/rm -rf /opt/*
+$PI_USER ALL=(ALL) NOPASSWD: /usr/bin/rm -rf /opt/*/*
+$PI_USER ALL=(ALL) NOPASSWD: /usr/bin/rm -rf /opt/*/.*
+$PI_USER ALL=(ALL) NOPASSWD: /usr/bin/rm -rf /tmp/pi-control-center
+$PI_USER ALL=(ALL) NOPASSWD: /usr/bin/rm -rf /tmp/pi-control-center/*
+$PI_USER ALL=(ALL) NOPASSWD: /usr/bin/rm -f /opt/*/VERSION.json
+$PI_USER ALL=(ALL) NOPASSWD: /usr/bin/rm -rf /etc/systemd/system/*.service
+$PI_USER ALL=(ALL) NOPASSWD: /usr/bin/rm -f /etc/systemd/system/*.service
+$PI_USER ALL=(ALL) NOPASSWD: /usr/bin/rmdir /opt/*
+$PI_USER ALL=(ALL) NOPASSWD: /usr/bin/rmdir /opt/*/*
+$PI_USER ALL=(ALL) NOPASSWD: /usr/bin/tar xzf /tmp/pi-control-center/* -C /opt/*
+$PI_USER ALL=(ALL) NOPASSWD: /usr/bin/mkdir -p /opt/*
+$PI_USER ALL=(ALL) NOPASSWD: /usr/bin/journalctl *
+$PI_USER ALL=(ALL) NOPASSWD: /usr/bin/systemd-run *
+EOF
+  sudo chmod 440 /etc/sudoers.d/pi-control-center
+
+  # Verifiera att sudoers-filen är syntaktiskt korrekt — annars kan hela
+  # sudo-systemet bli oanvändbart. Om visudo nekar, ta bort filen direkt.
+  if ! sudo visudo -cf /etc/sudoers.d/pi-control-center >/dev/null 2>&1; then
+    echo "  ⚠ Sudoers-syntax ogiltig — tar bort filen"
+    sudo rm -f /etc/sudoers.d/pi-control-center
+    return 1
+  fi
+
+  echo "→ Skapar PCC katalog-struktur..."
+  sudo mkdir -p /etc/pi-control-center
+  sudo mkdir -p /etc/pi-control-center/apps
+  sudo mkdir -p /var/lib/pi-control-center
+  sudo mkdir -p /var/lib/pi-control-center/apps
+  sudo mkdir -p /var/log/pi-control-center
+  sudo mkdir -p /var/log/pi-control-center/apps
+  sudo chown -R "$PI_USER:$PI_USER" /var/lib/pi-control-center /var/log/pi-control-center 2>/dev/null || true
+
+  sudo systemctl daemon-reload
+}
+
+# Repair-mode: bara permissions, ingenting annat
+if [ "$MODE" = "repair-permissions" ]; then
+  echo "===================================="
+  echo " Pi Control Center — Repair Mode"
+  echo " (uppdaterar bara rättigheter)"
+  echo "===================================="
+  setup_permissions || {
+    echo "❌ Permission repair misslyckades"
+    exit 1
+  }
+  echo ""
+  echo "✓ Rättigheter uppdaterade"
+  exit 0
+fi
 
 # --- LED helper functions ---
 led_setup() {
@@ -162,26 +301,6 @@ if [ "$NODE_MAJOR" != "24" ]; then
   sudo apt-get install -y -qq nodejs
 fi
 echo "  Node: $(node -v), npm: $(npm -v)"
-
-# 4. Enable lingering + BLE prerequisites
-echo "[4/9] Enabling user service lingering + BLE prerequisites..."
-sudo loginctl enable-linger "$PI_USER"
-sudo usermod -aG bluetooth "$PI_USER"
-sudo mkdir -p /etc/polkit-1/rules.d
-sudo tee /etc/polkit-1/rules.d/49-allow-pi-bluez.rules > /dev/null <<'EOF'
-polkit.addRule(function(action, subject) {
-  if (subject.user == "pi" && action.id.indexOf("org.bluez.") == 0) {
-    return polkit.Result.YES;
-  }
-});
-EOF
-
-if ! grep -q '^DisablePlugins=pnat' /etc/bluetooth/main.conf 2>/dev/null; then
-  printf '\n[General]\nDisablePlugins=pnat\n' | sudo tee -a /etc/bluetooth/main.conf > /dev/null
-fi
-
-sudo systemctl enable --now bluetooth
-sudo systemctl restart bluetooth
 
 # 5. Clone & build
 echo "[5/9] Cloning Pi Control Center..."
@@ -310,10 +429,6 @@ EOF
 sudo systemctl daemon-reload
 sudo systemctl enable --now pi-control-center-api.service
 
-sudo mkdir -p /etc/pi-control-center/apps /var/lib/pi-control-center/apps /var/log/pi-control-center/apps
-sudo chown -R "$PI_USER:$PI_USER" /etc/pi-control-center/apps /var/lib/pi-control-center/apps /var/log/pi-control-center/apps
-sudo chmod 755 /etc/pi-control-center/apps /var/lib/pi-control-center/apps /var/log/pi-control-center/apps
-
 # Pin Nginx to core 0 (hard limit)
 sudo mkdir -p /etc/systemd/system/nginx.service.d
 sudo tee /etc/systemd/system/nginx.service.d/cpu-pin.conf > /dev/null << 'OVER'
@@ -322,69 +437,12 @@ CPUAffinity=0
 AllowedCPUs=0
 OVER
 
-# 9. Scoped sudoers — passwordless operations required by all PCC-managed app installers
-echo "[9/9] Configuring permissions..."
-sudo tee /etc/sudoers.d/pi-control-center > /dev/null << EOF
-# Pi Control Center — scoped permissions
-$PI_USER ALL=(ALL) NOPASSWD: /usr/bin/true
-$PI_USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl start pi-control-center-api.service
-$PI_USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl stop pi-control-center-api.service
-$PI_USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl restart pi-control-center-api.service
-$PI_USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl restart nginx.service
-$PI_USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl daemon-reload
-$PI_USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl start *.service
-$PI_USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl --no-block start *.service
-$PI_USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl stop *.service
-$PI_USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl --no-block stop *.service
-$PI_USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl enable *.service
-$PI_USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl disable *.service
-$PI_USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl try-restart *.service
-$PI_USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl restart *.service
-$PI_USER ALL=(ALL) NOPASSWD: /usr/bin/mkdir -p /etc/pi-control-center
-$PI_USER ALL=(ALL) NOPASSWD: /usr/bin/mkdir -p /etc/pi-control-center/apps
-$PI_USER ALL=(ALL) NOPASSWD: /usr/bin/mkdir -p /etc/pi-control-center/apps/*
-$PI_USER ALL=(ALL) NOPASSWD: /usr/bin/mkdir -p /var/log/pi-control-center
-$PI_USER ALL=(ALL) NOPASSWD: /usr/bin/mkdir -p /var/log/pi-control-center/apps
-$PI_USER ALL=(ALL) NOPASSWD: /usr/bin/mkdir -p /var/log/pi-control-center/apps/*
-$PI_USER ALL=(ALL) NOPASSWD: /usr/bin/mkdir -p /var/lib/pi-control-center
-$PI_USER ALL=(ALL) NOPASSWD: /usr/bin/mkdir -p /var/lib/pi-control-center/apps
-$PI_USER ALL=(ALL) NOPASSWD: /usr/bin/mkdir -p /var/lib/pi-control-center/apps/*
-$PI_USER ALL=(ALL) NOPASSWD: /usr/bin/tee /etc/pi-control-center/*
-$PI_USER ALL=(ALL) NOPASSWD: /usr/bin/chmod * /etc/pi-control-center/apps/*
-$PI_USER ALL=(ALL) NOPASSWD: /usr/bin/chmod * /var/lib/pi-control-center/apps/*
-$PI_USER ALL=(ALL) NOPASSWD: /usr/bin/chmod * /var/log/pi-control-center/apps/*
-$PI_USER ALL=(ALL) NOPASSWD: /usr/bin/tee /etc/systemd/system/*.service
-$PI_USER ALL=(ALL) NOPASSWD: /usr/bin/mkdir -p /var/www/pi-control-center
-$PI_USER ALL=(ALL) NOPASSWD: /usr/bin/cp -r *
-$PI_USER ALL=(ALL) NOPASSWD: /usr/bin/cp *
-$PI_USER ALL=(ALL) NOPASSWD: /usr/bin/install -m 755 *
-$PI_USER ALL=(ALL) NOPASSWD: /usr/bin/git clone *
-$PI_USER ALL=(ALL) NOPASSWD: /usr/bin/chown *
-$PI_USER ALL=(ALL) NOPASSWD: /usr/bin/ln -sf *
-$PI_USER ALL=(ALL) NOPASSWD: /usr/bin/mv /tmp/pi-control-center/* /etc/pi-control-center/*
-$PI_USER ALL=(ALL) NOPASSWD: /usr/bin/sed -i * /etc/systemd/system/*.service
-$PI_USER ALL=(ALL) NOPASSWD: /usr/bin/rm -rf /opt/*
-$PI_USER ALL=(ALL) NOPASSWD: /usr/bin/rm -rf /etc/systemd/system/*.service
-$PI_USER ALL=(ALL) NOPASSWD: /usr/bin/rm -f /etc/systemd/system/*.service
-$PI_USER ALL=(ALL) NOPASSWD: /usr/bin/mkdir -p /opt/*
-$PI_USER ALL=(ALL) NOPASSWD: /usr/bin/journalctl *
-$PI_USER ALL=(ALL) NOPASSWD: /usr/bin/systemd-run *
-$PI_USER ALL=(ALL) NOPASSWD: /usr/bin/rm -rf /opt/*/*
-$PI_USER ALL=(ALL) NOPASSWD: /usr/bin/rm -rf /opt/*/.*
-$PI_USER ALL=(ALL) NOPASSWD: /usr/bin/rm -rf /tmp/pi-control-center
-$PI_USER ALL=(ALL) NOPASSWD: /usr/bin/rm -rf /tmp/pi-control-center/*
-$PI_USER ALL=(ALL) NOPASSWD: /usr/bin/rm -f /opt/*/VERSION.json
-$PI_USER ALL=(ALL) NOPASSWD: /usr/bin/mv /opt/*
-$PI_USER ALL=(ALL) NOPASSWD: /usr/bin/mv /opt/*/*
-$PI_USER ALL=(ALL) NOPASSWD: /usr/bin/rmdir /opt/*
-$PI_USER ALL=(ALL) NOPASSWD: /usr/bin/rmdir /opt/*/*
-$PI_USER ALL=(ALL) NOPASSWD: /usr/bin/tar xzf /tmp/pi-control-center/* -C /opt/*
-$PI_USER ALL=(ALL) NOPASSWD: /usr/bin/tee /opt/*/VERSION.json
-$PI_USER ALL=(ALL) NOPASSWD: /usr/bin/tee /etc/bluetooth/main.conf
-EOF
-sudo chmod 440 /etc/sudoers.d/pi-control-center
-
-sudo systemctl daemon-reload
+# 9. Permissions (sudoers, polkit, bluetooth, katalog-struktur)
+echo "[9/9] Sätter upp rättigheter..."
+setup_permissions || {
+  echo "❌ Permission setup misslyckades — avbryter"
+  exit 1
+}
 
 # Mark as installed & disable first-boot service (if it exists)
 touch "$MARKER"
