@@ -362,6 +362,32 @@ registry_release_asset() {
   [ -n "$asset" ] && echo "$asset" || echo "dist.tar.gz"
 }
 
+# App-specifika writable-mappar inom installDir (relativa paths).
+# Definieras i services.json som "writableDirs": ["pi/data", ...].
+# Används för att återställa ägarskap efter update-scripts som kör som root
+# och annars lämnar dessa mappar root-ägda → engine får EACCES på writeFileSync.
+registry_writable_dirs() {
+  local app=$1
+  if [ -n "${_REGISTRY_CACHE_JSON:-}" ]; then
+    printf '%s' "$_REGISTRY_CACHE_JSON" | jq -r --arg k "$app" '.[] | select(.key == $k) | .writableDirs[]? // empty' 2>/dev/null
+  else
+    jq -r --arg k "$app" '.[] | select(.key == $k) | .writableDirs[]? // empty' "$REGISTRY_FILE" 2>/dev/null
+  fi
+}
+
+# Resolva absolut path för en writable-katalog: <installDir>/<relPath>
+app_writable_dir_paths() {
+  local app=$1 install_dir rel
+  install_dir=$(eval echo "$(registry_get "$app" "installDir")")
+  [ -n "$install_dir" ] || return 0
+  while IFS= read -r rel; do
+    [ -n "$rel" ] || continue
+    # Strip leading slash så path alltid blir relativ
+    rel="${rel#/}"
+    printf '%s\n' "$install_dir/$rel"
+  done < <(registry_writable_dirs "$app")
+}
+
 latest_release_json() {
   local app=$1 release_url cache_file cache_age now
   release_url=$(registry_get "$app" "releaseUrl")
