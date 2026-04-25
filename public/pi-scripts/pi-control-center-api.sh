@@ -295,12 +295,19 @@ _app_dirs_check() {
     [ "$owner" = "$expected_owner" ] && [ "$mode" = "$want_mode" ] || return 0
   done
   # Kontrollera även app-specifika writable-mappar (registry: writableDirs).
-  # Om en sådan mapp finns men ägs av fel user → repair behövs.
+  # Viktigt: kolla BÅDE mappen OCH alla filer/undermappar inuti — update-scripts
+  # som kör `cp` som root lämnar ofta enskilda filer (t.ex. storage.json) root-ägda
+  # även när själva mappen redan är pi-ägd från första install. Engine får då
+  # EACCES på writeFileSync trots att mappägaren ser korrekt ut.
+  local bad
   while IFS= read -r wpath; do
     [ -n "$wpath" ] || continue
     [ -d "$wpath" ] || continue
     owner=$(stat -c '%U:%G' "$wpath" 2>/dev/null || echo '')
     [ "$owner" = "$expected_owner" ] || return 0
+    # Hitta första entry inuti som inte ägs av expected_owner (rekursivt).
+    bad=$(find "$wpath" -mindepth 1 ! -user "$(pcc_owner_user)" -print -quit 2>/dev/null)
+    [ -z "$bad" ] || return 0
   done < <(app_writable_dir_paths "$app")
   return 1
 }
