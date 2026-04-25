@@ -1967,6 +1967,12 @@ do_install() {
   if do_install_release "$app" "$req_port" "$req_core" "$sf" "$start_time"; then
     install_message="Installation klar (release)"
   else
+    # Om release-vägen redan skrev ett tydligt felmeddelande, behåll det
+    # istället för att falla tillbaka till git clone (som annars döljer
+    # det verkliga felet bakom "Git clone misslyckades").
+    if [ -f "$sf" ] && grep -q '"status":"error"' "$sf" 2>/dev/null; then
+      return 1
+    fi
     # Fallback to legacy git clone + build
     install_message="Installation klar"
 
