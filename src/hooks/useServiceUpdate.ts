@@ -180,12 +180,13 @@ export function useServiceUpdate(serviceNames: Record<string, string>) {
       const result = await triggerUninstall(app);
       setUninstalls(prev => ({ ...prev, [app]: result }));
       if (result.status === 'success') addEntryRef.current(label(app), 'Avinstallerad', 'success');
-      else addEntryRef.current(label(app), 'Avinstallation misslyckades', 'error');
+      else addEntryRef.current(label(app), `Avinstallation misslyckades: ${result.message || 'okänt fel'}`, 'error');
     } catch (e) {
-      addEntryRef.current(label(app), 'Avinstallation misslyckades', 'error');
+      const msg = e instanceof Error ? e.message : 'Uninstall failed';
+      addEntryRef.current(label(app), `Avinstallation misslyckades: ${msg}`, 'error');
       setUninstalls(prev => ({
         ...prev,
-        [app]: { app, status: 'error', message: e instanceof Error ? e.message : 'Uninstall failed' },
+        [app]: { app, status: 'error', message: msg },
       }));
     }
   }, []);
