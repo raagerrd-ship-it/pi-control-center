@@ -2246,12 +2246,6 @@ handle_request() {
         sudo mkdir -p "$APPS_CONFIG_DIR" "$APPS_DATA_DIR" "$APPS_LOG_DIR" >> "$reset_log" 2>&1 || true
         sudo chown -R pi:pi "$APPS_CONFIG_DIR" "$APPS_DATA_DIR" "$APPS_LOG_DIR" >> "$reset_log" 2>&1 || true
 
-        # Clear assignments
-        # Clear persistent app config/data/logs during full Pi reset
-        sudo rm -rf "$APPS_CONFIG_DIR" "$APPS_DATA_DIR" "$APPS_LOG_DIR" >> "$reset_log" 2>&1 || true
-        sudo mkdir -p "$APPS_CONFIG_DIR" "$APPS_DATA_DIR" "$APPS_LOG_DIR" >> "$reset_log" 2>&1 || true
-        sudo chown -R pi:pi "$APPS_CONFIG_DIR" "$APPS_DATA_DIR" "$APPS_LOG_DIR" >> "$reset_log" 2>&1 || true
-
         echo '{}' | sudo tee "$ASSIGNMENTS_FILE" > /dev/null
         # Clear health cache and status files
         rm -rf "$HEALTH_DIR"/* "$STATUS_DIR"/*.json "$INSTALL_DIR"/*.json "$INSTALL_DIR"/*.log 2>/dev/null
