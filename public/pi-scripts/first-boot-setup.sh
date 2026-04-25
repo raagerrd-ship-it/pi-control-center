@@ -186,7 +186,7 @@ EOF
   fi
   # Rensa ev. cachade "needs repair"-verdikt så att UI:t inte visar varningen
   # baserat på gammal data efter att modes precis korrigerats.
-  rm -f /tmp/pi-control-center/status/dir-repair-*.cache 2>/dev/null || true
+  rm -f /tmp/pi-control-center/dir-repair-*.cache /tmp/pi-control-center/status/dir-repair-*.cache 2>/dev/null || true
 
   sudo systemctl daemon-reload
 }
