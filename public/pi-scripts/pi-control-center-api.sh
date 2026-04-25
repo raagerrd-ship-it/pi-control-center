@@ -2160,14 +2160,24 @@ handle_request() {
       ;;
 
     POST\ /api/uninstall/*)
-      local app
+      local app uninst_err
       app=${path#/api/uninstall/}
       if [ -z "$(registry_get "$app" "repo")" ]; then
         status_line="HTTP/1.1 404 Not Found"
         response="{\"error\":\"Unknown app: ${app}\"}"
       else
-        do_uninstall "$app"
-        response="{\"app\":\"${app}\",\"status\":\"success\"}"
+        uninst_err=$(do_uninstall "$app" 2>&1 >/dev/null)
+        if [ $? -eq 0 ] && [ -z "$uninst_err" ]; then
+          response="{\"app\":\"${app}\",\"status\":\"success\"}"
+        else
+          local msg="${uninst_err#UNINSTALL_ERROR: }"
+          msg=${msg//\\/\\\\}
+          msg=${msg//\"/\\\"}
+          msg=${msg//$'\n'/ }
+          [ -z "$msg" ] && msg="Avinstallation misslyckades (okänt fel)"
+          status_line="HTTP/1.1 500 Internal Server Error"
+          response="{\"app\":\"${app}\",\"status\":\"error\",\"message\":\"${msg}\"}"
+        fi
       fi
       ;;
 
