@@ -7,8 +7,8 @@
     "releaseAsset": "dist.tar.gz",
     "installDir": "/opt/lotus-light",
     "memoryProfile": {
-      "defaultLevel": "balanced",
-      "levels": { "low": 80, "balanced": 96, "high": 128 }
+      "defaultLevel": "high",
+      "levels": { "low": 160, "balanced": 224, "high": 320 }
     },
     "permissions": ["bluetooth", "audio", "rfkill"],
     "writableDirs": ["pi/data"],
