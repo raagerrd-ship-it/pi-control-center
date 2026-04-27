@@ -3250,7 +3250,7 @@ if [ "${SYNC_HEAP_ONLY:-0}" = "1" ]; then
   exit 0
 fi
 
-
+# --- Startup: remove legacy user-level app service files now that PCC owns system services ---
 startup_cleanup_user_services() {
   local cleaned=0
   for app in $(registry_keys); do
