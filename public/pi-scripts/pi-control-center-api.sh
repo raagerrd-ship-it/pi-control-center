@@ -1646,7 +1646,10 @@ do_install_release() {
           search_dir=$(dirname "$search_dir")
         done
         assert_node_runtime || log "WARNING: PCC expects Node.js v24, current runtime is $(get_node_version)"
-        comp_exec="$(get_node_bin) --max-old-space-size=96 ${install_dir}/${comp_entry}"
+        local comp_heap_mb
+        comp_heap_mb=$(registry_memory_profile_mb "$app")
+        [ -z "$comp_heap_mb" ] && comp_heap_mb=96
+        comp_exec="$(get_node_bin) --max-old-space-size=${comp_heap_mb} ${install_dir}/${comp_entry}"
       else
         comp_exec="/usr/bin/python3 ${PI_HOME}/pi-control-center/public/pi-scripts/static-spa-server.py --root ${install_dir}/${comp_entry:-dist} --port ${comp_port} --host 0.0.0.0"
       fi
@@ -1686,7 +1689,7 @@ Environment=XDG_DATA_HOME=${comp_home_dir}/.local/share"
         comp_security_lines="PrivateTmp=true"
         comp_env_lines="${comp_env_lines}
 Environment=NODE_ENV=production
-Environment=NODE_OPTIONS=--max-old-space-size=96
+Environment=NODE_OPTIONS=--max-old-space-size=${comp_heap_mb}
 Environment=DBUS_SYSTEM_BUS_ADDRESS=unix:path=/run/dbus/system_bus_socket"
         if registry_needs_permission "$app" "bluetooth" || registry_needs_permission "$app" "rfkill"; then
           comp_cap_lines="NoNewPrivileges=false
@@ -1794,11 +1797,14 @@ Environment=XDG_DATA_HOME=${legacy_home_dir}/.local/share"
         search_dir=$(dirname "$search_dir")
       done
       assert_node_runtime || log "WARNING: PCC expects Node.js v24, current runtime is $(get_node_version)"
-      exec_start="$(get_node_bin) --max-old-space-size=96 ${install_dir}/${entrypoint}"
+      local legacy_heap_mb
+      legacy_heap_mb=$(registry_memory_profile_mb "$app")
+      [ -z "$legacy_heap_mb" ] && legacy_heap_mb=96
+      exec_start="$(get_node_bin) --max-old-space-size=${legacy_heap_mb} ${install_dir}/${entrypoint}"
       legacy_security_lines="PrivateTmp=true"
       legacy_env_lines="${legacy_env_lines}
 Environment=NODE_ENV=production
-Environment=NODE_OPTIONS=--max-old-space-size=96
+Environment=NODE_OPTIONS=--max-old-space-size=${legacy_heap_mb}
 Environment=DBUS_SYSTEM_BUS_ADDRESS=unix:path=/run/dbus/system_bus_socket"
     else
       exec_start="/usr/bin/python3 ${PI_HOME}/pi-control-center/public/pi-scripts/static-spa-server.py --root ${install_dir}/dist --port ${req_port} --host 0.0.0.0"
