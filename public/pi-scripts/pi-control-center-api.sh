@@ -126,6 +126,13 @@ case "$REQUEST_MODE" in
     shift
     PORT="${1:-8585}"
     ;;
+  --sync-heap-limits)
+    # One-shot: sync --max-old-space-size in every installed unit file with the
+    # registry's memoryProfile.defaultLevel. Used by update-control-center.sh
+    # so heap changes propagate without manual Repair.
+    SYNC_HEAP_ONLY=1
+    PORT="8585"
+    ;;
   *)
     PORT="${1:-8585}"
     ;;
