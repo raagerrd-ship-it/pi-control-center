@@ -1646,7 +1646,10 @@ do_install_release() {
           search_dir=$(dirname "$search_dir")
         done
         assert_node_runtime || log "WARNING: PCC expects Node.js v24, current runtime is $(get_node_version)"
-        comp_exec="$(get_node_bin) --max-old-space-size=96 ${install_dir}/${comp_entry}"
+        local comp_heap_mb
+        comp_heap_mb=$(registry_memory_profile_mb "$app")
+        [ -z "$comp_heap_mb" ] && comp_heap_mb=96
+        comp_exec="$(get_node_bin) --max-old-space-size=${comp_heap_mb} ${install_dir}/${comp_entry}"
       else
         comp_exec="/usr/bin/python3 ${PI_HOME}/pi-control-center/public/pi-scripts/static-spa-server.py --root ${install_dir}/${comp_entry:-dist} --port ${comp_port} --host 0.0.0.0"
       fi
