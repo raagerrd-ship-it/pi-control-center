@@ -1941,6 +1941,60 @@ _app_set_limit() {
   fi
 }
 
+# Skriv om --max-old-space-size=N i ExecStart= och NODE_OPTIONS för en unit-fil
+# om värdet skiljer sig från target_mb. Returnerar 0 om filen ändrades, 1 annars.
+_sync_heap_in_unit_file() {
+  local f="$1" target_mb="$2"
+  [ -f "$f" ] || return 1
+  [ -n "$target_mb" ] || return 1
+  # Kolla om filen ens innehåller ett heap-värde
+  grep -q -- '--max-old-space-size=' "$f" || return 1
+  # Kolla om alla värden redan matchar
+  if ! grep -oE -- '--max-old-space-size=[0-9]+' "$f" | grep -qv -- "--max-old-space-size=${target_mb}\$"; then
+    return 1
+  fi
+  sudo_run sed -i -E "s/--max-old-space-size=[0-9]+/--max-old-space-size=${target_mb}/g" "$f"
+  return 0
+}
+
+# Synka heap-limit i alla installerade tjänsters unit-filer mot registryns
+# memoryProfile.defaultLevel. Daemon-reload + try-restart vid förändring.
+sync_all_heap_limits() {
+  local app changed=0 target_mb level s f
+  for app in $(registry_keys); do
+    target_mb=$(registry_memory_profile_mb "$app")
+    [ -n "$target_mb" ] || continue
+    level=$(registry_memory_profile_default_level "$app")
+    if [ "$(registry_has_components "$app")" = "true" ]; then
+      for comp in engine ui; do
+        s=$(registry_get_component "$app" "$comp" "service")
+        [ -n "$s" ] || continue
+        f=$(service_unit_file "$s")
+        [ -n "$f" ] || continue
+        if _sync_heap_in_unit_file "$f" "$target_mb"; then
+          changed=1
+          log "HEAP-SYNC: ${s} → --max-old-space-size=${target_mb} (${app}/${level})"
+          append_memory_change_log "$app" "HEAP: ${s} satt till ${target_mb}MB (${level}) via auto-sync"
+          sudo_run_quiet systemctl try-restart "${s}.service" || user_systemctl try-restart "${s}.service" 2>/dev/null || true
+        fi
+      done
+    else
+      s=$(registry_get "$app" "service")
+      [ -n "$s" ] || continue
+      f=$(service_unit_file "$s")
+      [ -n "$f" ] || continue
+      if _sync_heap_in_unit_file "$f" "$target_mb"; then
+        changed=1
+        log "HEAP-SYNC: ${s} → --max-old-space-size=${target_mb} (${app}/${level})"
+        append_memory_change_log "$app" "HEAP: ${s} satt till ${target_mb}MB (${level}) via auto-sync"
+        sudo_run_quiet systemctl try-restart "${s}.service" || user_systemctl try-restart "${s}.service" 2>/dev/null || true
+      fi
+    fi
+  done
+  [ "$changed" -eq 1 ] && sudo_run systemctl daemon-reload || true
+  return 0
+}
+
 # Starta om alla service-filer för en app
 _app_try_restart() {
   local app="$1" s
