@@ -3245,7 +3245,12 @@ if [ "$REQUEST_MODE" = "--run-install" ]; then
   exit $?
 fi
 
-# --- Startup: remove legacy user-level app service files now that PCC owns system services ---
+if [ "${SYNC_HEAP_ONLY:-0}" = "1" ]; then
+  sync_all_heap_limits
+  exit 0
+fi
+
+
 startup_cleanup_user_services() {
   local cleaned=0
   for app in $(registry_keys); do
