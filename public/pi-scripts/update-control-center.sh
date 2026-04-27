@@ -76,7 +76,7 @@ for attempt in 1 2 3; do
   fi
   if [ "$attempt" -eq 3 ]; then
     echo "Git fetch failed:"
-    tail -8 /tmp/pcc-update-git-fetch.err
+    tail -8 "$GIT_FETCH_ERR"
     exit 1
   fi
   sleep 2
