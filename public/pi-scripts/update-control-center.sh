@@ -153,6 +153,9 @@ rm -rf node_modules
 npm cache clean --force 2>/dev/null || true
 sudo systemctl restart pi-control-center-api 2>/dev/null || true
 
+echo "  ↳ Synkar --max-old-space-size i installerade unit-filer mot services.json..."
+sudo bash "$SYSTEM_API_SCRIPT" --sync-heap-limits 2>&1 | sed 's/^/    /' || true
+
 echo ""
 echo "=== Done! ==="
 echo "Pi Control Center:  http://$(hostname -I | awk '{print $1}')"
