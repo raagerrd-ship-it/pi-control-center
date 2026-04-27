@@ -40,7 +40,7 @@
     "installDir": "/opt/cast-away",
     "memoryProfile": {
       "defaultLevel": "balanced",
-      "levels": { "low": 80, "balanced": 88, "high": 120 }
+      "levels": { "low": 120, "balanced": 160, "high": 200 }
     },
     "permissions": ["network", "multicast"],
     "runInstallOnRelease": false,
@@ -71,7 +71,7 @@
     "installDir": "/opt/sonos-buddy",
     "memoryProfile": {
       "defaultLevel": "balanced",
-      "levels": { "low": 80, "balanced": 112, "high": 144 }
+      "levels": { "low": 120, "balanced": 160, "high": 200 }
     },
     "permissions": ["network", "multicast"],
     "runInstallOnRelease": true,
