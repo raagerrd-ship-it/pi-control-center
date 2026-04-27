@@ -1689,7 +1689,7 @@ Environment=XDG_DATA_HOME=${comp_home_dir}/.local/share"
         comp_security_lines="PrivateTmp=true"
         comp_env_lines="${comp_env_lines}
 Environment=NODE_ENV=production
-Environment=NODE_OPTIONS=--max-old-space-size=96
+Environment=NODE_OPTIONS=--max-old-space-size=${comp_heap_mb}
 Environment=DBUS_SYSTEM_BUS_ADDRESS=unix:path=/run/dbus/system_bus_socket"
         if registry_needs_permission "$app" "bluetooth" || registry_needs_permission "$app" "rfkill"; then
           comp_cap_lines="NoNewPrivileges=false
