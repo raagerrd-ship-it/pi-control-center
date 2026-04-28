@@ -22,7 +22,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog';
-import { triggerFactoryReset, triggerPiReset, fetchFactoryResetStatus } from '@/lib/api';
+import { triggerFactoryReset, triggerPiReset, fetchFactoryResetStatus, triggerServicesCatalogUpdate, fetchServicesCatalogStatus, type ServicesCatalogStatus } from '@/lib/api';
 
 export interface DashboardSettings {
   deviceLabel: string;
