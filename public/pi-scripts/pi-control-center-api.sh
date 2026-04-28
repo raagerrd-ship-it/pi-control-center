@@ -2593,6 +2593,117 @@ handle_request() {
       [ -f "$STATUS_DIR/factory-reset.json" ] && response=$(< "$STATUS_DIR/factory-reset.json") || response='{"status":"idle"}'
       ;;
 
+    "GET /api/services-catalog/status")
+      local sf catalog_log status_json log_tail
+      sf="$STATUS_DIR/services-catalog.json"
+      catalog_log="$STATUS_DIR/services-catalog.log"
+      if [ -f "$sf" ]; then
+        status_json=$(cat "$sf")
+      else
+        status_json='{"status":"idle"}'
+      fi
+      log_tail=$(tail -10 "$catalog_log" 2>/dev/null | jq -Rs . 2>/dev/null || echo '""')
+      response=$(echo "$status_json" | jq --argjson logTail "$log_tail" '. + {logTail: $logTail}' 2>/dev/null || echo "$status_json")
+      ;;
+
+    "POST /api/update/services-catalog")
+      # Snabb-uppdatering av services.json från GitHub utan att bygga om hela
+      # dashboard. Tar ~3-5 sek istället för full dashboard-update på 3-5 min.
+      local sf catalog_log ddir ndir start_time
+      sf="$STATUS_DIR/services-catalog.json"
+      catalog_log="$STATUS_DIR/services-catalog.log"
+      ddir="$PI_HOME/pi-control-center"
+      ndir="/var/www/pi-control-center"
+      start_time=$(date +%s)
+      mkdir -p "$STATUS_DIR"
+      echo '{"status":"updating","progress":"Hämtar senaste tjänstkatalog..."}' > "$sf"
+      : > "$catalog_log"
+      response=$(< "$sf")
+
+      (
+        exec 9>"$OP_LOCK_FILE"
+        if ! flock -n 9; then
+          echo '{"status":"updating","progress":"Pi upptagen — väntar..."}' > "$sf"
+          if ! acquire_op_lock_or_timeout 9 60; then
+            echo '{"status":"error","message":"Lock timeout — annan operation pågår","timestamp":"'"$(date -Iseconds)"'"}' > "$sf"
+            exit 1
+          fi
+        fi
+
+        catalog_fail() {
+          local msg=$1
+          echo "[$(date -Iseconds)] FAIL: $msg" >> "$catalog_log"
+          echo "{\"status\":\"error\",\"message\":\"${msg}\",\"timestamp\":\"$(date -Iseconds)\"}" > "$sf"
+        }
+
+        cd "$ddir" 2>/dev/null || { catalog_fail "Dashboard-katalog saknas"; exit 1; }
+
+        local old_hash=""
+        [ -f "$ndir/services.json" ] && old_hash=$(sha256sum "$ndir/services.json" 2>/dev/null | awk '{print $1}')
+
+        echo "[$(date -Iseconds)] Hämtar senaste services.json från origin..." >> "$catalog_log"
+
+        local branch
+        branch=$(git remote show origin 2>/dev/null | awk '/HEAD branch/ {print $NF}' | head -1)
+        [ -z "$branch" ] && branch="main"
+
+        if ! git -c http.version=HTTP/1.1 fetch origin "$branch" --depth=1 --no-tags 2>>"$catalog_log"; then
+          if [ "$branch" = "main" ]; then
+            if git -c http.version=HTTP/1.1 fetch origin master --depth=1 --no-tags 2>>"$catalog_log"; then
+              branch="master"
+            else
+              catalog_fail "Git fetch misslyckades"
+              exit 1
+            fi
+          else
+            catalog_fail "Git fetch misslyckades"
+            exit 1
+          fi
+        fi
+
+        if ! git checkout "origin/$branch" -- public/services.json 2>>"$catalog_log"; then
+          catalog_fail "Kunde inte checkout services.json från origin/$branch"
+          exit 1
+        fi
+
+        if ! jq -e . "public/services.json" >/dev/null 2>&1; then
+          catalog_fail "services.json från origin är inte giltig JSON"
+          exit 1
+        fi
+
+        if ! jq -e 'has("services") or (type == "array")' "public/services.json" >/dev/null 2>&1; then
+          catalog_fail "services.json saknar 'services'-nyckel"
+          exit 1
+        fi
+
+        local service_count
+        service_count=$(jq -r '(.services // .) | length' "public/services.json" 2>/dev/null || echo "?")
+
+        if ! sudo cp "public/services.json" "$ndir/services.json" 2>>"$catalog_log"; then
+          catalog_fail "Kunde inte kopiera services.json till nginx-katalogen"
+          exit 1
+        fi
+
+        local new_hash
+        new_hash=$(sha256sum "$ndir/services.json" 2>/dev/null | awk '{print $1}')
+
+        # Invalidera registry-cache så nya tjänster syns omedelbart
+        unset _REGISTRY_CACHE_JSON 2>/dev/null || true
+        rm -f "$CACHE_FILE" 2>/dev/null || true
+
+        local elapsed
+        elapsed=$(( $(date +%s) - start_time ))
+
+        if [ "$old_hash" = "$new_hash" ]; then
+          echo "[$(date -Iseconds)] OK: oförändrad ($service_count tjänster, ${elapsed}s)" >> "$catalog_log"
+          echo "{\"status\":\"success\",\"message\":\"Katalog redan uppdaterad ($service_count tjänster)\",\"changed\":false,\"serviceCount\":$service_count,\"elapsed\":\"${elapsed}s\",\"timestamp\":\"$(date -Iseconds)\"}" > "$sf"
+        else
+          echo "[$(date -Iseconds)] OK: uppdaterad ($service_count tjänster, ${elapsed}s)" >> "$catalog_log"
+          echo "{\"status\":\"success\",\"message\":\"Katalog uppdaterad — $service_count tjänster tillgängliga\",\"changed\":true,\"serviceCount\":$service_count,\"elapsed\":\"${elapsed}s\",\"timestamp\":\"$(date -Iseconds)\"}" > "$sf"
+        fi
+      ) >> "$catalog_log" 2>&1 &
+      ;;
+
     "POST /api/update/dashboard")
       local sf ddir ndir dashboard_log remote_ref start_time
       sf="$STATUS_DIR/dashboard.json"
