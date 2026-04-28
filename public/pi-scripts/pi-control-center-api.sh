@@ -173,6 +173,22 @@ APPS_DATA_DIR="/var/lib/pi-control-center/apps"
 APPS_LOG_DIR="/var/log/pi-control-center/apps"
 OP_LOCK_FILE="/tmp/pi-control-center/operation.lock"
 
+# Acquire OP_LOCK med timeout. Returnerar 0 om lock erhållet, 1 om timeout.
+# Förhindrar att en hängande update blockerar alla framtida update-försök.
+acquire_op_lock_or_timeout() {
+  local fd=$1
+  local timeout_seconds=${2:-600}
+  local elapsed=0
+  while ! flock -n "$fd"; do
+    sleep 2
+    elapsed=$((elapsed + 2))
+    if [ "$elapsed" -ge "$timeout_seconds" ]; then
+      return 1
+    fi
+  done
+  return 0
+}
+
 HEALTH_DIR="$STATUS_DIR/health"
 WATCHDOG_DIR="$STATUS_DIR/watchdog"
 RELEASE_HEAL_DIR="$STATUS_DIR/release-heal"
