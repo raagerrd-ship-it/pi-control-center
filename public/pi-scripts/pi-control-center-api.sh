@@ -173,6 +173,22 @@ APPS_DATA_DIR="/var/lib/pi-control-center/apps"
 APPS_LOG_DIR="/var/log/pi-control-center/apps"
 OP_LOCK_FILE="/tmp/pi-control-center/operation.lock"
 
+# Acquire OP_LOCK med timeout. Returnerar 0 om lock erhållet, 1 om timeout.
+# Förhindrar att en hängande update blockerar alla framtida update-försök.
+acquire_op_lock_or_timeout() {
+  local fd=$1
+  local timeout_seconds=${2:-600}
+  local elapsed=0
+  while ! flock -n "$fd"; do
+    sleep 2
+    elapsed=$((elapsed + 2))
+    if [ "$elapsed" -ge "$timeout_seconds" ]; then
+      return 1
+    fi
+  done
+  return 0
+}
+
 HEALTH_DIR="$STATUS_DIR/health"
 WATCHDOG_DIR="$STATUS_DIR/watchdog"
 RELEASE_HEAL_DIR="$STATUS_DIR/release-heal"
@@ -2590,10 +2606,21 @@ handle_request() {
       : > "$dashboard_log"
       response=$(< "$sf")
       (
+        # Global timeout: hela update får max 15 min. Förhindrar att hängande
+        # npm install / git fetch lämnar systemet i evig "updating"-state.
+        UPDATE_TIMEOUT_SECONDS=900
+        update_pid=$$
+        ( sleep $UPDATE_TIMEOUT_SECONDS && kill -TERM $update_pid 2>/dev/null ) &
+        timeout_killer_pid=$!
+
         exec 9>"$OP_LOCK_FILE"
         if ! flock -n 9; then
           echo '{"app":"dashboard","status":"updating","progress":"Pi upptagen – väntar på uppdateringskö..."}' > "$sf"
-          flock 9
+          if ! acquire_op_lock_or_timeout 9 600; then
+            echo '{"app":"dashboard","status":"error","message":"Annan operation håller lock över 10 min — avbryter","timestamp":"'"$(date -Iseconds)"'"}' > "$sf"
+            kill "$timeout_killer_pid" 2>/dev/null || true
+            exit 1
+          fi
         fi
         STOPPED_SERVICES=""
 
@@ -2667,7 +2694,19 @@ handle_request() {
           return 1
         }
 
-        trap 'code=$?; if [ "$code" -ne 0 ] && grep -q "\"status\":\"updating\"" "$sf" 2>/dev/null; then dashboard_fail "Uppdateringen avbröts oväntat"; fi; restart_app_services' EXIT
+        # EXIT-trap: säkerställ att tjänster ALLTID startas om, oavsett hur vi avslutar.
+        # Skriv "error"-status om vi avslutar med fel-kod och status fortfarande är "updating".
+        cleanup_exit() {
+          local code=$?
+          if [ "$code" -ne 0 ] && grep -q "\"status\":\"updating\"" "$sf" 2>/dev/null; then
+            dashboard_fail "Uppdateringen avbröts oväntat (exit code $code)"
+          fi
+          # Stoppa timeout-killer om vi når exit innan den fyrar
+          [ -n "${timeout_killer_pid:-}" ] && kill "$timeout_killer_pid" 2>/dev/null || true
+          # ALLTID restart tjänster — även vid fel ska de startas om
+          restart_app_services
+        }
+        trap cleanup_exit EXIT
 
         cd "$ddir" 2>/dev/null || { dashboard_fail "Dashboard-katalog saknas"; exit 1; }
 
@@ -2708,28 +2747,72 @@ handle_request() {
         fi
 
         dashboard_progress "Installerar dependencies..."
-        rm -rf node_modules
+        # Behåll gammal node_modules som backup tills ny install bekräftats
+        if [ -d node_modules ]; then
+          mv node_modules node_modules.old 2>/dev/null || rm -rf node_modules
+        fi
         if ! sudo systemd-run --scope --quiet -p MemoryMax=400M bash -lc "cd '$ddir' && NODE_OPTIONS='--max-old-space-size=352' npm install --no-audit --no-fund"; then
+          # Restore backup om ny install failade
+          if [ -d node_modules.old ]; then
+            rm -rf node_modules
+            mv node_modules.old node_modules
+            echo "Återställde gammal node_modules efter misslyckad install" >> "$dashboard_log"
+          fi
           dashboard_fail "npm install misslyckades eller dödades (troligen minnesbrist)"
           exit 1
         fi
+        # Rensa backup när ny install lyckats
+        rm -rf node_modules.old 2>/dev/null || true
         sudo chown -R pi:pi "$ddir/node_modules" 2>/dev/null || true
 
         dashboard_progress "Bygger dashboard..."
-        sudo rm -rf "$ddir/dist"
-        if ! sudo systemd-run --scope --quiet -p MemoryMax=384M bash -lc "cd '$ddir' && NODE_OPTIONS='--max-old-space-size=320' npx vite build"; then
+        # Bygg till temp-dir så att existerande dist/ finns kvar tills ny är OK
+        sudo rm -rf "$ddir/dist.new"
+        if ! sudo systemd-run --scope --quiet -p MemoryMax=384M bash -lc "cd '$ddir' && NODE_OPTIONS='--max-old-space-size=320' npx vite build --outDir dist.new"; then
+          sudo rm -rf "$ddir/dist.new" 2>/dev/null || true
           dashboard_fail "Build misslyckades eller dödades (troligen minnesbrist)"
           exit 1
         fi
+        # Verifiera ny build är komplett innan vi byter
+        if [ ! -f "$ddir/dist.new/index.html" ]; then
+          sudo rm -rf "$ddir/dist.new" 2>/dev/null || true
+          dashboard_fail "Build verifierade inte — index.html saknas i dist.new"
+          exit 1
+        fi
+        # Atomic swap: bara nu ersätter vi gamla dist
+        sudo rm -rf "$ddir/dist.bak" 2>/dev/null || true
+        [ -d "$ddir/dist" ] && sudo mv "$ddir/dist" "$ddir/dist.bak"
+        sudo mv "$ddir/dist.new" "$ddir/dist"
 
         dashboard_progress "Deployar..."
         sudo mkdir -p "$ndir"
-        sudo cp -r dist/* "$ndir/" || { dashboard_fail "Deploy misslyckades"; exit 1; }
+        # Backup nuvarande nginx-deploy så vi kan rulla tillbaka vid fel
+        sudo rm -rf "${ndir}.bak" 2>/dev/null || true
+        if [ -d "$ndir" ] && [ "$(ls -A "$ndir" 2>/dev/null)" ]; then
+          sudo cp -r "$ndir" "${ndir}.bak" 2>/dev/null || true
+        fi
+        if ! sudo cp -r dist/* "$ndir/" 2>> "$dashboard_log"; then
+          # Rulla tillbaka
+          if [ -d "${ndir}.bak" ]; then
+            sudo rm -rf "$ndir"
+            sudo mv "${ndir}.bak" "$ndir"
+            echo "Rullade tillbaka deploy efter cp-fel" >> "$dashboard_log"
+          fi
+          dashboard_fail "Deploy misslyckades"
+          exit 1
+        fi
         # Verifiera att något faktiskt kopierades
         if [ -z "$(find "$ndir" -maxdepth 2 -name "index.html" | head -1)" ]; then
+          if [ -d "${ndir}.bak" ]; then
+            sudo rm -rf "$ndir"
+            sudo mv "${ndir}.bak" "$ndir"
+            echo "Rullade tillbaka deploy efter index.html-saknad" >> "$dashboard_log"
+          fi
           dashboard_fail "Deploy verifiering misslyckades — index.html saknas i $ndir"
           exit 1
         fi
+        # Allt OK — rensa backup
+        sudo rm -rf "${ndir}.bak" 2>/dev/null || true
         sudo chown -R pi:pi "$ddir/dist" 2>/dev/null || true
         [ -f "$ddir/public/services.json" ] && sudo cp "$ddir/public/services.json" "$ndir/" || true
         if [ -f "$ddir/public/pi-scripts/pi-control-center-api.sh" ]; then
@@ -2750,6 +2833,19 @@ handle_request() {
         restart_app_services
         STOPPED_SERVICES=""  # förhindra dubbel-restart i EXIT-trap
 
+        # Vänta tills nginx faktiskt serverar nya filer (förhindrar att UI ser
+        # cachad gammal index.html under restart-fönstret)
+        dashboard_progress "Verifierar deploy..."
+        deploy_check_attempts=0
+        while [ "$deploy_check_attempts" -lt 5 ]; do
+          if curl -sf "http://127.0.0.1/" -o /dev/null 2>/dev/null; then
+            echo "Deploy verifierad — nginx svarar" >> "$dashboard_log"
+            break
+          fi
+          sleep 1
+          deploy_check_attempts=$((deploy_check_attempts + 1))
+        done
+
         dashboard_progress "Städar upp..."
         avail_mb=$(df -m "$ddir" | awk 'NR==2{print $4}')
         if [ "${avail_mb:-0}" -lt 200 ]; then
@@ -2762,8 +2858,15 @@ handle_request() {
         t_sec=$((elapsed % 60))
         if [ "$t_min" -gt 0 ]; then total_str="${t_min}m ${t_sec}s"; else total_str="${t_sec}s"; fi
         echo "{\"app\":\"dashboard\",\"status\":\"success\",\"message\":\"Dashboard uppdaterad (${total_str})\",\"timestamp\":\"$(date -Iseconds)\"}" > "$sf"
-        sleep 1
-        sudo systemctl restart pi-control-center-api >/dev/null 2>&1 || true
+        # Sync så success-status garanterat hamnar på disk innan restart
+        sync
+        sleep 2
+        # Stoppa timeout-killer innan vi triggar restart (annars kan kill -TERM
+        # komma efter att API:t startat om och döda fel process)
+        kill "$timeout_killer_pid" 2>/dev/null || true
+        # Använd --no-block så vår process inte blir kapad mid-restart.
+        # Service file har Restart=always så systemd startar om oss reliably.
+        sudo systemctl --no-block restart pi-control-center-api 2>/dev/null || true
       ) >> "$dashboard_log" 2>&1 &
       ;;
 
@@ -2780,10 +2883,31 @@ handle_request() {
       response=$(< "$update_json")
 
       (
+        # Global timeout: service-update får max 15 min. Förhindrar evigt
+        # "updating"-state vid hängande nedladdning/uppackning/restart.
+        UPDATE_TIMEOUT_SECONDS=900
+        update_pid=$$
+        ( sleep $UPDATE_TIMEOUT_SECONDS && kill -TERM $update_pid 2>/dev/null ) &
+        timeout_killer_pid=$!
+
+        # EXIT-trap: skriv error om vi avslutar utan att ha satt success/error,
+        # och stoppa alltid timeout-killern så den inte överlever processen.
+        cleanup_service_exit() {
+          local code=$?
+          if [ "$code" -ne 0 ] && grep -q "\"status\":\"updating\"" "$update_json" 2>/dev/null; then
+            echo "{\"app\":\"${app}\",\"status\":\"error\",\"message\":\"Uppdateringen avbröts oväntat (exit code $code)\",\"timestamp\":\"$(date -Iseconds)\"}" > "$update_json"
+          fi
+          [ -n "${timeout_killer_pid:-}" ] && kill "$timeout_killer_pid" 2>/dev/null || true
+        }
+        trap cleanup_service_exit EXIT
+
         exec 9>"$OP_LOCK_FILE"
         if ! flock -n 9; then
           echo "{\"app\":\"${app}\",\"status\":\"updating\",\"progress\":\"Pi upptagen – väntar på uppdateringskö...\",\"timestamp\":\"$(date -Iseconds)\"}" > "$update_json"
-          flock 9
+          if ! acquire_op_lock_or_timeout 9 600; then
+            echo "{\"app\":\"${app}\",\"status\":\"error\",\"message\":\"Annan operation håller lock över 10 min — avbryter\",\"timestamp\":\"$(date -Iseconds)\"}" > "$update_json"
+            exit 1
+          fi
         fi
         local release_url install_dir svc download_url latest_tag
         release_url=$(registry_get "$app" "releaseUrl")
