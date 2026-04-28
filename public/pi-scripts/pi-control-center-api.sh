@@ -2289,6 +2289,12 @@ do_install() {
   # Save assignment
   assignment_set "$app" "$req_core"
 
+  # Switch UI from python static-spa-server.py to nginx vhost
+  if _app_write_nginx_vhost "$app"; then
+    _app_neutralize_ui_unit "$app"
+    log "UI: ${app} now served by nginx on port $(registry_get "$app" "port")"
+  fi
+
   # Omfördela RAM-budgeten mellan alla installerade tjänster
   rebalance_memory_budget
 
@@ -2351,6 +2357,11 @@ do_uninstall() {
 
   # Remove assignment
   assignment_remove "$app"
+
+  # Remove nginx vhost (drop-in for the *-ui unit goes away with the unit file)
+  sudo_run rm -f "/etc/nginx/sites-enabled/${app}-ui"
+  sudo_run rm -f "/etc/nginx/sites-available/${app}-ui"
+  sudo_run /usr/sbin/nginx -s reload 2>/dev/null || true
 
   # Omfördela RAM-budgeten — kvarvarande tjänster får mer
   rebalance_memory_budget
@@ -3661,6 +3672,9 @@ startup_repair_app_dirs() {
   done
 }
 startup_repair_app_dirs
+
+# --- One-shot: migrate any python-served UIs to nginx vhosts ---
+migrate_uis_to_nginx
 
 if [ "$REQUEST_MODE" = "--background-only" ]; then
   echo "Pi Control Center API background loops starting (HTTP served by Python on port $PORT)"
