@@ -219,6 +219,48 @@ export function Settings({ onSave }: { onSave: (s: DashboardSettings) => void })
           <Button onClick={save} className="font-mono text-sm">Spara</Button>
 
           <div className="border-t border-border pt-4 mt-2 flex flex-col gap-2">
+            <Label className="text-xs text-muted-foreground font-mono mb-1 block">Tjänstkatalog</Label>
+            <p className="text-[11px] text-muted-foreground leading-relaxed">
+              Hämtar senaste services.json från PCC-repot. Använd när nya tjänster lagts till i katalogen och du vill att de ska dyka upp i installationsdialogen. Tar ~5 sek och rör inte dashboarden.
+            </p>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleCatalogUpdate}
+              disabled={catalogUpdating}
+              className="w-full font-mono text-xs"
+            >
+              {catalogUpdating ? (
+                <>
+                  <Loader2 className="h-3 w-3 animate-spin mr-1.5" />
+                  <span className="truncate">{catalogStatus?.progress || 'Hämtar...'}</span>
+                </>
+              ) : catalogStatus?.status === 'success' ? (
+                <>
+                  <Check className="h-3 w-3 mr-1.5" />
+                  Hämta senaste tjänstkatalog
+                </>
+              ) : (
+                <>
+                  <RefreshCw className="h-3 w-3 mr-1.5" />
+                  Hämta senaste tjänstkatalog
+                </>
+              )}
+            </Button>
+            {catalogStatus?.status === 'success' && (
+              <p className="text-[11px] font-mono text-muted-foreground">
+                ✓ {catalogStatus.message}
+                {catalogStatus.changed === false && ' — inga ändringar'}
+              </p>
+            )}
+            {catalogStatus?.status === 'error' && (
+              <p className="text-[11px] font-mono text-destructive">
+                ✗ {catalogStatus.message || 'Okänt fel'}
+              </p>
+            )}
+          </div>
+
+          <div className="border-t border-border pt-4 mt-2 flex flex-col gap-2">
             <Label className="text-xs text-muted-foreground font-mono mb-1 block">Farlig zon</Label>
 
             {/* Återställ Pi — full reset + reinstall PCC */}
