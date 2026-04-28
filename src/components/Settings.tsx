@@ -1,5 +1,5 @@
-import { useState, useEffect, useCallback } from 'react';
-import { Settings as SettingsIcon, AlertTriangle, Loader2, RotateCcw } from 'lucide-react';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { Settings as SettingsIcon, AlertTriangle, Loader2, RotateCcw, RefreshCw, Check } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -22,7 +22,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog';
-import { triggerFactoryReset, triggerPiReset, fetchFactoryResetStatus } from '@/lib/api';
+import { triggerFactoryReset, triggerPiReset, fetchFactoryResetStatus, triggerServicesCatalogUpdate, fetchServicesCatalogStatus, type ServicesCatalogStatus } from '@/lib/api';
 
 export interface DashboardSettings {
   deviceLabel: string;
@@ -54,6 +54,56 @@ export function Settings({ onSave }: { onSave: (s: DashboardSettings) => void })
   const [piResetting, setPiResetting] = useState(false);
   const [piResetDone, setPiResetDone] = useState(false);
   const [piResetPhase, setPiResetPhase] = useState('');
+  const [catalogUpdating, setCatalogUpdating] = useState(false);
+  const [catalogStatus, setCatalogStatus] = useState<ServicesCatalogStatus | null>(null);
+  const catalogPollRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (catalogPollRef.current) clearTimeout(catalogPollRef.current);
+    };
+  }, []);
+
+  const handleCatalogUpdate = useCallback(async () => {
+    setCatalogUpdating(true);
+    setCatalogStatus({ status: 'updating', progress: 'Startar...' });
+    try {
+      await triggerServicesCatalogUpdate();
+      let failures = 0;
+      const MAX_FAILURES = 15;
+      const poll = async () => {
+        try {
+          const result = await fetchServicesCatalogStatus();
+          failures = 0;
+          setCatalogStatus(result);
+          if (result.status === 'success') {
+            setCatalogUpdating(false);
+            if (result.changed) {
+              setTimeout(() => window.location.reload(), 1200);
+            }
+            return;
+          }
+          if (result.status === 'error') {
+            setCatalogUpdating(false);
+            return;
+          }
+          catalogPollRef.current = setTimeout(poll, 1000);
+        } catch {
+          failures++;
+          if (failures >= MAX_FAILURES) {
+            setCatalogUpdating(false);
+            setCatalogStatus({ status: 'error', message: 'Tappade kontakt med Pi' });
+            return;
+          }
+          catalogPollRef.current = setTimeout(poll, 2000);
+        }
+      };
+      catalogPollRef.current = setTimeout(poll, 1000);
+    } catch (e) {
+      setCatalogUpdating(false);
+      setCatalogStatus({ status: 'error', message: e instanceof Error ? e.message : String(e) });
+    }
+  }, []);
 
   useEffect(() => {
     setSettings(loadSettings());
@@ -167,6 +217,48 @@ export function Settings({ onSave }: { onSave: (s: DashboardSettings) => void })
           </div>
 
           <Button onClick={save} className="font-mono text-sm">Spara</Button>
+
+          <div className="border-t border-border pt-4 mt-2 flex flex-col gap-2">
+            <Label className="text-xs text-muted-foreground font-mono mb-1 block">Tjänstkatalog</Label>
+            <p className="text-[11px] text-muted-foreground leading-relaxed">
+              Hämtar senaste services.json från PCC-repot. Använd när nya tjänster lagts till i katalogen och du vill att de ska dyka upp i installationsdialogen. Tar ~5 sek och rör inte dashboarden.
+            </p>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleCatalogUpdate}
+              disabled={catalogUpdating}
+              className="w-full font-mono text-xs"
+            >
+              {catalogUpdating ? (
+                <>
+                  <Loader2 className="h-3 w-3 animate-spin mr-1.5" />
+                  <span className="truncate">{catalogStatus?.progress || 'Hämtar...'}</span>
+                </>
+              ) : catalogStatus?.status === 'success' ? (
+                <>
+                  <Check className="h-3 w-3 mr-1.5" />
+                  Hämta senaste tjänstkatalog
+                </>
+              ) : (
+                <>
+                  <RefreshCw className="h-3 w-3 mr-1.5" />
+                  Hämta senaste tjänstkatalog
+                </>
+              )}
+            </Button>
+            {catalogStatus?.status === 'success' && (
+              <p className="text-[11px] font-mono text-muted-foreground">
+                ✓ {catalogStatus.message}
+                {catalogStatus.changed === false && ' — inga ändringar'}
+              </p>
+            )}
+            {catalogStatus?.status === 'error' && (
+              <p className="text-[11px] font-mono text-destructive">
+                ✗ {catalogStatus.message || 'Okänt fel'}
+              </p>
+            )}
+          </div>
 
           <div className="border-t border-border pt-4 mt-2 flex flex-col gap-2">
             <Label className="text-xs text-muted-foreground font-mono mb-1 block">Farlig zon</Label>
