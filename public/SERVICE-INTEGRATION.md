@@ -1,5 +1,14 @@
 # Service Integration Guide — Pi Control Center
 
+> ⚠️ **Det här är en tutorial, inte specifikationen.**
+> Det normativa kontraktet finns i [`SERVICE-CONTRACT.md`](./SERVICE-CONTRACT.md) (v1.0).
+> Vid konflikt mellan denna guide och kontraktet **vinner kontraktet**.
+>
+> Kända områden där den här guiden är förenklad eller utdaterad:
+> - `installDir` ska vara `/opt/<key>` (inte `$HOME/.local/share/...`).
+> - `MemoryMax` är dynamisk via `memoryProfile` (inte hårdkodad 128M).
+> - `memoryProfile`, `writableDirs`, `managed`, `PCC_DATA_DIR` saknas i avsnitten nedan — se kontraktet.
+
 > **Pi Control Center är operativsystemet. Din tjänst är ett program.**
 >
 > Denna guide beskriver exakt hur du bygger en tjänst som kan installeras, uppdateras och avinstalleras via Pi Control Center — helt från mobilen.
