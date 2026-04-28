@@ -223,6 +223,10 @@ $USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl --no-block stop *.service
 $USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl enable *.service
 $USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl disable *.service
 $USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl try-restart *.service
+$USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl set-property *.service MemoryMax=*
+$USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl reboot
+$USER ALL=(ALL) NOPASSWD: /usr/sbin/nginx -s reload
+$USER ALL=(ALL) NOPASSWD: /usr/sbin/nginx -t
 $USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl restart *.service
 $USER ALL=(ALL) NOPASSWD: /usr/bin/mkdir -p /etc/pi-control-center
 $USER ALL=(ALL) NOPASSWD: /usr/bin/mkdir -p /etc/pi-control-center/apps

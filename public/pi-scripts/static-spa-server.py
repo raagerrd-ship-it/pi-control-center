@@ -7,7 +7,14 @@ from pathlib import Path
 from urllib.parse import unquote, urlparse
 
 
+class HardenedHTTPServer(ThreadingHTTPServer):
+    request_queue_size = 64
+    daemon_threads = True
+    allow_reuse_address = True
+
+
 class StaticSpaHandler(BaseHTTPRequestHandler):
+    protocol_version = 'HTTP/1.1'
     root = Path('.')
 
     def do_GET(self) -> None:
@@ -76,7 +83,7 @@ def main() -> None:
         raise SystemExit(f'Root directory not found: {root}')
 
     StaticSpaHandler.root = root
-    server = ThreadingHTTPServer((args.host, args.port), StaticSpaHandler)
+    server = HardenedHTTPServer((args.host, args.port), StaticSpaHandler)
     print(f'Serving {root} on http://{args.host}:{args.port}')
     server.serve_forever()
 
