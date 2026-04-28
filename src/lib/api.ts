@@ -357,3 +357,29 @@ export async function fetchFactoryResetStatus(): Promise<FactoryResetResult> {
   if (!res.ok) throw new Error('Failed to fetch reset status');
   return res.json();
 }
+
+export interface ServicesCatalogStatus {
+  status: 'idle' | 'updating' | 'success' | 'error';
+  message?: string;
+  progress?: string;
+  changed?: boolean;
+  serviceCount?: number;
+  elapsed?: string;
+  timestamp?: string;
+  logTail?: string;
+}
+
+export async function triggerServicesCatalogUpdate(): Promise<ServicesCatalogStatus> {
+  const res = await fetch(`${getBaseUrl()}/api/update/services-catalog`, {
+    method: 'POST',
+    signal: AbortSignal.timeout(10000),
+  });
+  if (!res.ok) throw new Error('Failed to trigger services catalog update');
+  return res.json();
+}
+
+export async function fetchServicesCatalogStatus(): Promise<ServicesCatalogStatus> {
+  const res = await fetch(`${getBaseUrl()}/api/services-catalog/status`, { signal: AbortSignal.timeout(4000) });
+  if (!res.ok) throw new Error('Failed to fetch services catalog status');
+  return res.json();
+}
