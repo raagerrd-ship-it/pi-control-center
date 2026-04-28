@@ -54,6 +54,56 @@ export function Settings({ onSave }: { onSave: (s: DashboardSettings) => void })
   const [piResetting, setPiResetting] = useState(false);
   const [piResetDone, setPiResetDone] = useState(false);
   const [piResetPhase, setPiResetPhase] = useState('');
+  const [catalogUpdating, setCatalogUpdating] = useState(false);
+  const [catalogStatus, setCatalogStatus] = useState<ServicesCatalogStatus | null>(null);
+  const catalogPollRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (catalogPollRef.current) clearTimeout(catalogPollRef.current);
+    };
+  }, []);
+
+  const handleCatalogUpdate = useCallback(async () => {
+    setCatalogUpdating(true);
+    setCatalogStatus({ status: 'updating', progress: 'Startar...' });
+    try {
+      await triggerServicesCatalogUpdate();
+      let failures = 0;
+      const MAX_FAILURES = 15;
+      const poll = async () => {
+        try {
+          const result = await fetchServicesCatalogStatus();
+          failures = 0;
+          setCatalogStatus(result);
+          if (result.status === 'success') {
+            setCatalogUpdating(false);
+            if (result.changed) {
+              setTimeout(() => window.location.reload(), 1200);
+            }
+            return;
+          }
+          if (result.status === 'error') {
+            setCatalogUpdating(false);
+            return;
+          }
+          catalogPollRef.current = setTimeout(poll, 1000);
+        } catch {
+          failures++;
+          if (failures >= MAX_FAILURES) {
+            setCatalogUpdating(false);
+            setCatalogStatus({ status: 'error', message: 'Tappade kontakt med Pi' });
+            return;
+          }
+          catalogPollRef.current = setTimeout(poll, 2000);
+        }
+      };
+      catalogPollRef.current = setTimeout(poll, 1000);
+    } catch (e) {
+      setCatalogUpdating(false);
+      setCatalogStatus({ status: 'error', message: e instanceof Error ? e.message : String(e) });
+    }
+  }, []);
 
   useEffect(() => {
     setSettings(loadSettings());
