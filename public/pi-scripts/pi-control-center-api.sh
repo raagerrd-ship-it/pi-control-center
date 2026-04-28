@@ -2883,10 +2883,31 @@ handle_request() {
       response=$(< "$update_json")
 
       (
+        # Global timeout: service-update får max 15 min. Förhindrar evigt
+        # "updating"-state vid hängande nedladdning/uppackning/restart.
+        UPDATE_TIMEOUT_SECONDS=900
+        update_pid=$$
+        ( sleep $UPDATE_TIMEOUT_SECONDS && kill -TERM $update_pid 2>/dev/null ) &
+        timeout_killer_pid=$!
+
+        # EXIT-trap: skriv error om vi avslutar utan att ha satt success/error,
+        # och stoppa alltid timeout-killern så den inte överlever processen.
+        cleanup_service_exit() {
+          local code=$?
+          if [ "$code" -ne 0 ] && grep -q "\"status\":\"updating\"" "$update_json" 2>/dev/null; then
+            echo "{\"app\":\"${app}\",\"status\":\"error\",\"message\":\"Uppdateringen avbröts oväntat (exit code $code)\",\"timestamp\":\"$(date -Iseconds)\"}" > "$update_json"
+          fi
+          [ -n "${timeout_killer_pid:-}" ] && kill "$timeout_killer_pid" 2>/dev/null || true
+        }
+        trap cleanup_service_exit EXIT
+
         exec 9>"$OP_LOCK_FILE"
         if ! flock -n 9; then
           echo "{\"app\":\"${app}\",\"status\":\"updating\",\"progress\":\"Pi upptagen – väntar på uppdateringskö...\",\"timestamp\":\"$(date -Iseconds)\"}" > "$update_json"
-          flock 9
+          if ! acquire_op_lock_or_timeout 9 600; then
+            echo "{\"app\":\"${app}\",\"status\":\"error\",\"message\":\"Annan operation håller lock över 10 min — avbryter\",\"timestamp\":\"$(date -Iseconds)\"}" > "$update_json"
+            exit 1
+          fi
         fi
         local release_url install_dir svc download_url latest_tag
         release_url=$(registry_get "$app" "releaseUrl")
