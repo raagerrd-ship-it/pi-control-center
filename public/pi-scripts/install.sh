@@ -12,6 +12,9 @@ export NODE_OPTIONS="--max-old-space-size=256"
 
 echo "=== Pi Control Center Installer (Pi Zero 2 W optimized) ==="
 
+# Cleanup legacy single-rule sudoers from earlier hotfix (merged into main file below)
+sudo rm -f /etc/sudoers.d/pi-control-center-memory 2>/dev/null || true
+
 ensure_node24() {
   local current major
   current=$(node -v 2>/dev/null || true)
@@ -259,6 +262,14 @@ $USER ALL=(ALL) NOPASSWD: /usr/bin/journalctl *
 $USER ALL=(ALL) NOPASSWD: /usr/bin/systemd-run *
 EOF
 sudo chmod 440 /etc/sudoers.d/pi-control-center
+
+# Quiet journald by default — only err+ stored. Reverse via:
+#   sudo rm /etc/systemd/journald.conf.d/quiet.conf && sudo systemctl restart systemd-journald
+sudo mkdir -p /etc/systemd/journald.conf.d
+sudo install -m 0644 -o root -g root \
+  "$(dirname "$0")/journald-quiet.conf" \
+  /etc/systemd/journald.conf.d/quiet.conf
+sudo systemctl restart systemd-journald
 
 sudo systemctl daemon-reload
 
