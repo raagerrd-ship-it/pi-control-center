@@ -484,6 +484,19 @@ setup_permissions || {
   exit 1
 }
 
+# Cleanup legacy single-rule sudoers from earlier hotfix
+sudo rm -f /etc/sudoers.d/pi-control-center-memory 2>/dev/null || true
+
+# Quiet journald by default — only err+ stored. Reverse via:
+#   sudo rm /etc/systemd/journald.conf.d/quiet.conf && sudo systemctl restart systemd-journald
+if [ -f "$DASHBOARD_DIR/public/pi-scripts/journald-quiet.conf" ]; then
+  sudo mkdir -p /etc/systemd/journald.conf.d
+  sudo install -m 0644 -o root -g root \
+    "$DASHBOARD_DIR/public/pi-scripts/journald-quiet.conf" \
+    /etc/systemd/journald.conf.d/quiet.conf
+  sudo systemctl restart systemd-journald
+fi
+
 # Mark as installed & disable first-boot service (if it exists)
 touch "$MARKER"
 sudo systemctl disable first-boot-setup.service 2>/dev/null || true
