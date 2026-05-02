@@ -2959,7 +2959,11 @@ handle_request() {
         dashboard_progress "Hämtar senaste kod..."
         fetch_err="$STATUS_DIR/dashboard-git-fetch.err"
         : > "$fetch_err"
-        if ! nice -n 15 dashboard_git_fetch "$fetch_err"; then
+        # Note: `nice` cannot run bash functions (only external binaries) — calling
+        # `nice -n 15 dashboard_git_fetch` produced "No such file or directory".
+        # Renice the current shell instead so the fetch inherits lower priority.
+        renice -n 15 $$ >/dev/null 2>&1 || true
+        if ! dashboard_git_fetch "$fetch_err"; then
           fetch_msg=$(tail -8 "$fetch_err" 2>/dev/null | tr '\n' ' ' | sed 's/"/\\"/g' | cut -c1-260)
           dashboard_fail "Git fetch misslyckades${fetch_msg:+: ${fetch_msg}}"
           exit 1
