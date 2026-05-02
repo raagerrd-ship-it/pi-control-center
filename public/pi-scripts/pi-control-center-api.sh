@@ -876,6 +876,15 @@ append_memory_change_log() {
   log "$message"
 }
 
+# ─── KNOWN REGRESSION TARGET ───────────────────────────────────────
+# This function MUST NOT call _app_try_restart unconditionally after
+# _app_set_limit. The caller relies on _app_set_limit's return status
+# to decide. Reverting this to "always try-restart" causes the auto-
+# scaler to ping-pong apps every ~4 min, killing BLE/audio links on
+# deployed hardware. Verified live 2026-04-28 + regressed 2026-05-02.
+# If you're updating this function: make sure the live_change flag
+# path remains intact and that set-property is in sudoers NOPASSWD.
+# ────────────────────────────────────────────────────────────────────
 auto_adjust_memory_limit() {
   local app=$1 ram=$2 current_limit current_level pct up_fails down_fails last_change now adjacent next_level next_mb direction old_limit live_change=1
   [ -n "$(assignment_get_core "$app")" ] || return
