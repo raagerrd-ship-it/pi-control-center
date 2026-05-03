@@ -23,7 +23,7 @@ export function useServiceUpdate(serviceNames: Record<string, string>) {
 
   const label = (app: string) => (serviceNamesRef.current[app] || app).toUpperCase();
 
-  const pollUpdateStatus = useCallback((app: string) => {
+  const pollUpdateStatus = useCallback((app: string, options?: { skipExistingLogTail?: boolean }) => {
     const timerKey = `update:${app}`;
     let retryCount = 0;
     let lastPhase = '';
@@ -34,13 +34,14 @@ export function useServiceUpdate(serviceNames: Record<string, string>) {
     const emitNewLogLines = (logTail?: string) => {
       if (!logTail) return;
       const lines = logTail.split('\n').map(l => l.trim()).filter(Boolean);
-      if (!logPrimed) {
+      if (!logPrimed && options?.skipExistingLogTail) {
         // Första pollen: markera befintliga rader som sedda — annars skulle
         // vi spamma loggen med historik från en tidigare körning.
         lines.forEach(l => seenLogLines.add(l));
         logPrimed = true;
         return;
       }
+      logPrimed = true;
       for (const line of lines) {
         if (seenLogLines.has(line)) continue;
         seenLogLines.add(line);
@@ -105,11 +106,17 @@ export function useServiceUpdate(serviceNames: Record<string, string>) {
     addEntryRef.current(label(app), 'Uppdatering startad', 'info');
     setUpdates(prev => ({ ...prev, [app]: { app, status: 'updating' } }));
     try {
-      const result = await triggerUpdate(app);
-      setUpdates(prev => ({ ...prev, [app]: result }));
-      if (result.status === 'updating') pollUpdateStatus(app);
-      else if (result.status === 'success') addEntryRef.current(label(app), result.message || 'Uppdaterad', 'success');
-      else if (result.status === 'error') addEntryRef.current(label(app), `Uppdatering misslyckades: ${result.message || 'okänt fel'}`, 'error');
+      triggerUpdate(app).then(result => {
+        setUpdates(prev => ({ ...prev, [app]: result }));
+        if (result.status === 'success') addEntryRef.current(label(app), result.message || 'Uppdaterad', 'success');
+        else if (result.status === 'error') addEntryRef.current(label(app), `Uppdatering misslyckades: ${result.message || 'okänt fel'}`, 'error');
+      }).catch(e => {
+        const msg = e instanceof Error ? e.message : 'Update failed';
+        addEntryRef.current(label(app), `Uppdateringsanropet svarade inte: ${msg} — fortsätter läsa status`, 'info');
+      });
+      // Börja läsa status/logg direkt i stället för att vänta på POST-svaret.
+      // På Pi kan HTTP-anropet hållas öppet medan bakgrundsjobbet kör.
+      pollTimers.current[timerKey] = window.setTimeout(() => pollUpdateStatus(app), 1000);
     } catch (e) {
       const msg = e instanceof Error ? e.message : 'Update failed';
       addEntryRef.current(label(app), `Uppdatering misslyckades: ${msg}`, 'error');
@@ -271,7 +278,7 @@ export function useServiceUpdate(serviceNames: Record<string, string>) {
           if (updateResult.status === 'updating') {
             addEntryRef.current(displayLabel, 'Återupptar spårning av pågående uppdatering', 'info');
             setUpdates(prev => ({ ...prev, [key]: updateResult }));
-            pollUpdateStatus(key);
+            pollUpdateStatus(key, { skipExistingLogTail: true });
           }
         }
       };
