@@ -109,6 +109,8 @@ export interface UpdateResult {
   progress?: string;
   elapsed?: string;
   timestamp?: string;
+  /** Tail of the update log so UI can stream raw script output. */
+  logTail?: string;
 }
 
 export interface InstallResult {

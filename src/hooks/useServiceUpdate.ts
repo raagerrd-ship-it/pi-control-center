@@ -29,6 +29,26 @@ export function useServiceUpdate(serviceNames: Record<string, string>) {
     let lastPhase = '';
     let disconnectLogged = false;
     let samePhaseCount = 0;
+    const seenLogLines = new Set<string>();
+    let logPrimed = false;
+    const emitNewLogLines = (logTail?: string) => {
+      if (!logTail) return;
+      const lines = logTail.split('\n').map(l => l.trim()).filter(Boolean);
+      if (!logPrimed) {
+        // Första pollen: markera befintliga rader som sedda — annars skulle
+        // vi spamma loggen med historik från en tidigare körning.
+        lines.forEach(l => seenLogLines.add(l));
+        logPrimed = true;
+        return;
+      }
+      for (const line of lines) {
+        if (seenLogLines.has(line)) continue;
+        seenLogLines.add(line);
+        // Strippa script-prefix typ "[lotus-update] " så det blir snyggare i UI.
+        const clean = line.replace(/^\[[^\]]+\]\s*/, '');
+        addEntryRef.current(label(app), clean, 'info');
+      }
+    };
     const poll = async () => {
       try {
         const result = await fetchUpdateStatus(app);
@@ -38,6 +58,7 @@ export function useServiceUpdate(serviceNames: Record<string, string>) {
         }
         retryCount = 0;
         setUpdates(prev => ({ ...prev, [app]: result }));
+        emitNewLogLines(result.logTail);
         if (result.status === 'updating') {
           const phase = result.progress || result.message || '';
           const elapsed = result.elapsed ? ` (${result.elapsed})` : '';

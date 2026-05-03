@@ -3308,9 +3308,26 @@ handle_request() {
       ;;
 
     GET\ /api/update-status/*)
-      local app
+      local app us_log_file us_lines us_base
       app=${path#/api/update-status/}
-      [ -f "$STATUS_DIR/${app}.json" ] && response=$(< "$STATUS_DIR/${app}.json") || response="{\"app\":\"${app}\",\"status\":\"idle\"}"
+      app="${app%%[?#]*}"
+      us_log_file="$STATUS_DIR/${app}.log"
+      if [ -f "$STATUS_DIR/${app}.json" ]; then
+        us_base=$(< "$STATUS_DIR/${app}.json")
+      else
+        us_base="{\"app\":\"${app}\",\"status\":\"idle\"}"
+      fi
+      # Inkludera senaste loggrader så UI:t kan streama varje progress-rad
+      # från update-scriptet (t.ex. "[lotus-update] Updating: v1.0.612 → v1.0.613").
+      if [ -f "$us_log_file" ]; then
+        us_lines=$(tail -n 30 "$us_log_file" 2>/dev/null \
+          | jq -Rs . 2>/dev/null)
+        [ -z "$us_lines" ] && us_lines="\"\""
+        response=$(printf '%s' "$us_base" | jq -c --argjson l "$us_lines" '. + {logTail: $l}' 2>/dev/null)
+        [ -z "$response" ] && response="$us_base"
+      else
+        response="$us_base"
+      fi
       ;;
 
     POST\ /api/service/*/*)
