@@ -3225,24 +3225,28 @@ handle_request() {
                 exit 0
               fi
 
-              # Skriv VERSION.json via sudo tee — install_dir kan vara root-ägd
-              # efter sudo_run mkdir ovan, så direkt > redirect skulle nekas.
+              # Skriv VERSION.json direkt — install_dir är redan chownad till
+              # pi:pi på rad 3190, så vi behöver INTE sudo tee (sudoers tillåter
+              # inte /usr/bin/tee och hela release-vägen failar tyst annars).
               if [ -n "$latest_tag" ]; then
                 local version_json
                 version_json=$(printf '{"tag":"%s","version":"%s","updatedAt":"%s"}\n' \
                   "$(escape_json "$latest_tag")" "$(escape_json "$latest_tag")" "$(date -Iseconds)")
-                if ! echo "$version_json" | sudo_run tee "$install_dir/VERSION.json" >/dev/null 2>> "$update_log"; then
-                  echo "Kunde inte skriva VERSION.json" >> "$update_log"
-                  echo "{\"app\":\"${app}\",\"status\":\"error\",\"message\":\"Kunde inte skriva VERSION.json\",\"timestamp\":\"$(date -Iseconds)\"}" > "$update_json"
-                  exit 0
+                if ! printf '%s' "$version_json" > "$install_dir/VERSION.json" 2>> "$update_log"; then
+                  # Sista utväg: försök via sudo tee (om sudoers någon gång uppdateras)
+                  if ! echo "$version_json" | sudo_run tee "$install_dir/VERSION.json" >/dev/null 2>> "$update_log"; then
+                    echo "Kunde inte skriva VERSION.json — faller tillbaka till updateScript" >> "$update_log"
+                    updated=false
+                  fi
                 fi
-                # Verifiera att VERSION.json är läsbar med förväntad tagg
-                local written_tag
-                written_tag=$(jq -r '.tag // empty' "$install_dir/VERSION.json" 2>/dev/null)
-                if [ "$written_tag" != "$latest_tag" ]; then
-                  echo "VERSION.json verifiering misslyckades: skrev '$latest_tag', läste '$written_tag'" >> "$update_log"
-                  echo "{\"app\":\"${app}\",\"status\":\"error\",\"message\":\"VERSION.json kunde inte verifieras\",\"timestamp\":\"$(date -Iseconds)\"}" > "$update_json"
-                  exit 0
+                # Verifiera bara om vi faktiskt skrev något
+                if [ -f "$install_dir/VERSION.json" ]; then
+                  local written_tag
+                  written_tag=$(jq -r '.tag // empty' "$install_dir/VERSION.json" 2>/dev/null)
+                  if [ -n "$written_tag" ] && [ "$written_tag" != "$latest_tag" ]; then
+                    echo "VERSION.json verifiering misslyckades: skrev '$latest_tag', läste '$written_tag'" >> "$update_log"
+                    updated=false
+                  fi
                 fi
               fi
 
