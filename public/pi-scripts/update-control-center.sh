@@ -174,7 +174,6 @@ sudo systemctl daemon-reload
 
 echo "[6/6] Cleaning up & restarting..."
 repair_ble_permissions
-rm -rf node_modules
 npm cache clean --force 2>/dev/null || true
 sudo systemctl restart pi-control-center-api 2>/dev/null || true
 
