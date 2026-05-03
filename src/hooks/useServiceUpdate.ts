@@ -87,13 +87,14 @@ export function useServiceUpdate(serviceNames: Record<string, string>) {
       const result = await triggerUpdate(app);
       setUpdates(prev => ({ ...prev, [app]: result }));
       if (result.status === 'updating') pollUpdateStatus(app);
-      else if (result.status === 'success') addEntryRef.current(label(app), 'Uppdaterad', 'success');
-      else if (result.status === 'error') addEntryRef.current(label(app), 'Uppdatering misslyckades', 'error');
+      else if (result.status === 'success') addEntryRef.current(label(app), result.message || 'Uppdaterad', 'success');
+      else if (result.status === 'error') addEntryRef.current(label(app), `Uppdatering misslyckades: ${result.message || 'okänt fel'}`, 'error');
     } catch (e) {
-      addEntryRef.current(label(app), 'Uppdatering misslyckades', 'error');
+      const msg = e instanceof Error ? e.message : 'Update failed';
+      addEntryRef.current(label(app), `Uppdatering misslyckades: ${msg}`, 'error');
       setUpdates(prev => ({
         ...prev,
-        [app]: { app, status: 'error', message: e instanceof Error ? e.message : 'Update failed' },
+        [app]: { app, status: 'error', message: msg },
       }));
     }
   }, [pollUpdateStatus]);
