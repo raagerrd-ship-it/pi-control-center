@@ -245,6 +245,7 @@ $USER ALL=(ALL) NOPASSWD: /usr/bin/chmod * /etc/pi-control-center/apps/*
 $USER ALL=(ALL) NOPASSWD: /usr/bin/chmod * /var/lib/pi-control-center/apps/*
 $USER ALL=(ALL) NOPASSWD: /usr/bin/chmod * /var/log/pi-control-center/apps/*
 $USER ALL=(ALL) NOPASSWD: /usr/bin/tee /etc/systemd/system/*.service
+$USER ALL=(ALL) NOPASSWD: /usr/bin/tee /opt/*/VERSION.json
 $USER ALL=(ALL) NOPASSWD: /usr/bin/mkdir -p /var/www/pi-control-center
 $USER ALL=(ALL) NOPASSWD: /usr/bin/cp -r *
 $USER ALL=(ALL) NOPASSWD: /usr/bin/cp *
