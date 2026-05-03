@@ -86,16 +86,41 @@ chmod +x "$DASHBOARD_DIR/public/pi-scripts/"*.sh
 
 echo "[2/6] Installing dependencies..."
 ensure_node24
-rm -rf node_modules
-nice -n 15 ionice -c 3 npm install --no-audit --no-fund
-sudo chown -R "$USER:$USER" node_modules 2>/dev/null || true
+DEPS_HASH_FILE="node_modules/.pcc-deps-hash"
+CURRENT_DEPS_HASH=$(sha256sum package.json package-lock.json 2>/dev/null | sha256sum | awk '{print $1}')
+SAVED_DEPS_HASH=""
+[ -f "$DEPS_HASH_FILE" ] && SAVED_DEPS_HASH=$(cat "$DEPS_HASH_FILE" 2>/dev/null || true)
+if [ "${FORCE:-0}" != "1" ] && [ -d node_modules ] && [ -n "$CURRENT_DEPS_HASH" ] && [ "$CURRENT_DEPS_HASH" = "$SAVED_DEPS_HASH" ]; then
+  echo "  ↳ package.json oförändrad — hoppar över npm install"
+else
+  rm -rf node_modules
+  nice -n 15 ionice -c 3 npm install --no-audit --no-fund
+  sudo chown -R "$USER:$USER" node_modules 2>/dev/null || true
+  echo "$CURRENT_DEPS_HASH" > "$DEPS_HASH_FILE"
+fi
 
 echo "[3/6] Building (this may take a few minutes)..."
-nice -n 15 ionice -c 3 npm run build
+CURRENT_COMMIT=$(git rev-parse HEAD 2>/dev/null || echo "unknown")
+BUILD_STAMP="dist/.pcc-build-stamp"
+SAVED_BUILD_STAMP=""
+[ -f "$BUILD_STAMP" ] && SAVED_BUILD_STAMP=$(cat "$BUILD_STAMP" 2>/dev/null || true)
+EXPECTED_BUILD_STAMP="${CURRENT_COMMIT}:${CURRENT_DEPS_HASH}"
+SKIP_BUILD=0
+if [ "${FORCE:-0}" != "1" ] && [ -f dist/index.html ] && [ -f "$NGINX_DIR/index.html" ] && [ "$EXPECTED_BUILD_STAMP" = "$SAVED_BUILD_STAMP" ]; then
+  echo "  ↳ Källkod oförändrad sedan förra builden — hoppar över"
+  SKIP_BUILD=1
+else
+  nice -n 15 ionice -c 3 npm run build
+  echo "$EXPECTED_BUILD_STAMP" > "$BUILD_STAMP"
+fi
 
 echo "[4/6] Deploying to Nginx..."
 sudo mkdir -p "$NGINX_DIR"
-sudo cp -r dist/* "$NGINX_DIR/"
+if [ "$SKIP_BUILD" = "1" ]; then
+  echo "  ↳ Nginx redan i synk — hoppar över kopiering"
+else
+  sudo cp -r dist/* "$NGINX_DIR/"
+fi
 
 echo "[5/6] Deploying services registry & API..."
 if [ -f "$DASHBOARD_DIR/public/services.json" ]; then
