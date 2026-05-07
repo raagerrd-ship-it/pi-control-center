@@ -65,29 +65,50 @@ export function Settings({ onSave }: { onSave: (s: DashboardSettings) => void })
   const [schedSaving, setSchedSaving] = useState(false);
   const [schedSaved, setSchedSaved] = useState(false);
   const [schedLoaded, setSchedLoaded] = useState(false);
+  const [schedNext, setSchedNext] = useState<string>('');
+  const [schedError, setSchedError] = useState<string>('');
+
+  const refreshSched = useCallback(async () => {
+    try {
+      const s = await fetchScheduledReboot();
+      setSchedEnabled(s.enabled);
+      if (s.time) setSchedTime(s.time);
+      setSchedNext(s.next || '');
+      return s;
+    } catch (e) {
+      setSchedError(e instanceof Error ? e.message : String(e));
+      return null;
+    }
+  }, []);
 
   useEffect(() => {
     if (!open) return;
-    fetchScheduledReboot()
-      .then(s => {
-        setSchedEnabled(s.enabled);
-        if (s.time) setSchedTime(s.time);
-      })
-      .catch(() => {})
-      .finally(() => setSchedLoaded(true));
-  }, [open]);
+    setSchedError('');
+    refreshSched().finally(() => setSchedLoaded(true));
+  }, [open, refreshSched]);
 
   const handleSchedSave = useCallback(async (enabled: boolean, time: string) => {
     setSchedSaving(true);
     setSchedSaved(false);
+    setSchedError('');
     try {
       await setScheduledReboot(enabled, time);
-      setSchedSaved(true);
-      setTimeout(() => setSchedSaved(false), 2000);
-    } catch {} finally {
+      // Re-fetch så UI:t reflekterar verkligt systemd-tillstånd
+      const s = await refreshSched();
+      if (enabled && s && !s.enabled) {
+        setSchedError('Aktivering misslyckades — timer inte enabled');
+      } else if (enabled && s && !s.next) {
+        setSchedError('Timer aktiverad men nästa körning saknas');
+      } else {
+        setSchedSaved(true);
+        setTimeout(() => setSchedSaved(false), 2000);
+      }
+    } catch (e) {
+      setSchedError(e instanceof Error ? e.message : String(e));
+    } finally {
       setSchedSaving(false);
     }
-  }, []);
+  }, [refreshSched]);
 
   useEffect(() => {
     return () => {
@@ -332,6 +353,21 @@ export function Settings({ onSave }: { onSave: (s: DashboardSettings) => void })
               {schedSaving && <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />}
               {schedSaved && <Check className="h-3 w-3 text-primary" />}
             </div>
+            {schedLoaded && (
+              <p className="text-[11px] font-mono text-muted-foreground">
+                Status: <span className={schedEnabled ? 'text-primary' : ''}>{schedEnabled ? 'PÅ' : 'AV'}</span>
+                {schedEnabled && schedNext && (() => {
+                  const us = Number(schedNext);
+                  if (!us || Number.isNaN(us)) return null;
+                  const d = new Date(us / 1000);
+                  return <> — nästa: {d.toLocaleString('sv-SE', { dateStyle: 'short', timeStyle: 'short' })}</>;
+                })()}
+                {schedEnabled && !schedNext && ' — nästa körning okänd'}
+              </p>
+            )}
+            {schedError && (
+              <p className="text-[11px] font-mono text-destructive">⚠ {schedError}</p>
+            )}
           </div>
 
           <div className="border-t border-border pt-4 mt-2 flex flex-col gap-2">
