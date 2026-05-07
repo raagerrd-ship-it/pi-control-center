@@ -172,6 +172,30 @@ WantedBy=multi-user.target
 EOF
 sudo systemctl daemon-reload
 
+# Säkerställ nightly reboot timer (idempotent — installerar bara om saknas)
+if [ ! -f /etc/systemd/system/pcc-nightly-reboot.timer ]; then
+  echo "  ↳ Installerar nightly reboot timer (default 05:00)..."
+  sudo tee /etc/systemd/system/pcc-nightly-reboot.service > /dev/null << 'EOF'
+[Unit]
+Description=Pi Control Center — Nightly Reboot
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/systemctl reboot
+EOF
+  sudo tee /etc/systemd/system/pcc-nightly-reboot.timer > /dev/null << 'EOF'
+[Unit]
+Description=Pi Control Center — Nightly Reboot Timer
+[Timer]
+OnCalendar=*-*-* 05:00:00
+Persistent=true
+RandomizedDelaySec=60
+[Install]
+WantedBy=timers.target
+EOF
+  sudo systemctl daemon-reload
+  sudo systemctl enable --now pcc-nightly-reboot.timer
+fi
+
 echo "[6/6] Cleaning up & restarting..."
 repair_ble_permissions
 npm cache clean --force 2>/dev/null || true

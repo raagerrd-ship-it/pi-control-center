@@ -194,6 +194,28 @@ EOF
 sudo systemctl daemon-reload
 sudo systemctl enable --now pi-control-center-api.service
 
+# Nightly reboot timer (default 05:00) — keeps Pi Zero 2 healthy by clearing
+# memory leaks in long-running Node services. Toggle via Settings UI.
+sudo tee /etc/systemd/system/pcc-nightly-reboot.service > /dev/null << 'EOF'
+[Unit]
+Description=Pi Control Center — Nightly Reboot
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/systemctl reboot
+EOF
+sudo tee /etc/systemd/system/pcc-nightly-reboot.timer > /dev/null << 'EOF'
+[Unit]
+Description=Pi Control Center — Nightly Reboot Timer
+[Timer]
+OnCalendar=*-*-* 05:00:00
+Persistent=true
+RandomizedDelaySec=60
+[Install]
+WantedBy=timers.target
+EOF
+sudo systemctl daemon-reload
+sudo systemctl enable --now pcc-nightly-reboot.timer
+
 sudo mkdir -p /etc/pi-control-center/apps /var/lib/pi-control-center/apps /var/log/pi-control-center/apps
 sudo chown -R "$USER:$USER" /etc/pi-control-center/apps /var/lib/pi-control-center/apps /var/log/pi-control-center/apps
 sudo chmod 755 /etc/pi-control-center/apps /var/lib/pi-control-center/apps /var/log/pi-control-center/apps
@@ -228,6 +250,14 @@ $USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl disable *.service
 $USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl try-restart *.service
 $USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl set-property *.service MemoryMax=*
 $USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl reboot
+$USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl enable --now pcc-nightly-reboot.timer
+$USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl disable --now pcc-nightly-reboot.timer
+$USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl enable pcc-nightly-reboot.timer
+$USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl disable pcc-nightly-reboot.timer
+$USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl is-enabled pcc-nightly-reboot.timer
+$USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl show pcc-nightly-reboot.timer *
+$USER ALL=(ALL) NOPASSWD: /usr/bin/tee /etc/systemd/system/pcc-nightly-reboot.timer
+$USER ALL=(ALL) NOPASSWD: /usr/bin/tee /etc/systemd/system/pcc-nightly-reboot.service
 $USER ALL=(ALL) NOPASSWD: /usr/sbin/nginx -s reload
 $USER ALL=(ALL) NOPASSWD: /usr/sbin/nginx -t
 $USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl restart *.service

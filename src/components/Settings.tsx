@@ -22,7 +22,8 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog';
-import { triggerFactoryReset, triggerPiReset, fetchFactoryResetStatus, triggerServicesCatalogUpdate, fetchServicesCatalogStatus, type ServicesCatalogStatus } from '@/lib/api';
+import { triggerFactoryReset, triggerPiReset, fetchFactoryResetStatus, triggerServicesCatalogUpdate, fetchServicesCatalogStatus, fetchScheduledReboot, setScheduledReboot, type ServicesCatalogStatus } from '@/lib/api';
+import { Moon } from 'lucide-react';
 
 export interface DashboardSettings {
   deviceLabel: string;
@@ -57,6 +58,36 @@ export function Settings({ onSave }: { onSave: (s: DashboardSettings) => void })
   const [catalogUpdating, setCatalogUpdating] = useState(false);
   const [catalogStatus, setCatalogStatus] = useState<ServicesCatalogStatus | null>(null);
   const catalogPollRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Schemalagd omstart
+  const [schedEnabled, setSchedEnabled] = useState(false);
+  const [schedTime, setSchedTime] = useState('05:00');
+  const [schedSaving, setSchedSaving] = useState(false);
+  const [schedSaved, setSchedSaved] = useState(false);
+  const [schedLoaded, setSchedLoaded] = useState(false);
+
+  useEffect(() => {
+    if (!open) return;
+    fetchScheduledReboot()
+      .then(s => {
+        setSchedEnabled(s.enabled);
+        if (s.time) setSchedTime(s.time);
+      })
+      .catch(() => {})
+      .finally(() => setSchedLoaded(true));
+  }, [open]);
+
+  const handleSchedSave = useCallback(async (enabled: boolean, time: string) => {
+    setSchedSaving(true);
+    setSchedSaved(false);
+    try {
+      await setScheduledReboot(enabled, time);
+      setSchedSaved(true);
+      setTimeout(() => setSchedSaved(false), 2000);
+    } catch {} finally {
+      setSchedSaving(false);
+    }
+  }, []);
 
   useEffect(() => {
     return () => {
@@ -258,6 +289,49 @@ export function Settings({ onSave }: { onSave: (s: DashboardSettings) => void })
                 ✗ {catalogStatus.message || 'Okänt fel'}
               </p>
             )}
+          </div>
+
+          <div className="border-t border-border pt-4 mt-2 flex flex-col gap-2">
+            <Label className="text-xs text-muted-foreground font-mono mb-1 flex items-center gap-1.5">
+              <Moon className="h-3 w-3" />
+              Schemalagd omstart
+            </Label>
+            <p className="text-[11px] text-muted-foreground leading-relaxed">
+              Startar om Pi:n varje natt för att rensa minnesläckor i långkörande tjänster (BLE, Node).
+              Tar ~30–60 sek. Rekommenderas på.
+            </p>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                role="switch"
+                aria-checked={schedEnabled}
+                disabled={!schedLoaded || schedSaving}
+                onClick={() => {
+                  const next = !schedEnabled;
+                  setSchedEnabled(next);
+                  handleSchedSave(next, schedTime);
+                }}
+                className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors ${
+                  schedEnabled ? 'bg-primary' : 'bg-muted'
+                } ${(!schedLoaded || schedSaving) ? 'opacity-50' : ''}`}
+              >
+                <span
+                  className={`inline-block h-4 w-4 transform rounded-full bg-background transition-transform ${
+                    schedEnabled ? 'translate-x-4' : 'translate-x-0.5'
+                  }`}
+                />
+              </button>
+              <Input
+                type="time"
+                value={schedTime}
+                disabled={!schedEnabled || schedSaving}
+                onChange={e => setSchedTime(e.target.value)}
+                onBlur={() => schedEnabled && handleSchedSave(true, schedTime)}
+                className="font-mono text-xs h-8 w-24"
+              />
+              {schedSaving && <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />}
+              {schedSaved && <Check className="h-3 w-3 text-primary" />}
+            </div>
           </div>
 
           <div className="border-t border-border pt-4 mt-2 flex flex-col gap-2">
