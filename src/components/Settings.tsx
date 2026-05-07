@@ -353,6 +353,21 @@ export function Settings({ onSave }: { onSave: (s: DashboardSettings) => void })
               {schedSaving && <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />}
               {schedSaved && <Check className="h-3 w-3 text-primary" />}
             </div>
+            {schedLoaded && (
+              <p className="text-[11px] font-mono text-muted-foreground">
+                Status: <span className={schedEnabled ? 'text-primary' : ''}>{schedEnabled ? 'PÅ' : 'AV'}</span>
+                {schedEnabled && schedNext && (() => {
+                  const us = Number(schedNext);
+                  if (!us || Number.isNaN(us)) return null;
+                  const d = new Date(us / 1000);
+                  return <> — nästa: {d.toLocaleString('sv-SE', { dateStyle: 'short', timeStyle: 'short' })}</>;
+                })()}
+                {schedEnabled && !schedNext && ' — nästa körning okänd'}
+              </p>
+            )}
+            {schedError && (
+              <p className="text-[11px] font-mono text-destructive">⚠ {schedError}</p>
+            )}
           </div>
 
           <div className="border-t border-border pt-4 mt-2 flex flex-col gap-2">
