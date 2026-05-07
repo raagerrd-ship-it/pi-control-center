@@ -65,29 +65,50 @@ export function Settings({ onSave }: { onSave: (s: DashboardSettings) => void })
   const [schedSaving, setSchedSaving] = useState(false);
   const [schedSaved, setSchedSaved] = useState(false);
   const [schedLoaded, setSchedLoaded] = useState(false);
+  const [schedNext, setSchedNext] = useState<string>('');
+  const [schedError, setSchedError] = useState<string>('');
+
+  const refreshSched = useCallback(async () => {
+    try {
+      const s = await fetchScheduledReboot();
+      setSchedEnabled(s.enabled);
+      if (s.time) setSchedTime(s.time);
+      setSchedNext(s.next || '');
+      return s;
+    } catch (e) {
+      setSchedError(e instanceof Error ? e.message : String(e));
+      return null;
+    }
+  }, []);
 
   useEffect(() => {
     if (!open) return;
-    fetchScheduledReboot()
-      .then(s => {
-        setSchedEnabled(s.enabled);
-        if (s.time) setSchedTime(s.time);
-      })
-      .catch(() => {})
-      .finally(() => setSchedLoaded(true));
-  }, [open]);
+    setSchedError('');
+    refreshSched().finally(() => setSchedLoaded(true));
+  }, [open, refreshSched]);
 
   const handleSchedSave = useCallback(async (enabled: boolean, time: string) => {
     setSchedSaving(true);
     setSchedSaved(false);
+    setSchedError('');
     try {
       await setScheduledReboot(enabled, time);
-      setSchedSaved(true);
-      setTimeout(() => setSchedSaved(false), 2000);
-    } catch {} finally {
+      // Re-fetch så UI:t reflekterar verkligt systemd-tillstånd
+      const s = await refreshSched();
+      if (enabled && s && !s.enabled) {
+        setSchedError('Aktivering misslyckades — timer inte enabled');
+      } else if (enabled && s && !s.next) {
+        setSchedError('Timer aktiverad men nästa körning saknas');
+      } else {
+        setSchedSaved(true);
+        setTimeout(() => setSchedSaved(false), 2000);
+      }
+    } catch (e) {
+      setSchedError(e instanceof Error ? e.message : String(e));
+    } finally {
       setSchedSaving(false);
     }
-  }, []);
+  }, [refreshSched]);
 
   useEffect(() => {
     return () => {
