@@ -22,7 +22,8 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog';
-import { triggerFactoryReset, triggerPiReset, fetchFactoryResetStatus, triggerServicesCatalogUpdate, fetchServicesCatalogStatus, type ServicesCatalogStatus } from '@/lib/api';
+import { triggerFactoryReset, triggerPiReset, fetchFactoryResetStatus, triggerServicesCatalogUpdate, fetchServicesCatalogStatus, fetchScheduledReboot, setScheduledReboot, type ServicesCatalogStatus } from '@/lib/api';
+import { Moon } from 'lucide-react';
 
 export interface DashboardSettings {
   deviceLabel: string;
