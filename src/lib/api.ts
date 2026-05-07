@@ -328,6 +328,31 @@ export async function triggerReboot(): Promise<{ status: 'rebooting' | 'error' }
   return res.json();
 }
 
+export interface ScheduledRebootStatus {
+  enabled: boolean;
+  time: string; // "HH:MM"
+  next?: string;
+}
+
+export async function fetchScheduledReboot(): Promise<ScheduledRebootStatus> {
+  const res = await fetch(`${getBaseUrl()}/api/scheduled-reboot`, {
+    signal: AbortSignal.timeout(5000),
+  });
+  if (!res.ok) throw new Error('Failed to fetch scheduled reboot');
+  return res.json();
+}
+
+export async function setScheduledReboot(enabled: boolean, time: string): Promise<{ status: string; time: string }> {
+  const res = await fetch(`${getBaseUrl()}/api/scheduled-reboot`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ enabled, time }),
+    signal: AbortSignal.timeout(8000),
+  });
+  if (!res.ok) throw new Error('Failed to set scheduled reboot');
+  return res.json();
+}
+
 export interface MemoryLimitResult {
   app: string;
   limitMb: number;
