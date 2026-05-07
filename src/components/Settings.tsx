@@ -59,6 +59,36 @@ export function Settings({ onSave }: { onSave: (s: DashboardSettings) => void })
   const [catalogStatus, setCatalogStatus] = useState<ServicesCatalogStatus | null>(null);
   const catalogPollRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // Schemalagd omstart
+  const [schedEnabled, setSchedEnabled] = useState(false);
+  const [schedTime, setSchedTime] = useState('05:00');
+  const [schedSaving, setSchedSaving] = useState(false);
+  const [schedSaved, setSchedSaved] = useState(false);
+  const [schedLoaded, setSchedLoaded] = useState(false);
+
+  useEffect(() => {
+    if (!open) return;
+    fetchScheduledReboot()
+      .then(s => {
+        setSchedEnabled(s.enabled);
+        if (s.time) setSchedTime(s.time);
+      })
+      .catch(() => {})
+      .finally(() => setSchedLoaded(true));
+  }, [open]);
+
+  const handleSchedSave = useCallback(async (enabled: boolean, time: string) => {
+    setSchedSaving(true);
+    setSchedSaved(false);
+    try {
+      await setScheduledReboot(enabled, time);
+      setSchedSaved(true);
+      setTimeout(() => setSchedSaved(false), 2000);
+    } catch {} finally {
+      setSchedSaving(false);
+    }
+  }, []);
+
   useEffect(() => {
     return () => {
       if (catalogPollRef.current) clearTimeout(catalogPollRef.current);
