@@ -2721,12 +2721,15 @@ handle_request() {
       ;;
 
     "GET /api/scheduled-reboot")
-      local enabled="false" oncalendar="" next_elapse=""
-      if sudo_run_quiet systemctl is-enabled pcc-nightly-reboot.timer | grep -q '^enabled'; then
+      local enabled="false" oncalendar="05:00" next_elapse="" tmr_file="/etc/systemd/system/pcc-nightly-reboot.timer"
+      if sudo_run_quiet systemctl is-enabled pcc-nightly-reboot.timer 2>/dev/null | grep -q '^enabled'; then
         enabled="true"
       fi
-      oncalendar=$(sudo_run_quiet systemctl show pcc-nightly-reboot.timer -p TimersCalendar --value 2>/dev/null | grep -oE '[0-9]{2}:[0-9]{2}(:[0-9]{2})?' | head -1)
-      [ -z "$oncalendar" ] && oncalendar="05:00"
+      if [ -f "$tmr_file" ]; then
+        local parsed
+        parsed=$(grep -oE 'OnCalendar=.*[0-9]{2}:[0-9]{2}' "$tmr_file" 2>/dev/null | grep -oE '[0-9]{2}:[0-9]{2}' | tail -1)
+        [ -n "$parsed" ] && oncalendar="$parsed"
+      fi
       next_elapse=$(sudo_run_quiet systemctl show pcc-nightly-reboot.timer -p NextElapseUSecRealtime --value 2>/dev/null)
       response=$(jq -n --argjson e "$enabled" --arg t "$oncalendar" --arg n "$next_elapse" '{enabled:$e, time:$t, next:$n}')
       ;;
