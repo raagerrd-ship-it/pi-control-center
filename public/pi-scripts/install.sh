@@ -228,6 +228,14 @@ $USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl disable *.service
 $USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl try-restart *.service
 $USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl set-property *.service MemoryMax=*
 $USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl reboot
+$USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl enable --now pcc-nightly-reboot.timer
+$USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl disable --now pcc-nightly-reboot.timer
+$USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl enable pcc-nightly-reboot.timer
+$USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl disable pcc-nightly-reboot.timer
+$USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl is-enabled pcc-nightly-reboot.timer
+$USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl show pcc-nightly-reboot.timer *
+$USER ALL=(ALL) NOPASSWD: /usr/bin/tee /etc/systemd/system/pcc-nightly-reboot.timer
+$USER ALL=(ALL) NOPASSWD: /usr/bin/tee /etc/systemd/system/pcc-nightly-reboot.service
 $USER ALL=(ALL) NOPASSWD: /usr/sbin/nginx -s reload
 $USER ALL=(ALL) NOPASSWD: /usr/sbin/nginx -t
 $USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl restart *.service
