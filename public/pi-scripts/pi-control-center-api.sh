@@ -2720,6 +2720,53 @@ handle_request() {
       ( sleep 1; sudo_run_quiet systemctl reboot || sudo_run_quiet reboot || true ) &
       ;;
 
+    "GET /api/scheduled-reboot")
+      local enabled="false" oncalendar="" next_elapse=""
+      if sudo_run_quiet systemctl is-enabled pcc-nightly-reboot.timer | grep -q '^enabled'; then
+        enabled="true"
+      fi
+      oncalendar=$(sudo_run_quiet systemctl show pcc-nightly-reboot.timer -p TimersCalendar --value 2>/dev/null | grep -oE '[0-9]{2}:[0-9]{2}(:[0-9]{2})?' | head -1)
+      [ -z "$oncalendar" ] && oncalendar="05:00"
+      next_elapse=$(sudo_run_quiet systemctl show pcc-nightly-reboot.timer -p NextElapseUSecRealtime --value 2>/dev/null)
+      response=$(jq -n --argjson e "$enabled" --arg t "$oncalendar" --arg n "$next_elapse" '{enabled:$e, time:$t, next:$n}')
+      ;;
+
+    "POST /api/scheduled-reboot")
+      local sr_enabled sr_time
+      sr_enabled=$(echo "$body" | jq -r '.enabled // false' 2>/dev/null)
+      sr_time=$(echo "$body" | jq -r '.time // "05:00"' 2>/dev/null)
+      # Validera HH:MM
+      if ! echo "$sr_time" | grep -qE '^([01][0-9]|2[0-3]):[0-5][0-9]$'; then
+        sr_time="05:00"
+      fi
+      sudo_run_quiet mkdir -p /etc/systemd/system
+      sudo_run tee /etc/systemd/system/pcc-nightly-reboot.service >/dev/null <<EOF_SVC
+[Unit]
+Description=Pi Control Center — Nightly Reboot
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/systemctl reboot
+EOF_SVC
+      sudo_run tee /etc/systemd/system/pcc-nightly-reboot.timer >/dev/null <<EOF_TMR
+[Unit]
+Description=Pi Control Center — Nightly Reboot Timer
+[Timer]
+OnCalendar=*-*-* ${sr_time}:00
+Persistent=true
+RandomizedDelaySec=60
+[Install]
+WantedBy=timers.target
+EOF_TMR
+      sudo_run_quiet systemctl daemon-reload
+      if [ "$sr_enabled" = "true" ]; then
+        sudo_run_quiet systemctl enable --now pcc-nightly-reboot.timer
+        response=$(jq -n --arg t "$sr_time" '{status:"enabled", time:$t}')
+      else
+        sudo_run_quiet systemctl disable --now pcc-nightly-reboot.timer
+        response=$(jq -n --arg t "$sr_time" '{status:"disabled", time:$t}')
+      fi
+      ;;
+
     "GET /api/factory-reset-status")
       [ -f "$STATUS_DIR/factory-reset.json" ] && response=$(< "$STATUS_DIR/factory-reset.json") || response='{"status":"idle"}'
       ;;
