@@ -525,19 +525,19 @@ memory_level_for_mb() {
 # Check if service uses components format
 registry_has_components() {
   local val
-  val=$(jq -r --arg k "$1" '.[] | select(.key == $k) | .components // empty' "$REGISTRY_FILE" 2>/dev/null)
+  val=$(_registry_jq -r '.[] | select(.key == $k) | .components // empty' --arg k "$1")
   [ -n "$val" ] && [ "$val" != "null" ] && echo "true" || echo "false"
 }
 
 # Get all service keys from registry
 registry_keys() {
-  jq -r '.[].key' "$REGISTRY_FILE" 2>/dev/null
+  _registry_jq -r '.[].key'
 }
 
 # Check if a service is managed by PCC (defaults to true if field absent)
 registry_is_managed() {
   local val
-  val=$(jq -r --arg k "$1" '.[] | select(.key == $k) | .managed // true' "$REGISTRY_FILE" 2>/dev/null)
+  val=$(_registry_jq -r '.[] | select(.key == $k) | .managed // true' --arg k "$1")
   [ "$val" != "false" ] && echo "true" || echo "false"
 }
 
@@ -700,6 +700,7 @@ release_update_heal_if_needed() {
 health_poll_loop() {
   local cleanup_counter=0
   while true; do
+    _REGISTRY_CACHE_JSON=$(cat "$REGISTRY_FILE" 2>/dev/null)
     for app in $(registry_keys); do
       local has_comp core port engine_port engine_svc engine_active
       has_comp=$(registry_has_components "$app")
@@ -731,6 +732,7 @@ health_poll_loop() {
         release_update_heal_if_needed "$app" true
       fi
     done
+    unset _REGISTRY_CACHE_JSON
     sleep 30
     cleanup_counter=$((cleanup_counter + 1))
     if [ $((cleanup_counter % 10)) -eq 0 ]; then
@@ -1015,6 +1017,7 @@ watchdog_check_component() {
 
 watchdog_loop() {
   while true; do
+    _REGISTRY_CACHE_JSON=$(cat "$REGISTRY_FILE" 2>/dev/null)
     for app in $(registry_keys); do
       local core port has_comp managed svc engine_svc ui_svc engine_port
       core=$(assignment_get_core "$app")
@@ -1033,6 +1036,7 @@ watchdog_loop() {
         [ "$managed" = "true" ] && watchdog_check_component "$app" "service" "$svc" "$port"
       fi
     done
+    unset _REGISTRY_CACHE_JSON
     sleep "$WATCHDOG_INTERVAL"
   done
 }

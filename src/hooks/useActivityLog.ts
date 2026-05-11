@@ -41,14 +41,14 @@ export function ActivityLogProvider({ children }: { children: ReactNode }) {
     });
     setEntries(prev => {
       const next = [...prev.slice(-(MAX_ENTRIES - 1)), { time, source, message, type }];
-      try { localStorage.setItem(STORAGE_KEY, JSON.stringify(next)); } catch {}
+      try { localStorage.setItem(STORAGE_KEY, JSON.stringify(next)); } catch { /* ignore */ }
       return next;
     });
   }, []);
 
   const clearLog = useCallback(() => {
     setEntries([]);
-    try { localStorage.removeItem(STORAGE_KEY); } catch {}
+    try { localStorage.removeItem(STORAGE_KEY); } catch { /* ignore */ }
   }, []);
 
   return React.createElement(

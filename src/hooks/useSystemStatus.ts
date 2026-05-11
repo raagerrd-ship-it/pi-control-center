@@ -49,7 +49,7 @@ export function useSystemStatus(isBusy = false) {
       } else {
         // No known operation — ping to distinguish busy vs offline
         let reachable = false;
-        try { reachable = await fetchPing(); } catch {}
+        try { reachable = await fetchPing(); } catch { /* ignore */ }
         setConnection(reachable ? 'busy' : 'offline');
       }
     } finally {
