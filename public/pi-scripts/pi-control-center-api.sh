@@ -2101,6 +2101,7 @@ EOF
 # Idempotent — skips apps that already have a vhost.
 migrate_uis_to_nginx() {
   local app
+  _REGISTRY_CACHE_JSON=$(cat "$REGISTRY_FILE" 2>/dev/null)
   for app in $(registry_keys); do
     [ -n "$(assignment_get_core "$app")" ] || continue
     [ -f "/etc/nginx/sites-enabled/${app}-ui" ] && continue
