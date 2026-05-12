@@ -458,13 +458,14 @@ latest_release_asset_url() {
 }
 
 installed_release_version() {
-  local install_dir=$1 version
-  if [ -f "$install_dir/VERSION.json" ]; then
-    version=$(jq -r '.tag // .version // .name // empty' "$install_dir/VERSION.json" 2>/dev/null)
-  fi
-  [ -z "$version" ] && [ -f "$install_dir/package.json" ] && version=$(jq -r '.version // empty' "$install_dir/package.json" 2>/dev/null)
-  [ -z "$version" ] && [ -f "$install_dir/engine/package.json" ] && version=$(jq -r '.version // empty' "$install_dir/engine/package.json" 2>/dev/null)
-  echo "$version"
+  local install_dir=$1 files=()
+  [ -f "$install_dir/VERSION.json" ] && files+=("$install_dir/VERSION.json")
+  [ -f "$install_dir/package.json" ] && files+=("$install_dir/package.json")
+  [ -f "$install_dir/engine/package.json" ] && files+=("$install_dir/engine/package.json")
+  [ ${#files[@]} -eq 0 ] && { echo ""; return; }
+  # Single jq pass over all candidate files; pick first non-empty .tag/.version/.name.
+  jq -rs 'first(.[] | (.tag // .version // .name) | select(. != null and . != "")) // ""' \
+    "${files[@]}" 2>/dev/null
 }
 
 # Helper: run a jq filter against the cached registry JSON when available,
