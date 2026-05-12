@@ -1468,7 +1468,7 @@ build_status_json() {
   dash_ram=$(get_service_ram "pi-control-center-api")
   nginx_ram=$(get_service_ram "nginx")
   dash_ram=$((dash_ram + nginx_ram))
-  dash_pid=$(systemctl show "pi-control-center-api.service" --property=MainPID 2>/dev/null | cut -d= -f2)
+  dash_pid=$(get_service_pid "pi-control-center-api")
   [ -n "$dash_pid" ] && [ "$dash_pid" != "0" ] && dash_cpu=$(ps -p "$dash_pid" -o %cpu= 2>/dev/null | tr -d ' ' || echo "0")
 
   local reboot_json
