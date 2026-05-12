@@ -1,97 +1,79 @@
 ## Mål
 
-Sänk CPU-baseline och fork-trycket på Pi Zero 2 W genom att ta bort de mest frekventa subprocess-anropen i `pi-control-center-api.sh`. Samma princip som Jules-PR:n: cacha + kombinera istället för att starta nya processer i varje varv. Inga funktionella ändringar.
+Stoppa `status_cache_loop` från att bygga `build_status_json` var 4:e sekund i evighet. Cachen ska bara byggas när någon faktiskt tittar på UI:t. När ingen tittar = noll status-arbete.
+
+`health_poll_loop` och `watchdog_loop` (var 30:e sekund) lämnas orörda — de gör nytta även utan UI (auto-heal, auto-restart).
 
 ## Bakgrund
 
-Per `build_status_json` (körs varje gång UI:t pollar status, ~var 2:a sekund) forkas idag uppskattningsvis 50–80 processer för 3 appar med components. Hetast:
+Idag i `pi-control-center-api.sh`:
 
-- `service_is_active` + `get_service_pid` + `get_service_ram` = **3 separata `systemctl show`** per service (×2 components × N appar).
-- Health-blocket (rad 1376–1378) gör **3 separata `jq`-anrop** på samma JSON.
-- 8 `for app in $(registry_keys)`-loopar utanför `build_status_json` saknar `_REGISTRY_CACHE_JSON` → varje `_registry_jq` faller tillbaka till diskläsning.
-- `assignment_get_core` (rad 545–554) forkar `jq` upp till 3 gånger per anrop (read + 2 typkontroller).
-- `installed_release_version` (rad 460–468) forkar `jq` upp till 3 gånger.
+- `status_cache_loop` (rad 1496–1506) bygger `build_status_json` var `CACHE_MAX_AGE`-sekund (default 4s) — ~21 600 builds/dygn även när ingen är inloggad.
+- `get_cached_status` (rad 1486–1493) serverar alltid från fil — backgroundloopen är enda som håller den färsk.
+- Frontend pollar `/api/status` var 5:e sekund när fliken är synlig och stannar helt när `document.hidden` (redan implementerat i `useSystemStatus.ts`).
 
-## Ändringar
+Slutsats: backgroundloopen är ren overhead när UI:t är stängt.
 
-Allt sker i `public/pi-scripts/pi-control-center-api.sh`. Inga UI-ändringar, inget API-kontrakt påverkas.
+## Ändring
 
-### 1. Slå ihop systemctl-anrop per service
+Allt i `public/pi-scripts/pi-control-center-api.sh`. Inga UI-ändringar, inget API-kontrakt påverkas.
 
-Ersätt `service_is_active`, `get_service_pid`, `get_service_ram` med en gemensam `_service_show <svc>` som gör **ett** anrop:
+### 1. Aktivitetsstämpel vid varje statusrequest
 
-```text
-systemctl show svc.service -p ActiveState,MainPID,MemoryCurrent
-```
+Lägg till en `LAST_STATUS_REQUEST_FILE` (t.ex. `$STATUS_DIR/last-request.ts`). I HTTP-handlern för `/api/status` (där `get_cached_status` anropas) skriv `date +%s` till filen innan svaret skickas.
 
-…och cachar resultatet i en assoc-array per `build_status_json`-varv. Befintliga wrappers behålls som tunna läsare av cachen för bakåtkompatibilitet med övriga callsites. Fallback till `user_systemctl` som idag när system-scopet inte har servicen.
+### 2. Lat backgroundloop
 
-**Win:** ~3× färre systemctl-forks per service (engine + ui + dashboard + nginx).
-
-### 2. En `jq` för health-JSON
-
-Rad 1376–1378: ersätt tre `jq -r` med ett enda anrop som tab-separerar:
+Ändra `status_cache_loop` så den:
 
 ```text
-read -r health_status health_uptime health_mem_rss < <(echo "$health_json" | jq -r '[.status//"unknown", .uptime//0, .memory.rss//0] | @tsv')
+loop:
+  sleep CACHE_MAX_AGE  (4s)
+  last=$(cat LAST_STATUS_REQUEST_FILE 2>/dev/null || echo 0)
+  now=$(date +%s)
+  if (now - last) <= ACTIVE_WINDOW (60s):
+    bygg cache
+  else:
+    fortsätt sova
 ```
 
-**Win:** 2 färre forks per app per status-varv.
+Effekt: så länge UI:t pollat senaste 60s håller loopen cachen varm (oförändrat beteende för användaren). När UI:t stängs slutar loopen bygga inom 60s.
 
-### 3. Sätt `_REGISTRY_CACHE_JSON` runt alla registry-loopar
+### 3. Synkron build vid kall cache
 
-8 loopar utanför `build_status_json` / `health_poll_loop` / `watchdog_loop` läser `services.json` från disk via `_registry_jq`-fallback varje gång. Wrappa varje `for app in $(registry_keys); do … done` med:
+Ändra `get_cached_status` så att om `LAST_STATUS_REQUEST_FILE` saknas eller är >`ACTIVE_WINDOW` gammal (= första öppningen efter idle):
 
-```text
-_REGISTRY_CACHE_JSON=$(cat "$REGISTRY_FILE" 2>/dev/null)
-for app in $(registry_keys); do …; done
-unset _REGISTRY_CACHE_JSON
-```
+- bygg `build_status_json` synkront
+- skriv till cache
+- returnera direkt
 
-Berör rad 2073, 2104, 2170, 2941, 3610, 3701, 3756. Funktioner som anropar dessa loopar i sin tur ärver redan cachen.
+Användaren får då vänta ~en bygg-tid (typ 200–500 ms) på första pollen efter att ha öppnat UI:t igen, sen är det varmt och loopen tar över.
 
-### 4. Kollapsa `assignment_get_core`
+Den initiala builden i `status_cache_loop`-start tas bort (onödig — cachen byggs nu lat när någon ber om den).
 
-Rad 545–554 → ett `jq` med inbyggd typhantering:
+### 4. Skipa initial cache-build vid daemon-start
 
-```text
-jq -r --arg k "$1" '
-  (.[$k] // empty) as $v
-  | if ($v | type) == "number" then $v
-    elif ($v | type) == "object" then ($v.core // empty)
-    else empty end
-' "$ASSIGNMENTS_FILE"
-```
-
-**Win:** 1–3 forks ner till 1 per anrop. Kallas inuti varje status-varv per app.
-
-### 5. Kollapsa `installed_release_version`
-
-Rad 460–468 → ett `jq -s` över de tre filerna med fallback-pipeline:
-
-```text
-jq -rs 'first(.[] | (.tag // .version // .name) | select(.))' \
-  "$install_dir/VERSION.json" "$install_dir/package.json" "$install_dir/engine/package.json" 2>/dev/null
-```
-
-(Filtrera bort filer som inte finns med pre-check; behåll tom-string-retur när inga finns.)
+Rad 3829 (`status_cache_loop &`) lämnas, men funktionens initial-build (rad 1499–1500) tas bort. Backgroundloopen börjar direkt i sleep-läge.
 
 ## Tekniska detaljer
 
-- Alla ändringar är interna i `pi-control-center-api.sh`. Inga sudoers-ändringar, inga nya systemd-units, inga UI-ändringar.
-- `_service_show`-cachen scope:as till en `build_status_json`-iteration (precis som `_REGISTRY_CACHE_JSON` idag) så stale data aldrig läcker mellan polls.
-- Behåll alla befintliga funktionssignaturer (`service_is_active`, `get_service_pid`, `get_service_ram`) så övriga callsites (CLI-routes, watchdog, autoscaler) fungerar oförändrat — de blir bara billigare.
-- `assignment_get_core` används av autoscaler/watchdog/build_status_json — kontrollera att jq-uttrycket returnerar exakt samma sträng som idag (siffra utan citationstecken / tom rad).
+- `ACTIVE_WINDOW=60` (konstant nära `CACHE_MAX_AGE` i toppen av filen). 60s ger bra marginal för UI:ts 5s-poll + ev. backoff utan att bygga i onödan.
+- Stämpelfilen ligger redan på tmpfs (`STATUS_DIR` under `/tmp/pi-control-center/`), så ingen disk-IO-overhead.
+- `get_cached_status` skriver också `LAST_STATUS_REQUEST_FILE` (om HTTP-handlern råkar gå förbi den). Säkerhetsnät — primär skrivning sker i HTTP-routen.
+- `health_poll_loop` och `watchdog_loop` rörs INTE.
+- Autoscaler-invarianten påverkas inte (autoscaler trigggas från `watchdog_loop`, inte från status-cachen).
 
 ## Verifieringskriterier
 
 1. `bash -n public/pi-scripts/pi-control-center-api.sh` passerar.
-2. Manuell sanity: kör `build_status_json` lokalt mot en testfixture (om möjligt via Pi:n) och jämför JSON-output före/efter — ska vara byte-identisk.
-3. Ingen regression i autoscaler-invarianten (live_change-gating i `auto_adjust_memory_limit`) — den koden rörs inte.
-4. På Pi:n: `top -b -n 5 -d 2 -p $(pgrep -f pi-control-center-api)` visar lägre genomsnitts-CPU för API-processen efter deploy.
+2. På Pi:n efter deploy, med UI stängt i 2 minuter:
+   - `top -b -n 5 -d 5 -p $(pgrep -f pi-control-center-api)` visar nära 0% CPU för API-processen.
+   - `ls -la --time=ctime $STATUS_DIR/status-cache.json` ändras inte oftare än ~var 60–90:e sekund (bara health/watchdog-skrivningar).
+3. Öppna UI:t: första pollen tar märkbart längre (200–800 ms istället för instant), efterföljande är instant. Status visar färsk data.
+4. Stäng UI:t: inom 60s slutar `status-cache.json` att uppdateras.
 
 ## Utanför scope
 
-- Migrera `pi-control-center-api.sh` → Python (för stort grepp, separat diskussion).
-- Ändra polling-intervall (UI-beteende).
-- Röra autoscaler-logik eller BLE-permissions.
+- Migrera till Python-daemon med in-memory cache (separat större grepp).
+- Ändra polling-intervall i frontend.
+- Röra `health_poll_loop` eller `watchdog_loop`.
