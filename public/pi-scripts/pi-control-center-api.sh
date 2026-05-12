@@ -1316,6 +1316,10 @@ build_status_json() {
 
   # Cache registry once for this build to avoid forking jq dozens of times
   _REGISTRY_CACHE_JSON=$(cat "$REGISTRY_FILE" 2>/dev/null)
+  # Per-build systemctl cache: each service's ActiveState/MainPID/MemoryCurrent
+  # is fetched at most once via _service_show.
+  declare -A _SERVICE_SHOW_CACHE=()
+  _SERVICE_SHOW_CACHE_INIT=1
 
   ram_used=${ram%%,*}
   ram_total=${ram##*,}
