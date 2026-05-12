@@ -3648,6 +3648,7 @@ EOF_TMR
     "GET /api/versions")
       local vj
       vj=""
+      _REGISTRY_CACHE_JSON=$(cat "$REGISTRY_FILE" 2>/dev/null)
       for app in $(registry_keys); do
         local install_dir repo local_v local_hash remote_hash has_update rel_url
         install_dir=$(eval echo "$(registry_get "$app" "installDir")")
@@ -3677,6 +3678,7 @@ EOF_TMR
         [ -n "$vj" ] && vj="${vj},"
         vj="${vj}\"${app}\":{\"local\":\"${local_v}\",\"remote\":\"${remote_hash}\",\"hasUpdate\":${has_update}}"
       done
+      unset _REGISTRY_CACHE_JSON
 
       local d_local d_hash d_remote_hash d_update d_repo_url
       d_local=""
