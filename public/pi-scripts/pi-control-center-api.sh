@@ -543,15 +543,14 @@ registry_is_managed() {
 }
 
 # Get assignment core: assignment_get_core <key>
+# Single jq pass — handles both new format (bare number) and legacy {core: N}.
 assignment_get_core() {
-  local val
-  val=$(jq -r --arg k "$1" '.[$k] // empty' "$ASSIGNMENTS_FILE" 2>/dev/null)
-  # Support both new format (bare number) and legacy format (object with .core)
-  if [ -n "$val" ] && echo "$val" | jq -e 'type == "number"' >/dev/null 2>&1; then
-    echo "$val"
-  elif [ -n "$val" ] && echo "$val" | jq -e 'type == "object"' >/dev/null 2>&1; then
-    echo "$val" | jq -r '.core // empty' 2>/dev/null
-  fi
+  jq -r --arg k "$1" '
+    .[$k] // empty
+    | if type == "number" then tostring
+      elif type == "object" then (.core // empty | tostring)
+      else empty end
+  ' "$ASSIGNMENTS_FILE" 2>/dev/null
 }
 
 # Save assignment: assignment_set <key> <core>
