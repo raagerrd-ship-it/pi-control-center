@@ -1284,17 +1284,14 @@ _invalidate_version_cache() {
 
 get_service_ram() {
   local val pid
-  val=$(systemctl show "$1.service" --property=MemoryCurrent 2>/dev/null | cut -d= -f2)
-  if [ -z "$val" ] || [ "$val" = "[not set]" ] || [ "$val" = "infinity" ]; then
-    val=$(user_systemctl show "$1.service" --property=MemoryCurrent 2>/dev/null | cut -d= -f2)
-  fi
-  if [ -n "$val" ] && [ "$val" != "[not set]" ] && [ "$val" != "infinity" ] && [ "$val" != "0" ] && [ "$val" != "" ]; then
+  val=$(_show_field "$(_service_show "$1")" "MemoryCurrent")
+  if [ -n "$val" ] && [ "$val" != "[not set]" ] && [ "$val" != "infinity" ] && [ "$val" != "0" ]; then
     echo $((val / 1048576))
   else
     # Fallback: read VmRSS from /proc/<PID>/status
     pid=$(get_service_pid "$1")
     if [ -n "$pid" ] && [ "$pid" != "0" ] && [ -f "/proc/$pid/status" ]; then
-      val=$(grep '^VmRSS:' "/proc/$pid/status" 2>/dev/null | awk '{print $2}')
+      val=$(awk '/^VmRSS:/ {print $2; exit}' "/proc/$pid/status" 2>/dev/null)
       if [ -n "$val" ] && [ "$val" -gt 0 ] 2>/dev/null; then
         echo $((val / 1024))
         return
