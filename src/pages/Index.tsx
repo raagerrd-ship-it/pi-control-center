@@ -155,7 +155,7 @@ const Index = () => {
     try {
       const v = await fetchVersions();
       setVersions(v);
-    } catch {} finally {
+    } catch { /* ignore */ } finally {
       setCheckingVersions(false);
     }
   }, []);
@@ -169,7 +169,7 @@ const Index = () => {
     const commitBefore = status?.commit || '';
     addEntry('DASHBOARD', 'Uppdatering startad', 'info');
     setDashboardUpdate({ app: 'dashboard', status: 'updating', progress: 'Initierar uppdatering...' });
-    try { await triggerUpdate('dashboard'); } catch {}
+    try { await triggerUpdate('dashboard'); } catch { /* ignore */ }
     let retries = 0;
     let lostContact = false;
     let lastLogLine = '';
@@ -193,7 +193,7 @@ const Index = () => {
               }
               if (latest) latestProgress = latest;
             }
-          } catch {}
+          } catch { /* ignore */ }
           setDashboardUpdate({
             ...result,
             progress: latestProgress || lastLogLine || 'Uppdatering pågår...',
@@ -223,7 +223,7 @@ const Index = () => {
               const lastLines = log.split('\n').filter(Boolean).slice(-5).join(' | ');
               if (lastLines) addEntry('DASHBOARD', `Logg: ${lastLines}`, 'error');
             }
-          } catch {}
+          } catch { /* ignore */ }
         }
         // status is idle — API restarted and lost state. Check if commit changed.
         else if (result.status === 'idle' && commitBefore) {
@@ -289,7 +289,7 @@ const Index = () => {
               void refresh();
               return;
             }
-          } catch {}
+          } catch { /* ignore */ }
           addEntry('DASHBOARD', 'Tappade anslutning under uppdatering', 'error');
           setDashboardUpdate({ app: 'dashboard', status: 'error', message: 'Lost connection to API' });
         }
@@ -308,7 +308,7 @@ const Index = () => {
   const handleReboot = useCallback(async () => {
     setRebooting(true);
     addEntry('SYSTEM', 'Startar om Pi...', 'info');
-    try { await triggerReboot(); } catch {}
+    try { await triggerReboot(); } catch { /* ignore */ }
   }, [addEntry]);
 
   const isUpdatingDashboard = dashboardUpdate?.status === 'updating';

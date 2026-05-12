@@ -516,7 +516,7 @@ export const CoreCard = memo(function CoreCard({
               disabled={checkingVersion}
               onClick={async () => {
                 setCheckingVersion(true);
-                try { await onCheckVersion(def.key); } catch {} finally { setCheckingVersion(false); }
+                try { await onCheckVersion(def.key); } catch { /* ignore */ } finally { setCheckingVersion(false); }
               }}
               className="h-5 w-5 p-0 text-muted-foreground/50 hover:text-foreground hover:bg-secondary"
               title="Kolla version"

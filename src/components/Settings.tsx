@@ -42,7 +42,9 @@ export function loadSettings(): DashboardSettings {
         deviceLabel: parsed.deviceLabel || DEFAULT_SETTINGS.deviceLabel,
       };
     }
-  } catch {}
+  } catch {
+    /* ignore */
+  }
   return DEFAULT_SETTINGS;
 }
 
@@ -221,7 +223,7 @@ export function Settings({ onSave }: { onSave: (s: DashboardSettings) => void })
             localStorage.removeItem('pi-control-center-log');
             setTimeout(() => window.location.reload(), 2000);
           } else if (result.status === 'resetting') {
-            const phase = (result as any).phase;
+            const phase = (result as { phase?: string }).phase;
             if (phase) setPiResetPhase(phase);
             setTimeout(poll, 2000);
           } else {
