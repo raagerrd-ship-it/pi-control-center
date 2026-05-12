@@ -2977,6 +2977,7 @@ EOF_TMR
         # Collect service unit names for every installed app (apps with an assignment)
         collect_app_services() {
           local out="" app has_comp cs s assigned
+          _REGISTRY_CACHE_JSON=$(cat "$REGISTRY_FILE" 2>/dev/null)
           for app in $(registry_keys); do
             assigned=$(assignment_get_core "$app")
             [ -z "$assigned" ] && continue
@@ -2991,6 +2992,7 @@ EOF_TMR
               [ -n "$s" ] && out="$out $s"
             fi
           done
+          unset _REGISTRY_CACHE_JSON
           echo "$out"
         }
 
