@@ -1312,14 +1312,18 @@ build_status_json() {
   disk=$(get_disk)
   uptime_str=$(get_uptime)
   runtime_json=$(node_runtime_json)
-  rebalance_memory_budget
 
-  # Cache registry once for this build to avoid forking jq dozens of times
+  # Cache registry once for this build to avoid forking jq dozens of times.
+  # Hoisted above rebalance_memory_budget so its registry_keys/has_components
+  # calls also hit the cache.
   _REGISTRY_CACHE_JSON=$(cat "$REGISTRY_FILE" 2>/dev/null)
   # Per-build systemctl cache: each service's ActiveState/MainPID/MemoryCurrent
-  # is fetched at most once via _service_show.
+  # is fetched at most once via _service_show. Also benefits rebalance via
+  # _app_runtime_ram_mb → service_is_active + get_service_ram.
   declare -A _SERVICE_SHOW_CACHE=()
   _SERVICE_SHOW_CACHE_INIT=1
+
+  rebalance_memory_budget
 
   ram_used=${ram%%,*}
   ram_total=${ram##*,}
