@@ -1138,28 +1138,53 @@ check_service() {
   fi
 }
 
-service_is_active() {
+# --- Combined systemctl show helper ---
+# One `systemctl show` per service per build_status_json iteration replaces
+# the previous 3 separate calls (is-active, MainPID, MemoryCurrent). Cache is
+# scoped to a single status build via _SERVICE_SHOW_CACHE (assoc array set up
+# in build_status_json) so stale data never leaks between polls.
+_show_field() {
+  # $1 = full show output, $2 = property name → prints value (or empty)
+  local data=$1 field=$2 line
+  while IFS= read -r line; do
+    case $line in
+      "$field="*) printf '%s' "${line#*=}"; return ;;
+    esac
+  done <<< "$data"
+}
+
+_service_show() {
   local svc=$1
-  if systemctl is-active --quiet "${svc}.service" 2>/dev/null || user_systemctl is-active --quiet "${svc}.service" 2>/dev/null; then
-    echo "true"
-  else
-    echo "false"
+  if [ "${_SERVICE_SHOW_CACHE_INIT:-0}" = "1" ] && [ -n "${_SERVICE_SHOW_CACHE[$svc]+x}" ]; then
+    printf '%s' "${_SERVICE_SHOW_CACHE[$svc]}"
+    return
   fi
+  local sys usr chosen
+  sys=$(systemctl show "${svc}.service" -p ActiveState,MainPID,MemoryCurrent 2>/dev/null)
+  case $'\n'"$sys" in
+    *$'\n'ActiveState=active*) chosen=$sys ;;
+    *)
+      usr=$(user_systemctl show "${svc}.service" -p ActiveState,MainPID,MemoryCurrent 2>/dev/null)
+      case $'\n'"$usr" in
+        *$'\n'ActiveState=active*) chosen=$usr ;;
+        *) chosen=${sys:-$usr} ;;
+      esac
+      ;;
+  esac
+  [ "${_SERVICE_SHOW_CACHE_INIT:-0}" = "1" ] && _SERVICE_SHOW_CACHE[$svc]=$chosen
+  printf '%s' "$chosen"
+}
+
+service_is_active() {
+  local state
+  state=$(_show_field "$(_service_show "$1")" "ActiveState")
+  [ "$state" = "active" ] && echo "true" || echo "false"
 }
 
 get_service_pid() {
-  local svc=$1 pid
-  pid=$(user_systemctl show "$svc.service" --property=MainPID 2>/dev/null | cut -d= -f2)
-  if [ -n "$pid" ] && [ "$pid" != "0" ]; then
-    echo "$pid"
-    return
-  fi
-  pid=$(systemctl show "$svc.service" --property=MainPID 2>/dev/null | cut -d= -f2)
-  if [ -n "$pid" ] && [ "$pid" != "0" ]; then
-    echo "$pid"
-  else
-    echo ""
-  fi
+  local pid
+  pid=$(_show_field "$(_service_show "$1")" "MainPID")
+  [ -n "$pid" ] && [ "$pid" != "0" ] && echo "$pid" || echo ""
 }
 
 check_installed() {
