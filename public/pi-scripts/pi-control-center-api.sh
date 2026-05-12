@@ -3798,11 +3798,13 @@ migrate_assignments
 
 startup_repair_app_dirs() {
   local app assigned
+  _REGISTRY_CACHE_JSON=$(cat "$REGISTRY_FILE" 2>/dev/null)
   for app in $(registry_keys); do
     assigned=$(assignment_get_core "$app")
     [ -n "$assigned" ] || continue
     repair_app_managed_dirs "$app" "api-startup" || true
   done
+  unset _REGISTRY_CACHE_JSON
 }
 startup_repair_app_dirs
 
