@@ -93,7 +93,11 @@ SAVED_DEPS_HASH=""
 if [ "${FORCE:-0}" != "1" ] && [ -d node_modules ] && [ -n "$CURRENT_DEPS_HASH" ] && [ "$CURRENT_DEPS_HASH" = "$SAVED_DEPS_HASH" ]; then
   echo "  ↳ package.json oförändrad — hoppar över npm install"
 else
-  rm -rf node_modules
+  rm -rf node_modules 2>/dev/null || {
+    echo "  ↳ Fixar behörigheter i node_modules..."
+    sudo chown -R "$USER:$USER" node_modules
+    rm -rf node_modules
+  }
   nice -n 15 ionice -c 3 npm install --no-audit --no-fund
   sudo chown -R "$USER:$USER" node_modules 2>/dev/null || true
   echo "$CURRENT_DEPS_HASH" > "$DEPS_HASH_FILE"
