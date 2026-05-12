@@ -160,7 +160,9 @@ PI_HOME="/home/pi"
 STATUS_DIR="/tmp/pi-control-center"
 INSTALL_DIR="/tmp/pi-control-center/install"
 CACHE_FILE="$STATUS_DIR/status-cache.json"
+LAST_STATUS_REQUEST_FILE="$STATUS_DIR/last-status-request.ts"
 CACHE_MAX_AGE=4  # seconds
+ACTIVE_WINDOW=60  # seconds — bygg bara cache om UI pollat senaste denna tid
 REBOOT_REQUIRED_FILE="$STATUS_DIR/reboot-required.json"
 USER_ID="$(id -u)"
 USER_RUNTIME_DIR="/run/user/$USER_ID"
@@ -1484,7 +1486,30 @@ build_status_json() {
 }
 
 get_cached_status() {
-  # Always serve from cache — background loop keeps it fresh
+  # Markera att UI:t pollar — backgroundloopen använder denna stämpel
+  # för att avgöra om cachen ska hållas varm.
+  date +%s > "$LAST_STATUS_REQUEST_FILE" 2>/dev/null
+
+  # Kall cache (ingen fil, eller äldre än ACTIVE_WINDOW): bygg synkront.
+  # Annars: servera från fil — backgroundloopen håller den färsk.
+  local cache_age=999999
+  if [ -f "$CACHE_FILE" ]; then
+    local cache_mtime now
+    cache_mtime=$(stat -c %Y "$CACHE_FILE" 2>/dev/null || echo 0)
+    now=$(date +%s)
+    cache_age=$((now - cache_mtime))
+  fi
+
+  if [ "$cache_age" -gt "$ACTIVE_WINDOW" ]; then
+    local json
+    json=$(build_status_json 2>/dev/null)
+    if [ -n "$json" ]; then
+      echo "$json" > "$CACHE_FILE"
+      echo "$json"
+      return
+    fi
+  fi
+
   if [ -f "$CACHE_FILE" ]; then
     cat "$CACHE_FILE"
   else
@@ -1492,16 +1517,19 @@ get_cached_status() {
   fi
 }
 
-# Background loop that refreshes the status cache every CACHE_MAX_AGE seconds
+# Lazy backgroundloop: bygger bara cachen när UI:t har pollat senaste
+# ACTIVE_WINDOW sekunderna. När ingen tittar går loopen i ren sleep.
 status_cache_loop() {
-  # Build initial cache immediately
-  local json
-  json=$(build_status_json 2>/dev/null)
-  [ -n "$json" ] && echo "$json" > "$CACHE_FILE"
   while true; do
     sleep "$CACHE_MAX_AGE"
-    json=$(build_status_json 2>/dev/null)
-    [ -n "$json" ] && echo "$json" > "$CACHE_FILE"
+    local last now
+    last=$(cat "$LAST_STATUS_REQUEST_FILE" 2>/dev/null || echo 0)
+    now=$(date +%s)
+    if [ $((now - last)) -le "$ACTIVE_WINDOW" ]; then
+      local json
+      json=$(build_status_json 2>/dev/null)
+      [ -n "$json" ] && echo "$json" > "$CACHE_FILE"
+    fi
   done
 }
 
