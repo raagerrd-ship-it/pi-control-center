@@ -2134,6 +2134,7 @@ _sync_heap_in_unit_file() {
 # memoryProfile.defaultLevel. Daemon-reload + try-restart vid förändring.
 sync_all_heap_limits() {
   local app changed=0 target_mb level s f
+  _REGISTRY_CACHE_JSON=$(cat "$REGISTRY_FILE" 2>/dev/null)
   for app in $(registry_keys); do
     target_mb=$(registry_memory_profile_mb "$app")
     [ -n "$target_mb" ] || continue
@@ -2164,6 +2165,7 @@ sync_all_heap_limits() {
       fi
     fi
   done
+  unset _REGISTRY_CACHE_JSON
   [ "$changed" -eq 1 ] && sudo_run systemctl daemon-reload || true
   return 0
 }
