@@ -1399,9 +1399,13 @@ build_status_json() {
       local health_json
       health_json=$(get_health "$app")
       local health_status health_uptime health_mem_rss
-      health_status=$(echo "$health_json" | jq -r '.status // "unknown"' 2>/dev/null)
-      health_uptime=$(echo "$health_json" | jq -r '.uptime // 0' 2>/dev/null)
-      health_mem_rss=$(echo "$health_json" | jq -r '.memory.rss // 0' 2>/dev/null)
+      # Single jq pass — tab-separated output → 3 shell vars.
+      IFS=$'\t' read -r health_status health_uptime health_mem_rss < <(
+        printf '%s' "$health_json" | jq -r '[.status//"unknown", .uptime//0, .memory.rss//0] | @tsv' 2>/dev/null
+      ) || true
+      [ -z "$health_status" ] && health_status="unknown"
+      [ -z "$health_uptime" ] && health_uptime=0
+      [ -z "$health_mem_rss" ] && health_mem_rss=0
 
       local mem_limit mem_profile mem_level permissions_json cfg_dir data_dir log_dir systemd_warning
       mem_limit=$(_app_current_limit "$app"); [ -z "$mem_limit" ] && mem_limit=$(registry_memory_profile_mb "$app"); [ -z "$mem_limit" ] && mem_limit=128
