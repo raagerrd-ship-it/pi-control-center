@@ -458,13 +458,14 @@ latest_release_asset_url() {
 }
 
 installed_release_version() {
-  local install_dir=$1 version
-  if [ -f "$install_dir/VERSION.json" ]; then
-    version=$(jq -r '.tag // .version // .name // empty' "$install_dir/VERSION.json" 2>/dev/null)
-  fi
-  [ -z "$version" ] && [ -f "$install_dir/package.json" ] && version=$(jq -r '.version // empty' "$install_dir/package.json" 2>/dev/null)
-  [ -z "$version" ] && [ -f "$install_dir/engine/package.json" ] && version=$(jq -r '.version // empty' "$install_dir/engine/package.json" 2>/dev/null)
-  echo "$version"
+  local install_dir=$1 files=()
+  [ -f "$install_dir/VERSION.json" ] && files+=("$install_dir/VERSION.json")
+  [ -f "$install_dir/package.json" ] && files+=("$install_dir/package.json")
+  [ -f "$install_dir/engine/package.json" ] && files+=("$install_dir/engine/package.json")
+  [ ${#files[@]} -eq 0 ] && { echo ""; return; }
+  # Single jq pass over all candidate files; pick first non-empty .tag/.version/.name.
+  jq -rs 'first(.[] | (.tag // .version // .name) | select(. != null and . != "")) // ""' \
+    "${files[@]}" 2>/dev/null
 }
 
 # Helper: run a jq filter against the cached registry JSON when available,
@@ -542,15 +543,14 @@ registry_is_managed() {
 }
 
 # Get assignment core: assignment_get_core <key>
+# Single jq pass — handles both new format (bare number) and legacy {core: N}.
 assignment_get_core() {
-  local val
-  val=$(jq -r --arg k "$1" '.[$k] // empty' "$ASSIGNMENTS_FILE" 2>/dev/null)
-  # Support both new format (bare number) and legacy format (object with .core)
-  if [ -n "$val" ] && echo "$val" | jq -e 'type == "number"' >/dev/null 2>&1; then
-    echo "$val"
-  elif [ -n "$val" ] && echo "$val" | jq -e 'type == "object"' >/dev/null 2>&1; then
-    echo "$val" | jq -r '.core // empty' 2>/dev/null
-  fi
+  jq -r --arg k "$1" '
+    .[$k] // empty
+    | if type == "number" then tostring
+      elif type == "object" then (.core // empty | tostring)
+      else empty end
+  ' "$ASSIGNMENTS_FILE" 2>/dev/null
 }
 
 # Save assignment: assignment_set <key> <core>
@@ -1138,28 +1138,53 @@ check_service() {
   fi
 }
 
-service_is_active() {
+# --- Combined systemctl show helper ---
+# One `systemctl show` per service per build_status_json iteration replaces
+# the previous 3 separate calls (is-active, MainPID, MemoryCurrent). Cache is
+# scoped to a single status build via _SERVICE_SHOW_CACHE (assoc array set up
+# in build_status_json) so stale data never leaks between polls.
+_show_field() {
+  # $1 = full show output, $2 = property name → prints value (or empty)
+  local data=$1 field=$2 line
+  while IFS= read -r line; do
+    case $line in
+      "$field="*) printf '%s' "${line#*=}"; return ;;
+    esac
+  done <<< "$data"
+}
+
+_service_show() {
   local svc=$1
-  if systemctl is-active --quiet "${svc}.service" 2>/dev/null || user_systemctl is-active --quiet "${svc}.service" 2>/dev/null; then
-    echo "true"
-  else
-    echo "false"
+  if [ "${_SERVICE_SHOW_CACHE_INIT:-0}" = "1" ] && [ -n "${_SERVICE_SHOW_CACHE[$svc]+x}" ]; then
+    printf '%s' "${_SERVICE_SHOW_CACHE[$svc]}"
+    return
   fi
+  local sys usr chosen
+  sys=$(systemctl show "${svc}.service" -p ActiveState,MainPID,MemoryCurrent 2>/dev/null)
+  case $'\n'"$sys" in
+    *$'\n'ActiveState=active*) chosen=$sys ;;
+    *)
+      usr=$(user_systemctl show "${svc}.service" -p ActiveState,MainPID,MemoryCurrent 2>/dev/null)
+      case $'\n'"$usr" in
+        *$'\n'ActiveState=active*) chosen=$usr ;;
+        *) chosen=${sys:-$usr} ;;
+      esac
+      ;;
+  esac
+  [ "${_SERVICE_SHOW_CACHE_INIT:-0}" = "1" ] && _SERVICE_SHOW_CACHE[$svc]=$chosen
+  printf '%s' "$chosen"
+}
+
+service_is_active() {
+  local state
+  state=$(_show_field "$(_service_show "$1")" "ActiveState")
+  [ "$state" = "active" ] && echo "true" || echo "false"
 }
 
 get_service_pid() {
-  local svc=$1 pid
-  pid=$(user_systemctl show "$svc.service" --property=MainPID 2>/dev/null | cut -d= -f2)
-  if [ -n "$pid" ] && [ "$pid" != "0" ]; then
-    echo "$pid"
-    return
-  fi
-  pid=$(systemctl show "$svc.service" --property=MainPID 2>/dev/null | cut -d= -f2)
-  if [ -n "$pid" ] && [ "$pid" != "0" ]; then
-    echo "$pid"
-  else
-    echo ""
-  fi
+  local pid
+  pid=$(_show_field "$(_service_show "$1")" "MainPID")
+  [ -n "$pid" ] && [ "$pid" != "0" ] && echo "$pid" || echo ""
 }
 
 check_installed() {
@@ -1259,17 +1284,14 @@ _invalidate_version_cache() {
 
 get_service_ram() {
   local val pid
-  val=$(systemctl show "$1.service" --property=MemoryCurrent 2>/dev/null | cut -d= -f2)
-  if [ -z "$val" ] || [ "$val" = "[not set]" ] || [ "$val" = "infinity" ]; then
-    val=$(user_systemctl show "$1.service" --property=MemoryCurrent 2>/dev/null | cut -d= -f2)
-  fi
-  if [ -n "$val" ] && [ "$val" != "[not set]" ] && [ "$val" != "infinity" ] && [ "$val" != "0" ] && [ "$val" != "" ]; then
+  val=$(_show_field "$(_service_show "$1")" "MemoryCurrent")
+  if [ -n "$val" ] && [ "$val" != "[not set]" ] && [ "$val" != "infinity" ] && [ "$val" != "0" ]; then
     echo $((val / 1048576))
   else
     # Fallback: read VmRSS from /proc/<PID>/status
     pid=$(get_service_pid "$1")
     if [ -n "$pid" ] && [ "$pid" != "0" ] && [ -f "/proc/$pid/status" ]; then
-      val=$(grep '^VmRSS:' "/proc/$pid/status" 2>/dev/null | awk '{print $2}')
+      val=$(awk '/^VmRSS:/ {print $2; exit}' "/proc/$pid/status" 2>/dev/null)
       if [ -n "$val" ] && [ "$val" -gt 0 ] 2>/dev/null; then
         echo $((val / 1024))
         return
@@ -1290,10 +1312,18 @@ build_status_json() {
   disk=$(get_disk)
   uptime_str=$(get_uptime)
   runtime_json=$(node_runtime_json)
-  rebalance_memory_budget
 
-  # Cache registry once for this build to avoid forking jq dozens of times
+  # Cache registry once for this build to avoid forking jq dozens of times.
+  # Hoisted above rebalance_memory_budget so its registry_keys/has_components
+  # calls also hit the cache.
   _REGISTRY_CACHE_JSON=$(cat "$REGISTRY_FILE" 2>/dev/null)
+  # Per-build systemctl cache: each service's ActiveState/MainPID/MemoryCurrent
+  # is fetched at most once via _service_show. Also benefits rebalance via
+  # _app_runtime_ram_mb → service_is_active + get_service_ram.
+  declare -A _SERVICE_SHOW_CACHE=()
+  _SERVICE_SHOW_CACHE_INIT=1
+
+  rebalance_memory_budget
 
   ram_used=${ram%%,*}
   ram_total=${ram##*,}
@@ -1373,9 +1403,13 @@ build_status_json() {
       local health_json
       health_json=$(get_health "$app")
       local health_status health_uptime health_mem_rss
-      health_status=$(echo "$health_json" | jq -r '.status // "unknown"' 2>/dev/null)
-      health_uptime=$(echo "$health_json" | jq -r '.uptime // 0' 2>/dev/null)
-      health_mem_rss=$(echo "$health_json" | jq -r '.memory.rss // 0' 2>/dev/null)
+      # Single jq pass — tab-separated output → 3 shell vars.
+      IFS=$'\t' read -r health_status health_uptime health_mem_rss < <(
+        printf '%s' "$health_json" | jq -r '[.status//"unknown", .uptime//0, .memory.rss//0] | @tsv' 2>/dev/null
+      ) || true
+      [ -z "$health_status" ] && health_status="unknown"
+      [ -z "$health_uptime" ] && health_uptime=0
+      [ -z "$health_mem_rss" ] && health_mem_rss=0
 
       local mem_limit mem_profile mem_level permissions_json cfg_dir data_dir log_dir systemd_warning
       mem_limit=$(_app_current_limit "$app"); [ -z "$mem_limit" ] && mem_limit=$(registry_memory_profile_mb "$app"); [ -z "$mem_limit" ] && mem_limit=128
@@ -1438,7 +1472,7 @@ build_status_json() {
   dash_ram=$(get_service_ram "pi-control-center-api")
   nginx_ram=$(get_service_ram "nginx")
   dash_ram=$((dash_ram + nginx_ram))
-  dash_pid=$(systemctl show "pi-control-center-api.service" --property=MainPID 2>/dev/null | cut -d= -f2)
+  dash_pid=$(get_service_pid "pi-control-center-api")
   [ -n "$dash_pid" ] && [ "$dash_pid" != "0" ] && dash_cpu=$(ps -p "$dash_pid" -o %cpu= 2>/dev/null | tr -d ' ' || echo "0")
 
   local reboot_json
@@ -1446,6 +1480,7 @@ build_status_json() {
   [ -f "$REBOOT_REQUIRED_FILE" ] && reboot_json=$(cat "$REBOOT_REQUIRED_FILE" 2>/dev/null || echo '{"required":false}')
   echo "{\"cpu\":${cpu:-0},\"cpuCores\":${cpu_cores:-[]},\"temp\":${temp:-0},\"ramUsed\":${ram_used:-0},\"ramTotal\":${ram_total:-0},\"diskUsed\":${disk_used:-0},\"diskTotal\":${disk_total:-0},\"uptime\":\"${uptime_str}\",\"dashboardCpu\":${dash_cpu:-0},\"dashboardRamMb\":${dash_ram:-0},\"commit\":\"${DASHBOARD_COMMIT_SHORT}\",\"branch\":\"${DASHBOARD_BRANCH}\",\"runtime\":${runtime_json},\"rebootRequired\":${reboot_json},\"services\":{${svc_json}}}"
   unset _REGISTRY_CACHE_JSON
+  unset _SERVICE_SHOW_CACHE _SERVICE_SHOW_CACHE_INIT
 }
 
 get_cached_status() {
@@ -2070,6 +2105,7 @@ EOF
 # Idempotent — skips apps that already have a vhost.
 migrate_uis_to_nginx() {
   local app
+  _REGISTRY_CACHE_JSON=$(cat "$REGISTRY_FILE" 2>/dev/null)
   for app in $(registry_keys); do
     [ -n "$(assignment_get_core "$app")" ] || continue
     [ -f "/etc/nginx/sites-enabled/${app}-ui" ] && continue
@@ -2078,6 +2114,7 @@ migrate_uis_to_nginx() {
       log "MIGRATION: ${app} UI moved to nginx"
     fi
   done
+  unset _REGISTRY_CACHE_JSON
   return 0
 }
 
@@ -2101,6 +2138,7 @@ _sync_heap_in_unit_file() {
 # memoryProfile.defaultLevel. Daemon-reload + try-restart vid förändring.
 sync_all_heap_limits() {
   local app changed=0 target_mb level s f
+  _REGISTRY_CACHE_JSON=$(cat "$REGISTRY_FILE" 2>/dev/null)
   for app in $(registry_keys); do
     target_mb=$(registry_memory_profile_mb "$app")
     [ -n "$target_mb" ] || continue
@@ -2131,6 +2169,7 @@ sync_all_heap_limits() {
       fi
     fi
   done
+  unset _REGISTRY_CACHE_JSON
   [ "$changed" -eq 1 ] && sudo_run systemctl daemon-reload || true
   return 0
 }
@@ -2938,6 +2977,7 @@ EOF_TMR
         # Collect service unit names for every installed app (apps with an assignment)
         collect_app_services() {
           local out="" app has_comp cs s assigned
+          _REGISTRY_CACHE_JSON=$(cat "$REGISTRY_FILE" 2>/dev/null)
           for app in $(registry_keys); do
             assigned=$(assignment_get_core "$app")
             [ -z "$assigned" ] && continue
@@ -2952,6 +2992,7 @@ EOF_TMR
               [ -n "$s" ] && out="$out $s"
             fi
           done
+          unset _REGISTRY_CACHE_JSON
           echo "$out"
         }
 
@@ -3607,6 +3648,7 @@ EOF_TMR
     "GET /api/versions")
       local vj
       vj=""
+      _REGISTRY_CACHE_JSON=$(cat "$REGISTRY_FILE" 2>/dev/null)
       for app in $(registry_keys); do
         local install_dir repo local_v local_hash remote_hash has_update rel_url
         install_dir=$(eval echo "$(registry_get "$app" "installDir")")
@@ -3636,6 +3678,7 @@ EOF_TMR
         [ -n "$vj" ] && vj="${vj},"
         vj="${vj}\"${app}\":{\"local\":\"${local_v}\",\"remote\":\"${remote_hash}\",\"hasUpdate\":${has_update}}"
       done
+      unset _REGISTRY_CACHE_JSON
 
       local d_local d_hash d_remote_hash d_update d_repo_url
       d_local=""
@@ -3698,6 +3741,7 @@ fi
 # --- Startup: remove legacy user-level app service files now that PCC owns system services ---
 startup_cleanup_user_services() {
   local cleaned=0
+  _REGISTRY_CACHE_JSON=$(cat "$REGISTRY_FILE" 2>/dev/null)
   for app in $(registry_keys); do
     [ "$(registry_is_managed "$app")" = "false" ] && continue
     local has_comp svc_names=""
@@ -3724,6 +3768,7 @@ startup_cleanup_user_services() {
       fi
     done
   done
+  unset _REGISTRY_CACHE_JSON
   [ "$cleaned" -eq 1 ] && user_systemctl daemon-reload 2>/dev/null || true
 }
 startup_cleanup_user_services
@@ -3753,11 +3798,13 @@ migrate_assignments
 
 startup_repair_app_dirs() {
   local app assigned
+  _REGISTRY_CACHE_JSON=$(cat "$REGISTRY_FILE" 2>/dev/null)
   for app in $(registry_keys); do
     assigned=$(assignment_get_core "$app")
     [ -n "$assigned" ] || continue
     repair_app_managed_dirs "$app" "api-startup" || true
   done
+  unset _REGISTRY_CACHE_JSON
 }
 startup_repair_app_dirs
 
