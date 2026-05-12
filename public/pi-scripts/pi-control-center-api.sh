@@ -2110,6 +2110,7 @@ migrate_uis_to_nginx() {
       log "MIGRATION: ${app} UI moved to nginx"
     fi
   done
+  unset _REGISTRY_CACHE_JSON
   return 0
 }
 
