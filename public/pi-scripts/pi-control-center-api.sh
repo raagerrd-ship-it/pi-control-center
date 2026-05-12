@@ -3741,6 +3741,7 @@ fi
 # --- Startup: remove legacy user-level app service files now that PCC owns system services ---
 startup_cleanup_user_services() {
   local cleaned=0
+  _REGISTRY_CACHE_JSON=$(cat "$REGISTRY_FILE" 2>/dev/null)
   for app in $(registry_keys); do
     [ "$(registry_is_managed "$app")" = "false" ] && continue
     local has_comp svc_names=""
@@ -3767,6 +3768,7 @@ startup_cleanup_user_services() {
       fi
     done
   done
+  unset _REGISTRY_CACHE_JSON
   [ "$cleaned" -eq 1 ] && user_systemctl daemon-reload 2>/dev/null || true
 }
 startup_cleanup_user_services
