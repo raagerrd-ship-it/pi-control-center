@@ -1502,8 +1502,8 @@ get_cached_status() {
 
   if [ "$cache_age" -gt "$ACTIVE_WINDOW" ]; then
     local json
-    json=$(build_status_json 2>/dev/null)
-    if [ -n "$json" ]; then
+    json=$(build_status_json 2>>/var/log/pi-control-center-build-status.log)
+    if [ -n "$json" ] && echo "$json" | jq -e . >/dev/null 2>&1; then
       echo "$json" > "$CACHE_FILE"
       echo "$json"
       return
