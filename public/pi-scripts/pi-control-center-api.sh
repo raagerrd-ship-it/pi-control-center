@@ -1519,14 +1519,19 @@ get_cached_status() {
 
 # Lazy backgroundloop: bygger bara cachen när UI:t har pollat senaste
 # ACTIVE_WINDOW sekunderna. När ingen tittar går loopen i ren sleep.
+# Bygger en initial cache direkt vid start så första pollen alltid får
+# färska värden (annars riskerar synkron build i HTTP-subshell att timea
+# ut eller returnera tomt och leverera fallback med nollor).
 status_cache_loop() {
+  local json
+  json=$(build_status_json 2>/dev/null)
+  [ -n "$json" ] && echo "$json" > "$CACHE_FILE"
   while true; do
     sleep "$CACHE_MAX_AGE"
     local last now
     last=$(cat "$LAST_STATUS_REQUEST_FILE" 2>/dev/null || echo 0)
     now=$(date +%s)
     if [ $((now - last)) -le "$ACTIVE_WINDOW" ]; then
-      local json
       json=$(build_status_json 2>/dev/null)
       [ -n "$json" ] && echo "$json" > "$CACHE_FILE"
     fi
