@@ -1502,8 +1502,8 @@ get_cached_status() {
 
   if [ "$cache_age" -gt "$ACTIVE_WINDOW" ]; then
     local json
-    json=$(build_status_json 2>/dev/null)
-    if [ -n "$json" ]; then
+    json=$(build_status_json 2>>/var/log/pi-control-center-build-status.log)
+    if [ -n "$json" ] && echo "$json" | jq -e . >/dev/null 2>&1; then
       echo "$json" > "$CACHE_FILE"
       echo "$json"
       return
@@ -1523,17 +1523,31 @@ get_cached_status() {
 # färska värden (annars riskerar synkron build i HTTP-subshell att timea
 # ut eller returnera tomt och leverera fallback med nollor).
 status_cache_loop() {
-  local json
-  json=$(build_status_json 2>/dev/null)
-  [ -n "$json" ] && echo "$json" > "$CACHE_FILE"
+  # Initial build med retries — hanterar helper warm-up race (t.ex.
+  # sample_cpu_stats som behöver ett tidigare sample för delta-beräkning).
+  local json="" attempts=0
+  while [ -z "$json" ] && [ "$attempts" -lt 3 ]; do
+    json=$(build_status_json 2>>/var/log/pi-control-center-build-status.log)
+    if [ -z "$json" ] || ! echo "$json" | jq -e . >/dev/null 2>&1; then
+      echo "[status_cache_loop] initial build failed (attempt $((attempts+1))) — retrying in 2s" >&2
+      sleep 2
+      json=""
+      attempts=$((attempts+1))
+    fi
+  done
+  if [ -n "$json" ]; then
+    echo "$json" > "$CACHE_FILE"
+  else
+    echo "[status_cache_loop] WARNING: failed to build initial cache after 3 attempts" >&2
+  fi
   while true; do
     sleep "$CACHE_MAX_AGE"
     local last now
     last=$(cat "$LAST_STATUS_REQUEST_FILE" 2>/dev/null || echo 0)
     now=$(date +%s)
     if [ $((now - last)) -le "$ACTIVE_WINDOW" ]; then
-      json=$(build_status_json 2>/dev/null)
-      [ -n "$json" ] && echo "$json" > "$CACHE_FILE"
+      json=$(build_status_json 2>>/var/log/pi-control-center-build-status.log)
+      [ -n "$json" ] && echo "$json" | jq -e . >/dev/null 2>&1 && echo "$json" > "$CACHE_FILE"
     fi
   done
 }
