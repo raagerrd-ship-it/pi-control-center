@@ -330,7 +330,10 @@ echo "  Swap: $(free -m | awk '/^Swap:/{print $2}')MB"
 # 2. System packages
 echo "[2/9] Installing system packages..."
 sudo apt-get update -qq
-sudo apt-get install -y -qq nginx socat git jq bluez dbus polkitd build-essential python3 libudev-dev libusb-1.0-0-dev
+# libasound2-dev: ALSA C-headers krävs av lotus-lights vendored alsa-capture
+# native module (annars fatal error: alsa/asoundlib.h: No such file or directory).
+# python3-dev: node-gyp behöver Python.h vid rebuild av native BLE/audio-moduler.
+sudo apt-get install -y -qq nginx socat git jq bluez dbus polkitd build-essential python3 python3-dev libudev-dev libusb-1.0-0-dev libasound2-dev
 
 # 3. Node.js
 echo "[3/9] Installing Node.js..."
@@ -468,6 +471,15 @@ EOF
 
 sudo systemctl daemon-reload
 sudo systemctl enable --now pi-control-center-api.service
+
+# Prime status-cache så första UI-request efter fresh install inte får
+# fallback-nollor (0% CPU / 0°C / 0MB RAM). Om status_cache_loop:s initial
+# build racear med helper warm-up säkerställer detta anrop att en giltig
+# cache-fil finns på disk innan användaren öppnar dashboarden.
+sleep 2
+printf 'GET /api/status HTTP/1.1\r\nHost: localhost\r\n\r\n' \
+  | sudo "$DASHBOARD_DIR/public/pi-scripts/pi-control-center-api.sh" --handle-request "$API_PORT" \
+      >/dev/null 2>&1 || true
 
 # Pin Nginx to core 0 (hard limit)
 sudo mkdir -p /etc/systemd/system/nginx.service.d

@@ -1502,11 +1502,14 @@ get_cached_status() {
 
   if [ "$cache_age" -gt "$ACTIVE_WINDOW" ]; then
     local json
-    json=$(build_status_json 2>>/var/log/pi-control-center-build-status.log)
+    json=$(build_status_json 2>>/var/log/pi-control-center-build.log)
     if [ -n "$json" ] && echo "$json" | jq -e . >/dev/null 2>&1; then
       echo "$json" > "$CACHE_FILE"
       echo "$json"
       return
+    else
+      echo "[get_cached_status] synchronous build_status_json failed — see /var/log/pi-control-center-build.log" \
+        | systemd-cat -t pcc-api -p warning 2>/dev/null || true
     fi
   fi
 
@@ -1524,21 +1527,28 @@ get_cached_status() {
 # ut eller returnera tomt och leverera fallback med nollor).
 status_cache_loop() {
   # Initial build med retries — hanterar helper warm-up race (t.ex.
-  # sample_cpu_stats som behöver ett tidigare sample för delta-beräkning).
+  # sample_cpu_stats som behöver ett tidigare sample för delta-beräkning,
+  # eller kall REGISTRY_FILE strax efter first-boot-install).
+  # stderr routas till /var/log/pi-control-center-build.log så framtida
+  # boot-races är diagnostiserbara (istället för att sväljas av 2>/dev/null).
   local json="" attempts=0
-  while [ -z "$json" ] && [ "$attempts" -lt 3 ]; do
-    json=$(build_status_json 2>>/var/log/pi-control-center-build-status.log)
-    if [ -z "$json" ] || ! echo "$json" | jq -e . >/dev/null 2>&1; then
-      echo "[status_cache_loop] initial build failed (attempt $((attempts+1))) — retrying in 2s" >&2
-      sleep 2
-      json=""
-      attempts=$((attempts+1))
+  while [ "$attempts" -lt 5 ]; do
+    attempts=$((attempts+1))
+    json=$(build_status_json 2>>/var/log/pi-control-center-build.log)
+    if [ -n "$json" ] && echo "$json" | jq -e . >/dev/null 2>&1; then
+      echo "$json" > "$CACHE_FILE"
+      echo "[status_cache_loop] initial cache built (attempt ${attempts})" \
+        | systemd-cat -t pcc-api -p info 2>/dev/null || true
+      break
     fi
+    echo "[status_cache_loop] initial build failed (attempt ${attempts}) — retrying in 2s" \
+      | systemd-cat -t pcc-api -p warning 2>/dev/null || true
+    json=""
+    sleep 2
   done
-  if [ -n "$json" ]; then
-    echo "$json" > "$CACHE_FILE"
-  else
-    echo "[status_cache_loop] WARNING: failed to build initial cache after 3 attempts" >&2
+  if [ ! -f "$CACHE_FILE" ]; then
+    echo "[status_cache_loop] WARNING: failed to build initial cache after 5 attempts — see /var/log/pi-control-center-build.log" \
+      | systemd-cat -t pcc-api -p err 2>/dev/null || true
   fi
   while true; do
     sleep "$CACHE_MAX_AGE"
@@ -1546,8 +1556,10 @@ status_cache_loop() {
     last=$(cat "$LAST_STATUS_REQUEST_FILE" 2>/dev/null || echo 0)
     now=$(date +%s)
     if [ $((now - last)) -le "$ACTIVE_WINDOW" ]; then
-      json=$(build_status_json 2>>/var/log/pi-control-center-build-status.log)
-      [ -n "$json" ] && echo "$json" | jq -e . >/dev/null 2>&1 && echo "$json" > "$CACHE_FILE"
+      json=$(build_status_json 2>>/var/log/pi-control-center-build.log)
+      if [ -n "$json" ] && echo "$json" | jq -e . >/dev/null 2>&1; then
+        echo "$json" > "$CACHE_FILE"
+      fi
     fi
   done
 }
