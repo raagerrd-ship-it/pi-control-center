@@ -2205,11 +2205,16 @@ EOF
 # Migrate existing apps from python static-spa-server.py to nginx vhosts.
 # Idempotent — skips apps that already have a vhost.
 migrate_uis_to_nginx() {
-  local app
+  local app vhost
   _REGISTRY_CACHE_JSON=$(cat "$REGISTRY_FILE" 2>/dev/null)
   for app in $(registry_keys); do
     [ -n "$(assignment_get_core "$app")" ] || continue
-    [ -f "/etc/nginx/sites-enabled/${app}-ui" ] && continue
+    vhost="/etc/nginx/sites-enabled/${app}-ui"
+    # Skip om vhost redan har /api/-proxy (nya formatet). Äldre vhosts utan
+    # sub_filter/proxy skrivs om så existerande installs får same-origin API.
+    if [ -f "$vhost" ] && grep -q "location /api/" "$vhost" 2>/dev/null; then
+      continue
+    fi
     if _app_write_nginx_vhost "$app"; then
       _app_neutralize_ui_unit "$app"
       log "MIGRATION: ${app} UI moved to nginx"
