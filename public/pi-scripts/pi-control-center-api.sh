@@ -393,10 +393,92 @@ escape_json() {
 
 # --- Dynamic registry helpers ---
 
+# Per-build prefetch cache. `_registry_prefetch` populates these with ONE jq
+# invocation so build_status_json doesn't fork jq dozens of times per poll
+# (the biggest CPU sink on the Pi Zero 2). Helpers below prefer the cache and
+# fall back to on-disk jq when unset (e.g. request handlers outside a build).
+declare -gA _REG_CACHE=()
+declare -g _REG_CACHE_READY=0
+declare -g _REG_KEYS_CACHE=""
+declare -gA _ASSIGN_CACHE=()
+declare -g _ASSIGN_CACHE_READY=0
+
+_registry_prefetch() {
+  _REG_CACHE=()
+  _REG_CACHE_READY=0
+  [ -s "$REGISTRY_FILE" ] || return 0
+  local json
+  json=$(cat "$REGISTRY_FILE" 2>/dev/null)
+  [ -n "$json" ] || return 0
+  _REGISTRY_CACHE_JSON=$json
+  local out
+  # Single jq: TAB-separated (app, kind, key, value) rows covering every field
+  # the status build (or rebalance) asks for. `kind` disambiguates flat fields
+  # ("f") from per-component ("c") and per-memory-level ("m").
+  out=$(printf '%s' "$json" | jq -r '
+    .[] as $s | $s.key as $k |
+    (
+      [$k, "f", "service",              ($s.service // "")],
+      [$k, "f", "installDir",           ($s.installDir // "")],
+      [$k, "f", "releaseAsset",         ($s.releaseAsset // "")],
+      [$k, "f", "releaseUrl",           ($s.releaseUrl // "")],
+      [$k, "f", "installScript",        ($s.installScript // "")],
+      [$k, "f", "updateScript",         ($s.updateScript // "")],
+      [$k, "f", "uninstallScript",      ($s.uninstallScript // "")],
+      [$k, "f", "runInstallOnRelease",  (($s.runInstallOnRelease // false)|tostring)],
+      [$k, "f", "hasComponents",        (if $s.components then "true" else "false" end)],
+      [$k, "f", "managed",              (if ($s.managed==false) then "false" else "true" end)],
+      [$k, "f", "memoryProfileJson",    (if $s.memoryProfile then ($s.memoryProfile|tojson) else "null" end)],
+      [$k, "f", "memoryProfileDefault", ($s.memoryProfile.defaultLevel // "balanced")],
+      [$k, "f", "permissionsJson",      (($s.permissions // []) | tojson)],
+      [$k, "f", "permissionsCsv",       (($s.permissions // []) | join(","))],
+      [$k, "f", "writableDirsNl",       (($s.writableDirs // []) | join("\n"))]
+    ),
+    (($s.components // {}) | to_entries[]? as $c |
+      ($c.value // {}) | to_entries[]? |
+      [$k, "c", ($c.key + "." + .key), (.value|tostring)]),
+    (($s.memoryProfile.levels // {}) | to_entries[]? |
+      [$k, "m", .key, (.value|tostring)])
+    | @tsv
+  ' 2>/dev/null)
+  local app kind key val
+  while IFS=$'\t' read -r app kind key val; do
+    [ -n "$app" ] || continue
+    _REG_CACHE["${app}|${kind}|${key}"]=$val
+  done <<<"$out"
+  _REG_KEYS_CACHE=$(printf '%s' "$json" | jq -r '.[].key' 2>/dev/null)
+  _REG_CACHE_READY=1
+}
+
+_assignments_prefetch() {
+  _ASSIGN_CACHE=()
+  _ASSIGN_CACHE_READY=0
+  [ -s "$ASSIGNMENTS_FILE" ] || { _ASSIGN_CACHE_READY=1; return 0; }
+  local out app core
+  out=$(jq -r '
+    to_entries[]? |
+    .key as $k |
+    ( .value
+      | if type == "number" then tostring
+        elif type == "object" then (.core // empty | tostring)
+        else empty end
+    ) as $c |
+    [$k, ($c // "")] | @tsv
+  ' "$ASSIGNMENTS_FILE" 2>/dev/null)
+  while IFS=$'\t' read -r app core; do
+    [ -n "$app" ] || continue
+    _ASSIGN_CACHE[$app]=$core
+  done <<<"$out"
+  _ASSIGN_CACHE_READY=1
+}
+
 # Get a field from services.json: registry_get <key> <field>
-# Uses _REGISTRY_CACHE_JSON when set (one parse per build_status_json) to avoid
-# forking jq many times per status refresh on the Pi Zero 2.
+# Prefers _REG_CACHE (populated by _registry_prefetch) to avoid forking jq.
 registry_get() {
+  if [ "$_REG_CACHE_READY" = "1" ]; then
+    printf '%s' "${_REG_CACHE["$1|f|$2"]-}"
+    return
+  fi
   if [ -n "${_REGISTRY_CACHE_JSON:-}" ]; then
     printf '%s' "$_REGISTRY_CACHE_JSON" | jq -r --arg k "$1" --arg f "$2" '.[] | select(.key == $k) | .[$f] // empty' 2>/dev/null
   else
@@ -416,6 +498,11 @@ registry_release_asset() {
 # och annars lämnar dessa mappar root-ägda → engine får EACCES på writeFileSync.
 registry_writable_dirs() {
   local app=$1
+  if [ "$_REG_CACHE_READY" = "1" ]; then
+    local nl="${_REG_CACHE["$app|f|writableDirsNl"]-}"
+    [ -n "$nl" ] && printf '%s\n' "$nl"
+    return
+  fi
   if [ -n "${_REGISTRY_CACHE_JSON:-}" ]; then
     printf '%s' "$_REGISTRY_CACHE_JSON" | jq -r --arg k "$app" '.[] | select(.key == $k) | .writableDirs[]? // empty' 2>/dev/null
   else
@@ -483,15 +570,29 @@ _registry_jq() {
 
 # Get a component field: registry_get_component <key> <component> <field>
 registry_get_component() {
+  if [ "$_REG_CACHE_READY" = "1" ]; then
+    printf '%s' "${_REG_CACHE["$1|c|$2.$3"]-}"
+    return
+  fi
   _registry_jq -r '.[] | select(.key == $k) | .components[$c][$f] // empty' \
     --arg k "$1" --arg c "$2" --arg f "$3"
 }
 
 registry_memory_profile_json() {
+  if [ "$_REG_CACHE_READY" = "1" ]; then
+    local v="${_REG_CACHE["$1|f|memoryProfileJson"]-}"
+    [ -n "$v" ] && [ "$v" != "null" ] && printf '%s' "$v"
+    return
+  fi
   _registry_jq -c '.[] | select(.key == $k) | .memoryProfile // empty' --arg k "$1"
 }
 
 registry_memory_profile_default_level() {
+  if [ "$_REG_CACHE_READY" = "1" ]; then
+    local v="${_REG_CACHE["$1|f|memoryProfileDefault"]-}"
+    printf '%s' "${v:-balanced}"
+    return
+  fi
   _registry_jq -r '.[] | select(.key == $k) | .memoryProfile.defaultLevel // "balanced"' --arg k "$1"
 }
 
@@ -499,18 +600,31 @@ registry_memory_profile_mb() {
   local app=$1 level=${2:-}
   [ -z "$level" ] && level=$(registry_memory_profile_default_level "$app")
   local mb
-  mb=$(_registry_jq -r '.[] | select(.key == $k) | .memoryProfile.levels[$l] // empty' --arg k "$app" --arg l "$level")
+  if [ "$_REG_CACHE_READY" = "1" ]; then
+    mb="${_REG_CACHE["$app|m|$level"]-}"
+  else
+    mb=$(_registry_jq -r '.[] | select(.key == $k) | .memoryProfile.levels[$l] // empty' --arg k "$app" --arg l "$level")
+  fi
   [ -n "$mb" ] && [ "$mb" -lt "$MIN_MEMORY_MB" ] 2>/dev/null && mb="$MIN_MEMORY_MB"
   echo "$mb"
 }
 
 registry_permissions_json() {
+  if [ "$_REG_CACHE_READY" = "1" ]; then
+    local v="${_REG_CACHE["$1|f|permissionsJson"]-}"
+    printf '%s' "${v:-[]}"
+    return
+  fi
   local raw
   raw=$(_registry_jq -c '.[] | select(.key == $k) | .permissions // []' --arg k "$1")
   [ -n "$raw" ] && echo "$raw" || echo "[]"
 }
 
 registry_permissions_env() {
+  if [ "$_REG_CACHE_READY" = "1" ]; then
+    printf '%s' "${_REG_CACHE["$1|f|permissionsCsv"]-}"
+    return
+  fi
   jq -r --arg k "$1" '.[] | select(.key == $k) | (.permissions // []) | join(",")' "$REGISTRY_FILE" 2>/dev/null
 }
 
@@ -519,14 +633,27 @@ registry_needs_permission() {
 }
 
 memory_level_for_mb() {
-  local app=$1 mb=$2
-  local level
-  level=$(jq -r --arg k "$app" --argjson mb "${mb:-0}" '.[] | select(.key == $k) | (.memoryProfile.levels // {}) | to_entries[]? | select(.value == $mb) | .key' "$REGISTRY_FILE" 2>/dev/null | head -1)
+  local app=$1 mb=$2 level=""
+  if [ "$_REG_CACHE_READY" = "1" ]; then
+    local k
+    for k in low balanced high; do
+      if [ "${_REG_CACHE["$app|m|$k"]-}" = "$mb" ]; then
+        level=$k
+        break
+      fi
+    done
+  else
+    level=$(jq -r --arg k "$app" --argjson mb "${mb:-0}" '.[] | select(.key == $k) | (.memoryProfile.levels // {}) | to_entries[]? | select(.value == $mb) | .key' "$REGISTRY_FILE" 2>/dev/null | head -1)
+  fi
   [ -n "$level" ] && echo "$level" || echo "custom"
 }
 
 # Check if service uses components format
 registry_has_components() {
+  if [ "$_REG_CACHE_READY" = "1" ]; then
+    printf '%s' "${_REG_CACHE["$1|f|hasComponents"]-false}"
+    return
+  fi
   local val
   val=$(_registry_jq -r '.[] | select(.key == $k) | .components // empty' --arg k "$1")
   [ -n "$val" ] && [ "$val" != "null" ] && echo "true" || echo "false"
@@ -534,19 +661,31 @@ registry_has_components() {
 
 # Get all service keys from registry
 registry_keys() {
+  if [ "$_REG_CACHE_READY" = "1" ]; then
+    printf '%s\n' "$_REG_KEYS_CACHE"
+    return
+  fi
   _registry_jq -r '.[].key'
 }
 
 # Check if a service is managed by PCC (defaults to true if field absent)
 registry_is_managed() {
+  if [ "$_REG_CACHE_READY" = "1" ]; then
+    printf '%s' "${_REG_CACHE["$1|f|managed"]-true}"
+    return
+  fi
   local val
   val=$(_registry_jq -r '.[] | select(.key == $k) | .managed // true' --arg k "$1")
   [ "$val" != "false" ] && echo "true" || echo "false"
 }
 
 # Get assignment core: assignment_get_core <key>
-# Single jq pass — handles both new format (bare number) and legacy {core: N}.
+# Uses _ASSIGN_CACHE when populated by _assignments_prefetch.
 assignment_get_core() {
+  if [ "$_ASSIGN_CACHE_READY" = "1" ]; then
+    printf '%s' "${_ASSIGN_CACHE["$1"]-}"
+    return
+  fi
   jq -r --arg k "$1" '
     .[$k] // empty
     | if type == "number" then tostring
@@ -1315,10 +1454,12 @@ build_status_json() {
   uptime_str=$(get_uptime)
   runtime_json=$(node_runtime_json)
 
-  # Cache registry once for this build to avoid forking jq dozens of times.
-  # Hoisted above rebalance_memory_budget so its registry_keys/has_components
-  # calls also hit the cache.
-  _REGISTRY_CACHE_JSON=$(cat "$REGISTRY_FILE" 2>/dev/null)
+  # Prefetch registry + assignments into bash assoc arrays with ONE jq call
+  # each. Every registry_*/assignment_get_core call in the loop below then
+  # short-circuits to O(1) array lookup instead of forking jq. This is the
+  # single biggest CPU win on the Pi Zero 2 (was ~30+ jq forks per poll).
+  _registry_prefetch
+  _assignments_prefetch
   # Per-build systemctl cache: each service's ActiveState/MainPID/MemoryCurrent
   # is fetched at most once via _service_show. Also benefits rebalance via
   # _app_runtime_ram_mb → service_is_active + get_service_ram.
@@ -1483,6 +1624,9 @@ build_status_json() {
   echo "{\"cpu\":${cpu:-0},\"cpuCores\":${cpu_cores:-[]},\"temp\":${temp:-0},\"ramUsed\":${ram_used:-0},\"ramTotal\":${ram_total:-0},\"diskUsed\":${disk_used:-0},\"diskTotal\":${disk_total:-0},\"uptime\":\"${uptime_str}\",\"dashboardCpu\":${dash_cpu:-0},\"dashboardRamMb\":${dash_ram:-0},\"commit\":\"${DASHBOARD_COMMIT_SHORT}\",\"branch\":\"${DASHBOARD_BRANCH}\",\"runtime\":${runtime_json},\"rebootRequired\":${reboot_json},\"services\":{${svc_json}}}"
   unset _REGISTRY_CACHE_JSON
   unset _SERVICE_SHOW_CACHE _SERVICE_SHOW_CACHE_INIT
+  # Reset prefetch caches so callers outside a build read fresh from disk.
+  _REG_CACHE=(); _REG_CACHE_READY=0; _REG_KEYS_CACHE=""
+  _ASSIGN_CACHE=(); _ASSIGN_CACHE_READY=0
 }
 
 get_cached_status() {
