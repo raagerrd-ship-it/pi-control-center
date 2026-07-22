@@ -1896,7 +1896,23 @@ UNIT
       sudo_run systemctl daemon-reload || return 1
       sudo_run systemctl enable "${comp_svc}.service" || return 1
       sudo_run systemctl --no-block start "${comp_svc}.service" || return 1
+
+      # För statiska UI-komponenter (python static-spa-server): låt nginx äga
+      # porten direkt istället för att låta python-servern binda den. Annars
+      # kolliderar den med nginx-vhosten som skapas av migrate_uis_to_nginx
+      # och tar ner hela nginx (inkl. dashboard på port 80). Idempotent —
+      # _app_neutralize_ui_unit gör python-servicen till en no-op sleep så
+      # PCC:s component-health fortsätter rapportera "online".
+      if [ "$comp" = "ui" ] && [ "$comp_type" != "node" ]; then
+        if _app_write_nginx_vhost "$app"; then
+          _app_neutralize_ui_unit "$app"
+          log "NGINX: ${app} UI served by nginx (python static-server neutralized)"
+        else
+          log "NGINX: vhost för ${app} kunde inte skrivas — python static-server behåller porten"
+        fi
+      fi
     done
+
   else
     # Legacy single-service
     local svc_file="/etc/systemd/system/${svc}.service"
