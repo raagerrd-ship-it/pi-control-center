@@ -305,6 +305,13 @@ $USER ALL=(ALL) NOPASSWD: /usr/bin/systemd-run *
 EOF
 sudo chmod 440 /etc/sudoers.d/pi-control-center
 
+# Validera sudoers-syntax — annars kan hela sudo-systemet bli oanvändbart
+if ! sudo visudo -cf /etc/sudoers.d/pi-control-center >/dev/null 2>&1; then
+  echo "  ⚠ Sudoers-syntax ogiltig — tar bort filen"
+  sudo rm -f /etc/sudoers.d/pi-control-center
+  exit 1
+fi
+
 # Quiet journald by default — only err+ stored. Reverse via:
 #   sudo rm /etc/systemd/journald.conf.d/quiet.conf && sudo systemctl restart systemd-journald
 sudo mkdir -p /etc/systemd/journald.conf.d
