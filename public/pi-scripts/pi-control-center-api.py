@@ -338,8 +338,17 @@ class Handler(BaseHTTPRequestHandler):
                 self._send(200, b'{"pong":true}')
                 return True
             if path == "/api/status":
+                # REGRESSIONSGUARD: touch stämpel så bash status_cache_loop
+                # håller cachen varm. Utan detta somnar bakgrundsloopen efter
+                # ACTIVE_WINDOW och /api/status serverar stale/tom data.
+                try:
+                    with open(LAST_STATUS_REQUEST_FILE, "wb") as fh:
+                        fh.write(str(int(time.time())).encode("ascii"))
+                except OSError:
+                    pass
                 self._send(200, STATUS_CACHE.get())
                 return True
+
             if path == "/api/available-services":
                 self._send(200, read_file_or(REGISTRY_FILE, b"[]"))
                 return True
