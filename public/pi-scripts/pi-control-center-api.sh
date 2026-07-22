@@ -1454,10 +1454,12 @@ build_status_json() {
   uptime_str=$(get_uptime)
   runtime_json=$(node_runtime_json)
 
-  # Cache registry once for this build to avoid forking jq dozens of times.
-  # Hoisted above rebalance_memory_budget so its registry_keys/has_components
-  # calls also hit the cache.
-  _REGISTRY_CACHE_JSON=$(cat "$REGISTRY_FILE" 2>/dev/null)
+  # Prefetch registry + assignments into bash assoc arrays with ONE jq call
+  # each. Every registry_*/assignment_get_core call in the loop below then
+  # short-circuits to O(1) array lookup instead of forking jq. This is the
+  # single biggest CPU win on the Pi Zero 2 (was ~30+ jq forks per poll).
+  _registry_prefetch
+  _assignments_prefetch
   # Per-build systemctl cache: each service's ActiveState/MainPID/MemoryCurrent
   # is fetched at most once via _service_show. Also benefits rebalance via
   # _app_runtime_ram_mb → service_is_active + get_service_ram.
