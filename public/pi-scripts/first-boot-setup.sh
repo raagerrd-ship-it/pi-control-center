@@ -460,8 +460,12 @@ CPUAffinity=0
 AllowedCPUs=0
 KillMode=mixed
 TimeoutStopSec=15
+# Sudo (SUID) kräver CAP_SETUID/SETGID/AUDIT_WRITE m.fl. — utan dem faller
+# update-flödet med "sudo: unable to change to root gid". Se regression-not
+# i mem://architecture/api-service.
 AmbientCapabilities=CAP_NET_RAW CAP_NET_ADMIN
-CapabilityBoundingSet=CAP_NET_RAW CAP_NET_ADMIN CAP_NET_BIND_SERVICE
+CapabilityBoundingSet=CAP_SETUID CAP_SETGID CAP_SETPCAP CAP_AUDIT_WRITE CAP_DAC_OVERRIDE CAP_DAC_READ_SEARCH CAP_FOWNER CAP_CHOWN CAP_KILL CAP_NET_RAW CAP_NET_ADMIN CAP_NET_BIND_SERVICE CAP_SYS_ADMIN
+NoNewPrivileges=no
 ExecStartPre=+/usr/sbin/rfkill unblock bluetooth
 ExecStartPre=+/bin/hciconfig hci0 up
 
