@@ -84,6 +84,42 @@ done
 sed -i 's/\r$//' "$DASHBOARD_DIR/public/pi-scripts/"*.sh
 chmod +x "$DASHBOARD_DIR/public/pi-scripts/"*.sh
 
+# ── Pause managed appar under tunga build-steg (npm install + vite build) ──
+# Pi Zero 2 W har inte marginal att köra lotus+cast+sonos parallellt med
+# esbuild/vite (~250MB RSS-toppar) → OOM-killern kan döda update-scriptet
+# mitt i extract. Vi stoppar aktiva engine-tjänster, sparar listan, och
+# startar dem igen efter build (även vid fel, via trap).
+PAUSED_LIST_FILE="/tmp/pcc-update-paused.list"
+PAUSED_SERVICES=()
+resume_paused_services() {
+  [ ${#PAUSED_SERVICES[@]} -eq 0 ] && return 0
+  echo "  ↳ Återstartar pausade tjänster: ${PAUSED_SERVICES[*]}"
+  for svc in "${PAUSED_SERVICES[@]}"; do
+    sudo systemctl start "$svc" 2>/dev/null || echo "    ⚠ kunde inte starta $svc"
+  done
+  rm -f "$PAUSED_LIST_FILE" 2>/dev/null || true
+  PAUSED_SERVICES=()
+}
+if [ "${NO_PAUSE:-0}" != "1" ] && command -v jq >/dev/null 2>&1 && [ -f "$DASHBOARD_DIR/public/services.json" ]; then
+  echo "[1.5/6] Pausar aktiva app-tjänster för att frigöra RAM..."
+  mapfile -t ALL_SVCS < <(jq -r '.[].components | to_entries[] | .value.service // empty' "$DASHBOARD_DIR/public/services.json" 2>/dev/null | sort -u)
+  for svc in "${ALL_SVCS[@]}"; do
+    [ -z "$svc" ] && continue
+    if systemctl is-active --quiet "$svc" 2>/dev/null; then
+      PAUSED_SERVICES+=("$svc")
+      echo "  ↳ Stoppar $svc"
+      sudo systemctl stop "$svc" 2>/dev/null || true
+    fi
+  done
+  if [ ${#PAUSED_SERVICES[@]} -gt 0 ]; then
+    printf '%s\n' "${PAUSED_SERVICES[@]}" > "$PAUSED_LIST_FILE"
+    trap 'resume_paused_services' EXIT
+    echo "  ↳ RAM free nu: $(free -m | awk '/^Mem:/{print $7}')MB"
+  else
+    echo "  ↳ Inga aktiva app-tjänster att pausa"
+  fi
+fi
+
 echo "[2/6] Installing dependencies..."
 ensure_node24
 DEPS_HASH_FILE="node_modules/.pcc-deps-hash"
