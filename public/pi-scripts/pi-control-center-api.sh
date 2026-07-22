@@ -1993,7 +1993,18 @@ LimitNICE=-20"
       rm -f "$PI_HOME/.config/systemd/user/${comp_svc}.service" 2>/dev/null || true
       sudo_run_quiet systemctl stop "${comp_svc}.service" || true
       sudo_run_quiet systemctl disable "${comp_svc}.service" || true
+      # ─── REGRESSIONSGUARD: static UI = nginx äger porten ─────────────────
+      # Statiska UI-komponenter (type != "node") får ALDRIG en python
+      # static-spa-server som ExecStart — den binder samma port som
+      # nginx-vhosten (3001/3003/…) och kraschar hela nginx (inkl. port 80).
+      # Vi genererar direkt en no-op sleep-unit så health-tracking funkar,
+      # och skriver nginx-vhosten längre ner. Se _app_neutralize_ui_unit
+      # för samma mönster på legacy-installer. Ta INTE bort denna override.
+      if [ "$comp" = "ui" ] && [ "$comp_type" != "node" ]; then
+        comp_exec="/bin/sleep infinity"
+      fi
       if ! sudo_run tee "$comp_svc_file" > /dev/null <<UNIT
+
 [Unit]
 Description=${app} ${comp} service
 After=network.target

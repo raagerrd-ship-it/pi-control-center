@@ -41,7 +41,12 @@ INSTALL_DIR = STATUS_DIR / "install"
 CACHE_FILE = STATUS_DIR / "status-cache.json"
 REBOOT_REQUIRED_FILE = STATUS_DIR / "reboot-required.json"
 FACTORY_RESET_FILE = STATUS_DIR / "factory-reset.json"
+# Mirror av $LAST_STATUS_REQUEST_FILE i pi-control-center-api.sh. Måste
+# touchas varje gång UI:t pollar /api/status — annars går status_cache_loop
+# i bash till idle och slutar bygga cachen, vilket ger noll-värden i UI:t.
+LAST_STATUS_REQUEST_FILE = STATUS_DIR / "last-status-request.ts"
 REGISTRY_FILE = Path("/var/www/pi-control-center/services.json")
+
 
 # Resolve bash script. Prefer the canonical /usr/local/bin symlink which
 # `pi-control-center-api.sh` keeps fresh on every invocation.
@@ -333,8 +338,17 @@ class Handler(BaseHTTPRequestHandler):
                 self._send(200, b'{"pong":true}')
                 return True
             if path == "/api/status":
+                # REGRESSIONSGUARD: touch stämpel så bash status_cache_loop
+                # håller cachen varm. Utan detta somnar bakgrundsloopen efter
+                # ACTIVE_WINDOW och /api/status serverar stale/tom data.
+                try:
+                    with open(LAST_STATUS_REQUEST_FILE, "wb") as fh:
+                        fh.write(str(int(time.time())).encode("ascii"))
+                except OSError:
+                    pass
                 self._send(200, STATUS_CACHE.get())
                 return True
+
             if path == "/api/available-services":
                 self._send(200, read_file_or(REGISTRY_FILE, b"[]"))
                 return True
