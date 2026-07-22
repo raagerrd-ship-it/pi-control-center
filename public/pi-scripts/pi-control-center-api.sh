@@ -498,6 +498,11 @@ registry_release_asset() {
 # och annars lämnar dessa mappar root-ägda → engine får EACCES på writeFileSync.
 registry_writable_dirs() {
   local app=$1
+  if [ "$_REG_CACHE_READY" = "1" ]; then
+    local nl="${_REG_CACHE["$app|f|writableDirsNl"]-}"
+    [ -n "$nl" ] && printf '%s\n' "$nl"
+    return
+  fi
   if [ -n "${_REGISTRY_CACHE_JSON:-}" ]; then
     printf '%s' "$_REGISTRY_CACHE_JSON" | jq -r --arg k "$app" '.[] | select(.key == $k) | .writableDirs[]? // empty' 2>/dev/null
   else
