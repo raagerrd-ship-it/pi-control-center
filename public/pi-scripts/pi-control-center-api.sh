@@ -393,10 +393,92 @@ escape_json() {
 
 # --- Dynamic registry helpers ---
 
+# Per-build prefetch cache. `_registry_prefetch` populates these with ONE jq
+# invocation so build_status_json doesn't fork jq dozens of times per poll
+# (the biggest CPU sink on the Pi Zero 2). Helpers below prefer the cache and
+# fall back to on-disk jq when unset (e.g. request handlers outside a build).
+declare -gA _REG_CACHE=()
+declare -g _REG_CACHE_READY=0
+declare -g _REG_KEYS_CACHE=""
+declare -gA _ASSIGN_CACHE=()
+declare -g _ASSIGN_CACHE_READY=0
+
+_registry_prefetch() {
+  _REG_CACHE=()
+  _REG_CACHE_READY=0
+  [ -s "$REGISTRY_FILE" ] || return 0
+  local json
+  json=$(cat "$REGISTRY_FILE" 2>/dev/null)
+  [ -n "$json" ] || return 0
+  _REGISTRY_CACHE_JSON=$json
+  local out
+  # Single jq: TAB-separated (app, kind, key, value) rows covering every field
+  # the status build (or rebalance) asks for. `kind` disambiguates flat fields
+  # ("f") from per-component ("c") and per-memory-level ("m").
+  out=$(printf '%s' "$json" | jq -r '
+    .[] as $s | $s.key as $k |
+    (
+      [$k, "f", "service",              ($s.service // "")],
+      [$k, "f", "installDir",           ($s.installDir // "")],
+      [$k, "f", "releaseAsset",         ($s.releaseAsset // "")],
+      [$k, "f", "releaseUrl",           ($s.releaseUrl // "")],
+      [$k, "f", "installScript",        ($s.installScript // "")],
+      [$k, "f", "updateScript",         ($s.updateScript // "")],
+      [$k, "f", "uninstallScript",      ($s.uninstallScript // "")],
+      [$k, "f", "runInstallOnRelease",  (($s.runInstallOnRelease // false)|tostring)],
+      [$k, "f", "hasComponents",        (if $s.components then "true" else "false" end)],
+      [$k, "f", "managed",              (if ($s.managed==false) then "false" else "true" end)],
+      [$k, "f", "memoryProfileJson",    (if $s.memoryProfile then ($s.memoryProfile|tojson) else "null" end)],
+      [$k, "f", "memoryProfileDefault", ($s.memoryProfile.defaultLevel // "balanced")],
+      [$k, "f", "permissionsJson",      (($s.permissions // []) | tojson)],
+      [$k, "f", "permissionsCsv",       (($s.permissions // []) | join(","))],
+      [$k, "f", "writableDirsNl",       (($s.writableDirs // []) | join("\n"))]
+    ),
+    (($s.components // {}) | to_entries[]? as $c |
+      ($c.value // {}) | to_entries[]? |
+      [$k, "c", ($c.key + "." + .key), (.value|tostring)]),
+    (($s.memoryProfile.levels // {}) | to_entries[]? |
+      [$k, "m", .key, (.value|tostring)])
+    | @tsv
+  ' 2>/dev/null)
+  local app kind key val
+  while IFS=$'\t' read -r app kind key val; do
+    [ -n "$app" ] || continue
+    _REG_CACHE["${app}|${kind}|${key}"]=$val
+  done <<<"$out"
+  _REG_KEYS_CACHE=$(printf '%s' "$json" | jq -r '.[].key' 2>/dev/null)
+  _REG_CACHE_READY=1
+}
+
+_assignments_prefetch() {
+  _ASSIGN_CACHE=()
+  _ASSIGN_CACHE_READY=0
+  [ -s "$ASSIGNMENTS_FILE" ] || { _ASSIGN_CACHE_READY=1; return 0; }
+  local out app core
+  out=$(jq -r '
+    to_entries[]? |
+    .key as $k |
+    ( .value
+      | if type == "number" then tostring
+        elif type == "object" then (.core // empty | tostring)
+        else empty end
+    ) as $c |
+    [$k, ($c // "")] | @tsv
+  ' "$ASSIGNMENTS_FILE" 2>/dev/null)
+  while IFS=$'\t' read -r app core; do
+    [ -n "$app" ] || continue
+    _ASSIGN_CACHE[$app]=$core
+  done <<<"$out"
+  _ASSIGN_CACHE_READY=1
+}
+
 # Get a field from services.json: registry_get <key> <field>
-# Uses _REGISTRY_CACHE_JSON when set (one parse per build_status_json) to avoid
-# forking jq many times per status refresh on the Pi Zero 2.
+# Prefers _REG_CACHE (populated by _registry_prefetch) to avoid forking jq.
 registry_get() {
+  if [ "$_REG_CACHE_READY" = "1" ]; then
+    printf '%s' "${_REG_CACHE["$1|f|$2"]-}"
+    return
+  fi
   if [ -n "${_REGISTRY_CACHE_JSON:-}" ]; then
     printf '%s' "$_REGISTRY_CACHE_JSON" | jq -r --arg k "$1" --arg f "$2" '.[] | select(.key == $k) | .[$f] // empty' 2>/dev/null
   else
