@@ -53,7 +53,7 @@ const Index = () => {
     return hasActiveUpdate || hasActiveInstall || isDashUpdating;
   }, [updates, installs, dashboardUpdate]);
 
-  const { status, error, loading, connection, refresh } = useSystemStatus(isBusy);
+  const { status, error, loading, connection, refreshing, refresh } = useSystemStatus(isBusy, autoRefresh);
 
   useEffect(() => {
     fetchAvailableServices().then(setAvailableServices).catch(() => {});
