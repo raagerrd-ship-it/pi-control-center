@@ -43,6 +43,10 @@ interface SystemMonitorProps {
   onCheckVersions: () => void;
   onDashboardUpdate: () => void;
   onReboot: () => void;
+  autoRefresh: boolean;
+  onToggleAutoRefresh: () => void;
+  onRefresh: () => void;
+  refreshing: boolean;
 }
 
 export function SystemMonitor({
@@ -50,6 +54,7 @@ export function SystemMonitor({
   dashboardVersion, dashboardUpdate, isUpdatingDashboard,
   checkingVersions, updatesAvailable,
   rebooting, onCheckVersions, onDashboardUpdate, onReboot,
+  autoRefresh, onToggleAutoRefresh, onRefresh, refreshing,
 }: SystemMonitorProps) {
   if (loading) {
     return (
