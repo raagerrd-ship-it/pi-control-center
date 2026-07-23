@@ -46,6 +46,7 @@ FACTORY_RESET_FILE = STATUS_DIR / "factory-reset.json"
 # i bash till idle och slutar bygga cachen, vilket ger noll-värden i UI:t.
 LAST_STATUS_REQUEST_FILE = STATUS_DIR / "last-status-request.ts"
 REGISTRY_FILE = Path("/var/www/pi-control-center/services.json")
+STATUS_SYNC_REFRESH_MAX_AGE = int(os.environ.get("PCC_STATUS_SYNC_REFRESH_MAX_AGE", "12"))
 
 
 # Resolve bash script. Prefer the canonical /usr/local/bin symlink which
@@ -123,8 +124,59 @@ class StatusCache:
             self._mtime_ns = st.st_mtime_ns
         return data
 
+    def age_seconds(self) -> float:
+        try:
+            return max(0.0, time.time() - os.stat(self.path).st_mtime)
+        except FileNotFoundError:
+            return float("inf")
+
+    def is_stale(self, max_age_seconds: int = STATUS_SYNC_REFRESH_MAX_AGE) -> bool:
+        return self.age_seconds() > max_age_seconds
+
 
 STATUS_CACHE = StatusCache(CACHE_FILE)
+STATUS_REFRESH_LOCK = threading.Lock()
+
+
+def touch_status_request() -> None:
+    # REGRESSIONSGUARD: /api/status måste stämpla aktivitet även när Python
+    # fast-pathen svarar utan bash. Annars går bash status_cache_loop idle.
+    try:
+        with open(LAST_STATUS_REQUEST_FILE, "wb") as fh:
+            fh.write(str(int(time.time())).encode("ascii"))
+    except OSError:
+        pass
+
+
+def status_payload_for_request() -> Tuple[int, bytes, str]:
+    """Return fresh-enough status, synchronously rebuilding after idle.
+
+    REGRESSIONSGUARD: Python fast-pathen får inte servera en gammal cache vid
+    första UI-öppningen efter idle. En gammal cache kan visa Core 0 = 100% i
+    upp till ACTIVE_WINDOW trots att lasten redan är borta. När cachen är äldre
+    än några pollintervall går vi därför via bash `get_cached_status`, som gör
+    en kall synkron build och skriver ny cache innan svaret skickas.
+    """
+    touch_status_request()
+
+    if not STATUS_CACHE.is_stale():
+        return 200, STATUS_CACHE.get(), "application/json"
+
+    if STATUS_REFRESH_LOCK.acquire(blocking=False):
+        try:
+            status, body, content_type = proxy_to_bash("GET", "/api/status", b"")
+            if status == 200 and body:
+                return status, body, content_type
+        finally:
+            STATUS_REFRESH_LOCK.release()
+    else:
+        # Another request is already refreshing. Wait briefly for the cache file
+        # mtime to advance instead of spawning a parallel build.
+        deadline = time.time() + 3.0
+        while time.time() < deadline and STATUS_CACHE.is_stale():
+            time.sleep(0.1)
+
+    return 200, STATUS_CACHE.get(), "application/json"
 
 
 def read_file_or(path: Path, fallback: bytes) -> bytes:
@@ -338,15 +390,8 @@ class Handler(BaseHTTPRequestHandler):
                 self._send(200, b'{"pong":true}')
                 return True
             if path == "/api/status":
-                # REGRESSIONSGUARD: touch stämpel så bash status_cache_loop
-                # håller cachen varm. Utan detta somnar bakgrundsloopen efter
-                # ACTIVE_WINDOW och /api/status serverar stale/tom data.
-                try:
-                    with open(LAST_STATUS_REQUEST_FILE, "wb") as fh:
-                        fh.write(str(int(time.time())).encode("ascii"))
-                except OSError:
-                    pass
-                self._send(200, STATUS_CACHE.get())
+                status, body, content_type = status_payload_for_request()
+                self._send(status, body, content_type)
                 return True
 
             if path == "/api/available-services":

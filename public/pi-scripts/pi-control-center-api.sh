@@ -161,8 +161,10 @@ STATUS_DIR="/tmp/pi-control-center"
 INSTALL_DIR="/tmp/pi-control-center/install"
 CACHE_FILE="$STATUS_DIR/status-cache.json"
 LAST_STATUS_REQUEST_FILE="$STATUS_DIR/last-status-request.ts"
+CPU_STAT_CACHE_FILE="$STATUS_DIR/cpu-stat-sample.cache"
 CACHE_MAX_AGE=4  # seconds
 ACTIVE_WINDOW=60  # seconds — bygg bara cache om UI pollat senaste denna tid
+STATUS_SYNC_MAX_AGE=12  # seconds — första UI-poll efter idle får inte visa minutgammal CPU
 REBOOT_REQUIRED_FILE="$STATUS_DIR/reboot-required.json"
 USER_ID="$(id -u)"
 USER_RUNTIME_DIR="/run/user/$USER_ID"
@@ -1182,51 +1184,85 @@ watchdog_loop() {
   done
 }
 
-# Combined CPU sampler: reads /proc/stat once, sleeps once, reads again.
-# Populates two globals to avoid double-sampling per status build:
+# Combined CPU sampler: reads /proc/stat once and compares against the previous
+# status-build sample. This reports CPU for the time BETWEEN builds instead of
+# the current bash build itself. Without this, first UI open after idle can show
+# Core 0 = 100% because the measurement window includes build_status_json's own
+# fork/systemctl work, then that stale value remains visible until next refresh.
+# Populates two globals:
 #   _CPU_TOTAL_PCT  — aggregate cpu usage (0-100)
 #   _CPU_PER_CORE   — JSON array string, e.g. "[12,3,7,0]"
 sample_cpu_stats() {
-  local agg_total1=0 agg_idle1=0 agg_total2=0 agg_idle2=0
-  local cores_before=() cores_after=()
-
+  local tmp_file="${CPU_STAT_CACHE_FILE}.$$"
   local label u n s idle w x y _rest total
+  local current_labels=()
+  declare -A before_total=() before_idle=() after_total=() after_idle=()
+  local now prev_mtime prev_age=999999 use_short_sample=0
+
+  if [ -s "$CPU_STAT_CACHE_FILE" ]; then
+    now=$(date +%s)
+    prev_mtime=$(stat -c %Y "$CPU_STAT_CACHE_FILE" 2>/dev/null || echo 0)
+    prev_age=$((now - prev_mtime))
+  fi
+  [ "$prev_age" -gt "$STATUS_SYNC_MAX_AGE" ] && use_short_sample=1
+
+  : > "$tmp_file" 2>/dev/null || true
+
   while IFS=' ' read -r label u n s idle w x y _rest; do
-    if [ "$label" = "cpu" ]; then
-      agg_total1=$((u + n + s + idle + w + x + y))
-      agg_idle1=$idle
-    elif [[ "$label" =~ ^cpu[0-9]+$ ]]; then
+    if [ "$label" = "cpu" ] || [[ "$label" =~ ^cpu[0-9]+$ ]]; then
       total=$((u + n + s + idle + w + x + y))
-      cores_before+=("$total:$idle")
+      if [ "$use_short_sample" -eq 1 ]; then
+        before_total[$label]=$total
+        before_idle[$label]=$idle
+      else
+        after_total[$label]=$total
+        after_idle[$label]=$idle
+        printf '%s %s %s\n' "$label" "$total" "$idle" >> "$tmp_file"
+      fi
+      [[ "$label" =~ ^cpu[0-9]+$ ]] && current_labels+=("$label")
     fi
   done < /proc/stat
 
-  sleep 0.2
+  if [ "$use_short_sample" -eq 1 ]; then
+    sleep 0.2
+    : > "$tmp_file" 2>/dev/null || true
+    while IFS=' ' read -r label u n s idle w x y _rest; do
+      if [ "$label" = "cpu" ] || [[ "$label" =~ ^cpu[0-9]+$ ]]; then
+        total=$((u + n + s + idle + w + x + y))
+        after_total[$label]=$total
+        after_idle[$label]=$idle
+        printf '%s %s %s\n' "$label" "$total" "$idle" >> "$tmp_file"
+      fi
+    done < /proc/stat
+  elif [ -s "$CPU_STAT_CACHE_FILE" ]; then
+    while IFS=' ' read -r label total idle; do
+      [ -n "$label" ] || continue
+      before_total[$label]=$total
+      before_idle[$label]=$idle
+    done < "$CPU_STAT_CACHE_FILE"
+  fi
+  mv "$tmp_file" "$CPU_STAT_CACHE_FILE" 2>/dev/null || rm -f "$tmp_file"
 
-  while IFS=' ' read -r label u n s idle w x y _rest; do
-    if [ "$label" = "cpu" ]; then
-      agg_total2=$((u + n + s + idle + w + x + y))
-      agg_idle2=$idle
-    elif [[ "$label" =~ ^cpu[0-9]+$ ]]; then
-      total=$((u + n + s + idle + w + x + y))
-      cores_after+=("$total:$idle")
+  if [ -n "${before_total[cpu]+x}" ]; then
+    local td=$((after_total[cpu] - before_total[cpu]))
+    local id=$((after_idle[cpu] - before_idle[cpu]))
+    if [ "$td" -gt 0 ]; then
+      _CPU_TOTAL_PCT=$(((td - id) * 100 / td))
+    else
+      _CPU_TOTAL_PCT=0
     fi
-  done < /proc/stat
-
-  local td=$((agg_total2 - agg_total1)) id=$((agg_idle2 - agg_idle1))
-  if [ "$td" -gt 0 ]; then
-    _CPU_TOTAL_PCT=$(((td - id) * 100 / td))
   else
     _CPU_TOTAL_PCT=0
   fi
 
-  local result="" j t1 i1 t2 i2 pct
-  for j in $(seq 0 $((${#cores_before[@]} - 1))); do
-    t1=${cores_before[$j]%%:*}; i1=${cores_before[$j]##*:}
-    t2=${cores_after[$j]%%:*};  i2=${cores_after[$j]##*:}
-    td=$((t2 - t1)); id=$((i2 - i1))
+  local result="" core td id pct
+  for core in "${current_labels[@]}"; do
     pct=0
-    [ "$td" -gt 0 ] && pct=$(((td - id) * 100 / td))
+    if [ -n "${before_total[$core]+x}" ]; then
+      td=$((after_total[$core] - before_total[$core]))
+      id=$((after_idle[$core] - before_idle[$core]))
+      [ "$td" -gt 0 ] && pct=$(((td - id) * 100 / td))
+    fi
     [ -n "$result" ] && result="${result},"
     result="${result}${pct}"
   done
@@ -1634,7 +1670,10 @@ get_cached_status() {
   # för att avgöra om cachen ska hållas varm.
   date +%s > "$LAST_STATUS_REQUEST_FILE" 2>/dev/null
 
-  # Kall cache (ingen fil, eller äldre än ACTIVE_WINDOW): bygg synkront.
+  # Kall/stale cache (ingen fil, eller äldre än STATUS_SYNC_MAX_AGE): bygg
+  # synkront. ACTIVE_WINDOW styr bara hur länge backgroundloopen hålls varm.
+  # REGRESSIONSGUARD: använd inte ACTIVE_WINDOW här. Då kan en minutgammal
+  # Core 0 = 100%-sample ligga kvar när UI:t öppnas efter idle.
   # Annars: servera från fil — backgroundloopen håller den färsk.
   local cache_age=999999
   if [ -f "$CACHE_FILE" ]; then
@@ -1644,7 +1683,7 @@ get_cached_status() {
     cache_age=$((now - cache_mtime))
   fi
 
-  if [ "$cache_age" -gt "$ACTIVE_WINDOW" ]; then
+  if [ "$cache_age" -gt "$STATUS_SYNC_MAX_AGE" ]; then
     local json
     json=$(build_status_json 2>>/var/log/pi-control-center-build.log)
     if [ -n "$json" ] && echo "$json" | jq -e . >/dev/null 2>&1; then
