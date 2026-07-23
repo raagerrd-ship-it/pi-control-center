@@ -1197,6 +1197,7 @@ sample_cpu_stats() {
   local label u n s idle w x y _rest total
   local current_labels=()
   declare -A before_total=() before_idle=() after_total=() after_idle=()
+  : > "$tmp_file" 2>/dev/null || true
 
   while IFS=' ' read -r label u n s idle w x y _rest; do
     if [ "$label" = "cpu" ] || [[ "$label" =~ ^cpu[0-9]+$ ]]; then
