@@ -33,6 +33,7 @@ export function useSystemStatus(isBusy = false, autoRefresh = true) {
   }, []);
 
   const poll = useCallback(async () => {
+    setRefreshing(true);
     try {
       const timeoutMs = isBusyRef.current ? 8000 : 4000;
       const data = await fetchSystemStatus(timeoutMs);
@@ -45,20 +46,18 @@ export function useSystemStatus(isBusy = false, autoRefresh = true) {
       setError(msg);
       failCount.current++;
 
-      // Grace period: keep current connection state until GRACE_THRESHOLD consecutive fails
       if (failCount.current < GRACE_THRESHOLD) {
-        // Don't change connection state — could be a transient timeout
+        // transient — keep current state
       } else if (isBusyRef.current) {
-        // Known operation active — mark busy, skip ping to reduce load
         setConnection('busy');
       } else {
-        // No known operation — ping to distinguish busy vs offline
         let reachable = false;
         try { reachable = await fetchPing(); } catch { /* ignore */ }
         setConnection(reachable ? 'busy' : 'offline');
       }
     } finally {
       setLoading(false);
+      setRefreshing(false);
       scheduleNext();
     }
   }, [scheduleNext]);
@@ -88,5 +87,17 @@ export function useSystemStatus(isBusy = false, autoRefresh = true) {
     };
   }, [poll]);
 
-  return { status, error, loading, connection, refresh: poll };
+  // React to autoRefresh flips: cancel pending timer when switching to manual,
+  // resume polling when switching back to auto.
+  useEffect(() => {
+    if (autoRefresh) {
+      failCount.current = 0;
+      poll();
+    } else if (intervalRef.current && !isBusyRef.current) {
+      clearTimeout(intervalRef.current);
+      intervalRef.current = null;
+    }
+  }, [autoRefresh, poll]);
+
+  return { status, error, loading, connection, refreshing, refresh: poll };
 }
