@@ -349,6 +349,10 @@ const Index = () => {
             onDashboardUpdate={handleDashboardUpdate}
             rebooting={rebooting}
             onReboot={handleReboot}
+            autoRefresh={autoRefresh}
+            onToggleAutoRefresh={toggleAutoRefresh}
+            onRefresh={refresh}
+            refreshing={refreshing}
           />
         </section>
 
