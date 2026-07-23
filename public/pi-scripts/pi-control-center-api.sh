@@ -1197,19 +1197,44 @@ sample_cpu_stats() {
   local label u n s idle w x y _rest total
   local current_labels=()
   declare -A before_total=() before_idle=() after_total=() after_idle=()
+  local now prev_mtime prev_age=999999 use_short_sample=0
+
+  if [ -s "$CPU_STAT_CACHE_FILE" ]; then
+    now=$(date +%s)
+    prev_mtime=$(stat -c %Y "$CPU_STAT_CACHE_FILE" 2>/dev/null || echo 0)
+    prev_age=$((now - prev_mtime))
+  fi
+  [ "$prev_age" -gt "$STATUS_SYNC_MAX_AGE" ] && use_short_sample=1
+
   : > "$tmp_file" 2>/dev/null || true
 
   while IFS=' ' read -r label u n s idle w x y _rest; do
     if [ "$label" = "cpu" ] || [[ "$label" =~ ^cpu[0-9]+$ ]]; then
       total=$((u + n + s + idle + w + x + y))
-      after_total[$label]=$total
-      after_idle[$label]=$idle
-      printf '%s %s %s\n' "$label" "$total" "$idle" >> "$tmp_file"
+      if [ "$use_short_sample" -eq 1 ]; then
+        before_total[$label]=$total
+        before_idle[$label]=$idle
+      else
+        after_total[$label]=$total
+        after_idle[$label]=$idle
+        printf '%s %s %s\n' "$label" "$total" "$idle" >> "$tmp_file"
+      fi
       [[ "$label" =~ ^cpu[0-9]+$ ]] && current_labels+=("$label")
     fi
   done < /proc/stat
 
-  if [ -s "$CPU_STAT_CACHE_FILE" ]; then
+  if [ "$use_short_sample" -eq 1 ]; then
+    sleep 0.2
+    : > "$tmp_file" 2>/dev/null || true
+    while IFS=' ' read -r label u n s idle w x y _rest; do
+      if [ "$label" = "cpu" ] || [[ "$label" =~ ^cpu[0-9]+$ ]]; then
+        total=$((u + n + s + idle + w + x + y))
+        after_total[$label]=$total
+        after_idle[$label]=$idle
+        printf '%s %s %s\n' "$label" "$total" "$idle" >> "$tmp_file"
+      fi
+    done < /proc/stat
+  elif [ -s "$CPU_STAT_CACHE_FILE" ]; then
     while IFS=' ' read -r label total idle; do
       [ -n "$label" ] || continue
       before_total[$label]=$total
