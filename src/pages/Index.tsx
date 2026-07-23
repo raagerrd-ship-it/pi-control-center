@@ -26,6 +26,16 @@ const Index = () => {
   const [checkingVersions, setCheckingVersions] = useState(false);
   const [memLimits, setMemLimits] = useState<Record<string, number>>({});
   const [rebooting, setRebooting] = useState(false);
+  const [autoRefresh, setAutoRefresh] = useState<boolean>(() => {
+    try { return localStorage.getItem('pcc-auto-refresh') !== '0'; } catch { return true; }
+  });
+  const toggleAutoRefresh = useCallback(() => {
+    setAutoRefresh(prev => {
+      const next = !prev;
+      try { localStorage.setItem('pcc-auto-refresh', next ? '1' : '0'); } catch { /* ignore */ }
+      return next;
+    });
+  }, []);
 
   const serviceNames = useMemo(() => {
     const map: Record<string, string> = {};
@@ -43,7 +53,7 @@ const Index = () => {
     return hasActiveUpdate || hasActiveInstall || isDashUpdating;
   }, [updates, installs, dashboardUpdate]);
 
-  const { status, error, loading, connection, refresh } = useSystemStatus(isBusy);
+  const { status, error, loading, connection, refreshing, refresh } = useSystemStatus(isBusy, autoRefresh);
 
   useEffect(() => {
     fetchAvailableServices().then(setAvailableServices).catch(() => {});
@@ -339,6 +349,10 @@ const Index = () => {
             onDashboardUpdate={handleDashboardUpdate}
             rebooting={rebooting}
             onReboot={handleReboot}
+            autoRefresh={autoRefresh}
+            onToggleAutoRefresh={toggleAutoRefresh}
+            onRefresh={refresh}
+            refreshing={refreshing}
           />
         </section>
 

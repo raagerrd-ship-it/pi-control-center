@@ -1,4 +1,4 @@
-import { Cpu, Thermometer, HardDrive, Clock, MemoryStick, RefreshCw, CheckCircle2, AlertCircle, Loader2, Power } from 'lucide-react';
+import { Cpu, Thermometer, HardDrive, Clock, MemoryStick, RefreshCw, CheckCircle2, AlertCircle, Loader2, Power, Pause, Play } from 'lucide-react';
 import { Progress } from '@/components/ui/progress';
 import { Button } from '@/components/ui/button';
 import type { SystemStatus, UpdateResult, VersionInfo } from '@/lib/api';
@@ -43,6 +43,10 @@ interface SystemMonitorProps {
   onCheckVersions: () => void;
   onDashboardUpdate: () => void;
   onReboot: () => void;
+  autoRefresh: boolean;
+  onToggleAutoRefresh: () => void;
+  onRefresh: () => void;
+  refreshing: boolean;
 }
 
 export function SystemMonitor({
@@ -50,6 +54,7 @@ export function SystemMonitor({
   dashboardVersion, dashboardUpdate, isUpdatingDashboard,
   checkingVersions, updatesAvailable,
   rebooting, onCheckVersions, onDashboardUpdate, onReboot,
+  autoRefresh, onToggleAutoRefresh, onRefresh, refreshing,
 }: SystemMonitorProps) {
   if (loading) {
     return (
@@ -108,6 +113,35 @@ export function SystemMonitor({
           </div>
         </div>
       )}
+      {/* Refresh controls */}
+      <div className="flex items-center gap-2 -mb-1">
+        <span className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
+          {autoRefresh ? 'Auto-uppdatering på' : 'Manuellt läge'}
+        </span>
+        <div className="ml-auto flex items-center gap-1">
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-7 px-2 gap-1 font-mono text-[11px] text-muted-foreground hover:text-foreground"
+            onClick={onRefresh}
+            disabled={refreshing}
+            title="Uppdatera nu"
+          >
+            <RefreshCw className={`h-3 w-3 ${refreshing ? 'animate-spin' : ''}`} />
+            {refreshing ? 'Hämtar...' : 'Uppdatera'}
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-7 px-2 gap-1 font-mono text-[11px] text-muted-foreground hover:text-foreground"
+            onClick={onToggleAutoRefresh}
+            title={autoRefresh ? 'Pausa auto-uppdatering' : 'Återuppta auto-uppdatering'}
+          >
+            {autoRefresh ? <><Pause className="h-3 w-3" /> Pausa</> : <><Play className="h-3 w-3" /> Auto</>}
+          </Button>
+        </div>
+      </div>
+
       {/* System gauges */}
       <div className="flex flex-col gap-3">
         {/* CPU: total + per-core */}
