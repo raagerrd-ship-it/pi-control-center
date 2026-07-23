@@ -1,4 +1,4 @@
-import { Cpu, Thermometer, HardDrive, Clock, MemoryStick, RefreshCw, CheckCircle2, AlertCircle, Loader2, Power } from 'lucide-react';
+import { Cpu, Thermometer, HardDrive, Clock, MemoryStick, RefreshCw, CheckCircle2, AlertCircle, Loader2, Power, Pause, Play } from 'lucide-react';
 import { Progress } from '@/components/ui/progress';
 import { Button } from '@/components/ui/button';
 import type { SystemStatus, UpdateResult, VersionInfo } from '@/lib/api';
