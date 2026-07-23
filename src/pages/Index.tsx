@@ -26,6 +26,16 @@ const Index = () => {
   const [checkingVersions, setCheckingVersions] = useState(false);
   const [memLimits, setMemLimits] = useState<Record<string, number>>({});
   const [rebooting, setRebooting] = useState(false);
+  const [autoRefresh, setAutoRefresh] = useState<boolean>(() => {
+    try { return localStorage.getItem('pcc-auto-refresh') !== '0'; } catch { return true; }
+  });
+  const toggleAutoRefresh = useCallback(() => {
+    setAutoRefresh(prev => {
+      const next = !prev;
+      try { localStorage.setItem('pcc-auto-refresh', next ? '1' : '0'); } catch { /* ignore */ }
+      return next;
+    });
+  }, []);
 
   const serviceNames = useMemo(() => {
     const map: Record<string, string> = {};
