@@ -8,20 +8,25 @@ const GRACE_THRESHOLD = 3;
 
 export type ConnectionState = 'connected' | 'busy' | 'offline';
 
-export function useSystemStatus(isBusy = false) {
+export function useSystemStatus(isBusy = false, autoRefresh = true) {
   const [status, setStatus] = useState<SystemStatus | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [connection, setConnection] = useState<ConnectionState>('offline');
+  const [refreshing, setRefreshing] = useState(false);
   const intervalRef = useRef<number | null>(null);
   const failCount = useRef(0);
   const isBusyRef = useRef(isBusy);
   isBusyRef.current = isBusy;
+  const autoRefreshRef = useRef(autoRefresh);
+  autoRefreshRef.current = autoRefresh;
 
   const pollRef = useRef<() => Promise<void>>();
 
   const scheduleNext = useCallback(() => {
     if (intervalRef.current) clearTimeout(intervalRef.current);
+    // Busy overrides manual mode — we always want to track ongoing operations.
+    if (!autoRefreshRef.current && !isBusyRef.current) return;
     const base = isBusyRef.current ? BUSY_INTERVAL : BASE_INTERVAL;
     const delay = Math.min(base * Math.pow(2, failCount.current), MAX_INTERVAL);
     intervalRef.current = window.setTimeout(() => pollRef.current?.(), delay);
